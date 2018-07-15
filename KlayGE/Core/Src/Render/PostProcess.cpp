@@ -107,7 +107,7 @@ namespace
 
 			for (XMLNodePtr pp_node = root->FirstNode("post_processor"); pp_node; pp_node = pp_node->NextSibling("post_processor"))
 			{
-				std::string name = pp_node->Attrib("name")->ValueString();
+				std::string_view name = pp_node->Attrib("name")->ValueString();
 				if (pp_desc_.pp_name == name)
 				{
 					Convert(pp_desc_.pp_data->name, name);
@@ -127,7 +127,7 @@ namespace
 					{
 						for (XMLNodePtr p_node = params_chunk->FirstNode("param"); p_node; p_node = p_node->NextSibling("param"))
 						{
-							pp_desc_.pp_data->param_names.push_back(p_node->Attrib("name")->ValueString());
+							pp_desc_.pp_data->param_names.push_back(std::string(p_node->Attrib("name")->ValueString()));
 						}
 					}
 					XMLNodePtr input_chunk = pp_node->FirstNode("input");
@@ -135,7 +135,7 @@ namespace
 					{
 						for (XMLNodePtr pin_node = input_chunk->FirstNode("pin"); pin_node; pin_node = pin_node->NextSibling("pin"))
 						{
-							pp_desc_.pp_data->input_pin_names.push_back(pin_node->Attrib("name")->ValueString());
+							pp_desc_.pp_data->input_pin_names.push_back(std::string(pin_node->Attrib("name")->ValueString()));
 						}
 					}
 					XMLNodePtr output_chunk = pp_node->FirstNode("output");
@@ -143,14 +143,14 @@ namespace
 					{
 						for (XMLNodePtr pin_node = output_chunk->FirstNode("pin"); pin_node; pin_node = pin_node->NextSibling("pin"))
 						{
-							pp_desc_.pp_data->output_pin_names.push_back(pin_node->Attrib("name")->ValueString());
+							pp_desc_.pp_data->output_pin_names.push_back(std::string(pin_node->Attrib("name")->ValueString()));
 						}
 					}
 					XMLNodePtr shader_chunk = pp_node->FirstNode("shader");
 					if (shader_chunk)
 					{
-						pp_desc_.pp_data->effect_name = shader_chunk->Attrib("effect")->ValueString();
-						pp_desc_.pp_data->tech_name = shader_chunk->Attrib("tech")->ValueString();
+						pp_desc_.pp_data->effect_name = std::string(shader_chunk->Attrib("effect")->ValueString());
+						pp_desc_.pp_data->tech_name = std::string(shader_chunk->Attrib("tech")->ValueString());
 
 						XMLAttributePtr attr = shader_chunk->Attrib("cs_data_per_thread_x");
 						if (attr)
@@ -261,27 +261,24 @@ namespace KlayGE
 		ArrayRef<std::string> input_pin_names,
 		ArrayRef<std::string> output_pin_names,
 		RenderEffectPtr const & effect, RenderTechnique* tech)
-			: RenderableHelper(name),
-				volumetric_(volumetric),
-				cs_based_(false), cs_pixel_per_thread_x_(1), cs_pixel_per_thread_y_(1), cs_pixel_per_thread_z_(1),
-				input_pins_(input_pin_names.size()),
-				output_pins_(output_pin_names.size()),
-				num_bind_output_(0),
-				params_(param_names.size()),
-				input_pins_ep_(input_pin_names.size())
+			: PostProcess(name, volumetric)
 	{
+		input_pins_.resize(input_pin_names.size());
 		for (size_t i = 0; i < input_pin_names.size(); ++ i)
 		{
 			input_pins_[i].first = input_pin_names[i];
 		}
+		output_pins_.resize(output_pin_names.size());
 		for (size_t i = 0; i < output_pin_names.size(); ++ i)
 		{
 			output_pins_[i].first = output_pin_names[i];
 		}
+		params_.resize(param_names.size());
 		for (size_t i = 0; i < param_names.size(); ++ i)
 		{
 			params_[i].first = param_names[i];
 		}
+		input_pins_ep_.resize(input_pin_names.size());
 		this->Technique(effect, tech);
 	}
 

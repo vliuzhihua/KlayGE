@@ -107,7 +107,7 @@ namespace
 
 			uint32_t tangent[std::size(xyzs)];
 			ElementFormat fmt;
-			if (rf.RenderEngineInstance().DeviceCaps().vertex_format_support(EF_ABGR8))
+			if (rf.RenderEngineInstance().DeviceCaps().VertexFormatSupport(EF_ABGR8))
 			{
 				fmt = EF_ABGR8;
 
@@ -121,7 +121,7 @@ namespace
 			}
 			else
 			{
-				BOOST_ASSERT(rf.RenderEngineInstance().DeviceCaps().vertex_format_support(EF_ARGB8));
+				BOOST_ASSERT(rf.RenderEngineInstance().DeviceCaps().VertexFormatSupport(EF_ARGB8));
 
 				fmt = EF_ARGB8;
 
@@ -277,7 +277,11 @@ void DistanceMapping::OnCreate()
 	actionMap.AddActions(actions, actions + std::size(actions));
 
 	action_handler_t input_handler = MakeSharedPtr<input_signal>();
-	input_handler->connect(std::bind(&DistanceMapping::InputHandler, this, std::placeholders::_1, std::placeholders::_2));
+	input_handler->connect(
+		[this](InputEngine const & sender, InputAction const & action)
+		{
+			this->InputHandler(sender, action);
+		});
 	inputEngine.ActionMap(actionMap, input_handler);
 
 	UIManager::Instance().Load(ResLoader::Instance().Open("DistanceMapping.uiml"));

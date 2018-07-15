@@ -29,9 +29,11 @@
  */
 
 #include <DXBC2GLSL/Utils.hpp>
+#include <KFL/CustomizedStreamBuf.hpp>
 #include <exception>
 #include <sstream>
 #include <limits>
+#include <cmath>
 
 namespace
 {
@@ -40,14 +42,14 @@ namespace
 	public:
 		bad_assert(char const * expr, char const * msg, char const * function, char const * file, long line)
 		{
-			std::stringstream ss;
+			KlayGE::StringOutputStreamBuf what_buff(what_);
+			std::ostream ss(&what_buff);
 			ss << expr;
 			if (msg)
 			{
 				ss << ' ' << msg;
 			}
 			ss << " in " << function << ", line " << line << " of " << file;
-			what_ = ss.str();
 		}
 
 		char const * what() const noexcept
@@ -81,7 +83,7 @@ bool ValidFloat(float f)
 		uint32_t ui;
 	} fnui;
 	fnui.f = f;
-	return (0x80000000 == fnui.ui) || ((f == f)
+	return (0x80000000 == fnui.ui) || (!std::isnan(f)
 		&& ((f >= std::numeric_limits<float>::min())
 			|| (-f >= std::numeric_limits<float>::min()))
 		&& ((f <= std::numeric_limits<float>::max())

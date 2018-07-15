@@ -1,4 +1,4 @@
-DOWNLOAD_FILE("KlayGE/Samples/media/DeferredRendering/fire.dds" "cbda47a1678ce70b6720856736100979d469e159" "f5037acd6159f853ee7b8848034f8f03c55f7136")
+DOWNLOAD_DEPENDENCY("KlayGE/Samples/media/DeferredRendering/fire.dds" "f5037acd6159f853ee7b8848034f8f03c55f7136")
 
 SET(SOURCE_FILES
 	${KLAYGE_PROJECT_DIR}/Samples/src/DeferredRendering/DeferredRendering.cpp
@@ -39,8 +39,7 @@ SET(CONTENT_FILES
 	${KLAYGE_PROJECT_DIR}/media/RenderFX/DeferredRendering.kfx
 	${KLAYGE_PROJECT_DIR}/media/RenderFX/DeferredRenderingDebug.kfx
 	${KLAYGE_PROJECT_DIR}/media/RenderFX/Depth.kfx
-	${KLAYGE_PROJECT_DIR}/media/RenderFX/GBufferNoSkinning.kfx
-	${KLAYGE_PROJECT_DIR}/media/RenderFX/GBufferSkinning128.kfx
+	${KLAYGE_PROJECT_DIR}/media/RenderFX/GBuffer.kfx
 	${KLAYGE_PROJECT_DIR}/media/RenderFX/Font.kfx
 	${KLAYGE_PROJECT_DIR}/media/RenderFX/LensEffects.kfx
 	${KLAYGE_PROJECT_DIR}/media/RenderFX/LightSourceProxy.kfx

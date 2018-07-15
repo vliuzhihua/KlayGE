@@ -303,14 +303,22 @@ void JudaTexViewer::OnCreate()
 	actionMap.AddActions(actions, actions + std::size(actions));
 
 	action_handler_t input_handler = MakeSharedPtr<input_signal>();
-	input_handler->connect(std::bind(&JudaTexViewer::InputHandler, this, std::placeholders::_1, std::placeholders::_2));
+	input_handler->connect(
+		[this](InputEngine const & sender, InputAction const & action)
+		{
+			this->InputHandler(sender, action);
+		});
 	inputEngine.ActionMap(actionMap, input_handler);
 
 	UIManager::Instance().Load(ResLoader::Instance().Open("JudaTexViewer.uiml"));
 	dialog_ = UIManager::Instance().GetDialogs()[0];
 
 	id_open_ = dialog_->IDFromName("Open");
-	dialog_->Control<UIButton>(id_open_)->OnClickedEvent().connect(std::bind(&JudaTexViewer::OpenHandler, this, std::placeholders::_1));
+	dialog_->Control<UIButton>(id_open_)->OnClickedEvent().connect(
+		[this](UIButton const & sender)
+		{
+			this->OpenHandler(sender);
+		});
 }
 
 void JudaTexViewer::OnResize(uint32_t width, uint32_t height)
@@ -376,21 +384,8 @@ void JudaTexViewer::OpenJudaTex(std::string const & name)
 
 	juda_tex_ = LoadJudaTexture(name);
 
-	ElementFormat fmt;
-	if (rf.RenderEngineInstance().DeviceCaps().texture_format_support(EF_BC1))
-	{
-		fmt = EF_BC1;
-	}
-	else if (rf.RenderEngineInstance().DeviceCaps().texture_format_support(EF_ABGR8))
-	{
-		fmt = EF_ABGR8;
-	}
-	else
-	{
-		BOOST_ASSERT(rf.RenderEngineInstance().DeviceCaps().texture_format_support(EF_ARGB8));
-
-		fmt = EF_ARGB8;
-	}
+	auto const fmt = rf.RenderEngineInstance().DeviceCaps().BestMatchTextureFormat({ EF_BC1, EF_ABGR8, EF_ARGB8 });
+	BOOST_ASSERT(fmt != EF_Unknown);
 	juda_tex_->CacheProperty(1024, fmt, BORDER_SIZE);
 
 	num_tiles_ = juda_tex_->NumTiles();

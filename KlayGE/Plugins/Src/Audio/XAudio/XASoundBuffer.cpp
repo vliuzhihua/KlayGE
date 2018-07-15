@@ -36,6 +36,7 @@
 #include <KlayGE/AudioFactory.hpp>
 #include <KlayGE/AudioDataSource.hpp>
 
+#include <functional>
 #include <random>
 
 #include <boost/assert.hpp>
@@ -53,7 +54,7 @@ namespace
 		}
 		virtual ~SoundVoiceContext()
 		{
-			is_playing_holder_ = false;
+			*is_playing_holder_ = false;
 		}
 
 		STDMETHOD_(void, OnVoiceProcessingPassStart)(UINT32)

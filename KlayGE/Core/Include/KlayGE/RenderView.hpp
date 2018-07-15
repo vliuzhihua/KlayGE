@@ -26,9 +26,7 @@ namespace KlayGE
 	class KLAYGE_CORE_API RenderView : boost::noncopyable
 	{
 	public:
-		virtual ~RenderView()
-		{
-		}
+		virtual ~RenderView();
 
 		uint32_t Width() const
 		{
@@ -42,6 +40,14 @@ namespace KlayGE
 		{
 			return pf_;
 		}
+		uint32_t SampleCount() const
+		{
+			return sample_count_;
+		}
+		uint32_t SampleQuality() const
+		{
+			return sample_quality_;
+		}
 
 		virtual void ClearColor(Color const & clr) = 0;
 		virtual void ClearDepth(float depth) = 0;
@@ -53,25 +59,19 @@ namespace KlayGE
 		virtual void OnAttached(FrameBuffer& fb, uint32_t att) = 0;
 		virtual void OnDetached(FrameBuffer& fb, uint32_t att) = 0;
 
-		virtual void OnBind(FrameBuffer& fb, uint32_t att);
-		virtual void OnUnbind(FrameBuffer& fb, uint32_t att);
-
 	protected:
 		uint32_t width_;
 		uint32_t height_;
 		ElementFormat pf_;
+		uint32_t sample_count_;
+		uint32_t sample_quality_;
 	};
 
 	class KLAYGE_CORE_API UnorderedAccessView : boost::noncopyable
 	{
 	public:
-		UnorderedAccessView()
-			: init_count_(0)
-		{
-		}
-		virtual ~UnorderedAccessView()
-		{
-		}
+		UnorderedAccessView();
+		virtual ~UnorderedAccessView();
 
 		uint32_t Width() const
 		{
@@ -93,9 +93,6 @@ namespace KlayGE
 
 		virtual void OnAttached(FrameBuffer& fb, uint32_t att) = 0;
 		virtual void OnDetached(FrameBuffer& fb, uint32_t att) = 0;
-
-		virtual void OnBind(FrameBuffer& fb, uint32_t att);
-		virtual void OnUnbind(FrameBuffer& fb, uint32_t att);
 
 		void InitCount(uint32_t count)
 		{

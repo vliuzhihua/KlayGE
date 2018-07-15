@@ -71,15 +71,16 @@ namespace KlayGE
 	static void RegisterApp()
 	{
 		NSAutoreleasePool* pool;
+		ProcessSerialNumber psn = { 0, kCurrentProcess };
+		TransformProcessType(&psn, kProcessTransformToForegroundApplication);
+#if MAC_OS_X_VERSION_MIN_REQUIRED > MAC_OS_X_VERSION_10_8
 #pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations"	// Ignore GetCurrentProcess/SetFrontProcess
-		ProcessSerialNumber psn;
-		if (!GetCurrentProcess(&psn))
-		{
-			TransformProcessType(&psn, kProcessTransformToForegroundApplication);
-			SetFrontProcess(&psn);
-		}
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"	// Ignore SetFrontProcess's deprecation
+#endif
+		SetFrontProcess(&psn);
+#if MAC_OS_X_VERSION_MIN_REQUIRED > MAC_OS_X_VERSION_10_8
 #pragma GCC diagnostic pop
+#endif
 		pool = [[NSAutoreleasePool alloc] init];
 		if (nil == NSApp)
 		{
@@ -96,10 +97,12 @@ namespace KlayGE
 		[pool release];
 	}
 
-	Window::Window(std::string const & name, RenderSettings const & settings)
+	Window::Window(std::string const & name, RenderSettings const & settings, void* native_wnd)
 		: active_(false), ready_(false), closed_(false), keep_screen_on_(settings.keep_screen_on),
-			dpi_scale_(1), win_rotation_(WR_Identity)
+			dpi_scale_(1), effective_dpi_scale_(1), win_rotation_(WR_Identity)
 	{
+		KFL_UNUSED(native_wnd);
+
 		RegisterApp();
 
 		NSAutoreleasePool* pool = [[NSAutoreleasePool alloc] init];
@@ -109,7 +112,7 @@ namespace KlayGE
 
 #if MAC_OS_X_VERSION_MIN_REQUIRED > MAC_OS_X_VERSION_10_11
 #pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"	// Ignore NSResizableWindowMask's deprecation
 #endif
 		NSUInteger initStyleMask = NSTitledWindowMask | NSMiniaturizableWindowMask | NSClosableWindowMask | NSResizableWindowMask;
 #if MAC_OS_X_VERSION_MIN_REQUIRED > MAC_OS_X_VERSION_10_11
@@ -134,16 +137,6 @@ namespace KlayGE
 		ns_view_ = nullptr;
 
 		[pool release];
-	}
-
-	Window::Window(std::string const & name, RenderSettings const & settings, void* native_wnd)
-		: active_(false), ready_(false), closed_(false), keep_screen_on_(settings.keep_screen_on),
-			dpi_scale_(1), win_rotation_(WR_Identity)
-	{
-		KFL_UNUSED(name);
-		KFL_UNUSED(settings);
-		KFL_UNUSED(native_wnd);
-		LogWarn("Unimplemented Window::Window");
 	}
 
 	Window::~Window()
@@ -227,24 +220,7 @@ namespace KlayGE
 			visual_attr.push_back(settings.sample_count);
 		}
 		visual_attr.push_back(NSOpenGLPFAOpenGLProfile);
-#if MAC_OS_X_VERSION_MIN_REQUIRED > MAC_OS_X_VERSION_10_9
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-		SInt32 major, minor;
-		Gestalt(gestaltSystemVersionMajor, &major);
-		Gestalt(gestaltSystemVersionMinor, &minor);
-		if ((major > 10) || ((major == 10) && (minor >= 10)))
-		{
-			visual_attr.push_back(NSOpenGLProfileVersion4_1Core);
-		}
-		else
-		{
-			visual_attr.push_back(NSOpenGLProfileVersion3_2Core);
-		}
-#pragma GCC diagnostic pop
-#else
-		visual_attr.push_back(NSOpenGLProfileVersion3_2Core);
-#endif
+		visual_attr.push_back(NSOpenGLProfileVersion4_1Core);
 		visual_attr.push_back(0);
 
 		NSOpenGLPixelFormat* pixel_format = [[NSOpenGLPixelFormat alloc] initWithAttributes:&visual_attr[0]];
@@ -278,7 +254,7 @@ namespace KlayGE
 		{
 #if MAC_OS_X_VERSION_MIN_REQUIRED > MAC_OS_X_VERSION_10_11
 #pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"	// Ignore NSAnyEventMask's deprecation
 #endif
 			NSEvent *event = [NSApp nextEventMatchingMask:NSAnyEventMask untilDate:nil inMode:NSDefaultRunLoopMode dequeue:YES];
 #if MAC_OS_X_VERSION_MIN_REQUIRED > MAC_OS_X_VERSION_10_11
@@ -342,10 +318,17 @@ namespace KlayGE
 	
 	[view setNextResponder:self];
 	
+#if MAC_OS_X_VERSION_MIN_REQUIRED > MAC_OS_X_VERSION_10_12
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"	// Ignore setAcceptsTouchEvents's deprecation
+#endif
 	if ([view respondsToSelector:@selector(setAcceptsTouchEvents:)])
 	{
 		[view setAcceptsTouchEvents:YES];
 	}
+#if MAC_OS_X_VERSION_MIN_REQUIRED > MAC_OS_X_VERSION_10_12
+#pragma GCC diagnostic pop
+#endif
 }
 
 - (void)close

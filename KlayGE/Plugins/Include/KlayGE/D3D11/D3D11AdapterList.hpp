@@ -16,10 +16,12 @@
 #pragma once
 
 #include <KlayGE/PreDeclare.hpp>
-#include <KlayGE/D3D11/D3D11Adapter.hpp>
+#include <KlayGE/D3D11/D3D11Typedefs.hpp>
 
 namespace KlayGE
 {
+	class D3D11Adapter;
+
 	class D3D11AdapterList
 	{
 	public:
@@ -28,6 +30,7 @@ namespace KlayGE
 		void Destroy();
 
 		void Enumerate(IDXGIFactory1Ptr const & gi_factory);
+		void Enumerate(IDXGIFactory6Ptr const & gi_factory);
 
 		size_t NumAdapter() const;
 		D3D11Adapter& Adapter(size_t index) const;

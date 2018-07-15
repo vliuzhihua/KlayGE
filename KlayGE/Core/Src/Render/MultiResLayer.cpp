@@ -94,47 +94,16 @@ namespace KlayGE
 		g_buffer_rt0_tex_ = rt0_tex;
 		g_buffer_depth_tex_ = depth_tex;
 
-		ElementFormat fmt8;
-		if (caps.rendertarget_format_support(EF_ABGR8, 1, 0))
-		{
-			fmt8 = EF_ABGR8;
-		}
-		else
-		{
-			BOOST_ASSERT(caps.rendertarget_format_support(EF_ARGB8, 1, 0));
-
-			fmt8 = EF_ARGB8;
-		}
-
-		ElementFormat depth_fmt;
-		if (caps.pack_to_rgba_required)
-		{
-			if (caps.rendertarget_format_support(EF_ABGR8, 1, 0))
-			{
-				depth_fmt = EF_ABGR8;
-			}
-			else
-			{
-				BOOST_ASSERT(caps.rendertarget_format_support(EF_ARGB8, 1, 0));
-				depth_fmt = EF_ARGB8;
-			}
-		}
-		else
-		{
-			if (caps.rendertarget_format_support(EF_R16F, 1, 0))
-			{
-				depth_fmt = EF_R16F;
-			}
-			else
-			{
-				BOOST_ASSERT(caps.rendertarget_format_support(EF_R32F, 1, 0));
-				depth_fmt = EF_R32F;
-			}
-		}
-
 		multi_res_tex_ = multi_res_tex;
 		if (multi_res_tex->NumMipMaps() > 1)
 		{
+			auto const fmt8 = caps.BestMatchTextureRenderTargetFormat({ EF_ABGR8, EF_ARGB8 }, 1, 0);
+			BOOST_ASSERT(fmt8 != EF_Unknown);
+
+			auto const depth_fmt = caps.BestMatchTextureRenderTargetFormat(
+				caps.pack_to_rgba_required ? MakeArrayRef({ EF_ABGR8, EF_ARGB8 }) : MakeArrayRef({ EF_R16F, EF_R32F }), 1, 0);
+			BOOST_ASSERT(depth_fmt != EF_Unknown);
+
 			depth_deriative_tex_ = rf.MakeTexture2D(multi_res_tex->Width(0), multi_res_tex->Height(0),
 				multi_res_tex->NumMipMaps(), 1, depth_fmt, 1, 0, EAH_GPU_Read | EAH_GPU_Write);
 			normal_cone_tex_ = rf.MakeTexture2D(multi_res_tex->Width(0), multi_res_tex->Height(0),
@@ -151,8 +120,10 @@ namespace KlayGE
 		multi_res_fbs_.resize(multi_res_tex->NumMipMaps());
 		for (uint32_t i = 0; i < multi_res_tex->NumMipMaps(); ++ i)
 		{
-			RenderViewPtr subsplat_ds_view = rf.Make2DDepthStencilRenderView(multi_res_tex->Width(i),
-				multi_res_tex->Height(i), EF_D24S8, 1, 0);
+			float4 constexpr subsplat_clear_value(0, 128, 0, 0);
+			auto subsplat_ds_tex = rf.MakeTexture2D(multi_res_tex->Width(i), multi_res_tex->Height(i), 1, 1, EF_D24S8,
+				1, 0, EAH_GPU_Write, {}, &subsplat_clear_value);
+			auto subsplat_ds_view = rf.Make2DDepthStencilRenderView(*subsplat_ds_tex, 0, 1, 0);
 
 			FrameBufferPtr fb = rf.MakeFrameBuffer();
 			fb->Attach(FrameBuffer::ATT_Color0, rf.Make2DRenderView(*multi_res_tex, 0, 1, i));

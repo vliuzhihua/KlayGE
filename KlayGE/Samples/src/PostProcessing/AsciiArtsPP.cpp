@@ -9,18 +9,18 @@
 
 #include <numeric>
 #include <boost/assert.hpp>
-#ifdef KLAYGE_COMPILER_CLANG
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wunused-parameter" // Ignore unused parameter in boost
-#elif defined(KLAYGE_COMPILER_GCC)
+#if defined(KLAYGE_COMPILER_GCC)
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wstrict-aliasing" // Ignore aliasing in flat_tree.hpp
+#elif defined(KLAYGE_COMPILER_CLANGC2)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wunused-parameter" // Ignore unused parameter in boost
 #endif
 #include <boost/container/flat_map.hpp>
-#ifdef KLAYGE_COMPILER_CLANG
-#pragma clang diagnostic pop
-#elif defined(KLAYGE_COMPILER_GCC)
+#if defined(KLAYGE_COMPILER_GCC)
 #pragma GCC diagnostic pop
+#elif defined(KLAYGE_COMPILER_CLANGC2)
+#pragma clang diagnostic pop
 #endif
 
 #include "AsciiArtsPP.hpp"
@@ -253,7 +253,7 @@ AsciiArtsPostProcess::AsciiArtsPostProcess()
 
 	ascii_lums_builder builder(INPUT_NUM_ASCII, OUTPUT_NUM_ASCII, ASCII_WIDTH, ASCII_HEIGHT);
 
-	downsampler_ = SyncLoadPostProcess("Copy.ppml", "bilinear_copy");
+	downsampler_ = SyncLoadPostProcess("Copy.ppml", "BilinearCopy");
 
 	cell_per_row_line_ep_ = effect->ParameterByName("cell_per_row_line");
 	*(effect->ParameterByName("lums_tex")) = FillTexture(builder.build(LoadFromKFont("gkai00mp.kfont")));

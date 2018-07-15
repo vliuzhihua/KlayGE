@@ -64,7 +64,9 @@ namespace KlayGE
 			return d3d_ua_view_;
 		}
 
-		void CopyToBuffer(GraphicsBuffer& rhs);
+		void CopyToBuffer(GraphicsBuffer& target) override;
+		void CopyToSubBuffer(GraphicsBuffer& target,
+			uint32_t dst_offset, uint32_t src_offset, uint32_t size) override;
 
 		virtual void CreateHWResource(void const * init_data) override;
 		virtual void DeleteHWResource() override;
@@ -76,21 +78,25 @@ namespace KlayGE
 			return counter_offset_;
 		}
 
-		void ResetBufferPool();
+		D3D12_GPU_VIRTUAL_ADDRESS GPUVirtualAddress() const
+		{
+			return gpu_vaddr_;
+		}
 
 	private:
 		void* Map(BufferAccess ba);
 		void Unmap();
 
 	private:
-		std::vector<ID3D12ResourcePtr> buffer_pool_;
-		size_t next_free_index_;
 		ID3D12ResourcePtr buffer_counter_upload_;
 		D3D12ShaderResourceViewSimulationPtr d3d_sr_view_;
 		D3D12UnorderedAccessViewSimulationPtr d3d_ua_view_;
 		uint32_t counter_offset_;
+		D3D12_GPU_VIRTUAL_ADDRESS gpu_vaddr_;
 
 		ElementFormat fmt_as_shader_res_;
+
+		BufferAccess mapped_ba_;
 	};
 	typedef std::shared_ptr<D3D12GraphicsBuffer> D3D12GraphicsBufferPtr;
 }

@@ -135,7 +135,7 @@ namespace KlayGE
 		// Scissor support
 		virtual void ScissorRect(uint32_t x, uint32_t y, uint32_t width, uint32_t height) = 0;
 
-		virtual void GetCustomAttrib(std::string_view name, void* value);
+		virtual void GetCustomAttrib(std::string_view name, void* value) const;
 		virtual void SetCustomAttrib(std::string_view name, void* value);
 
 		void Resize(uint32_t width, uint32_t height);
@@ -187,11 +187,6 @@ namespace KlayGE
 		}
 
 		void ConvertToDisplay();
-
-		uint32_t NumMotionFrames() const
-		{
-			return motion_frames_;
-		}
 
 		RenderStateObjectPtr const & CurRenderStateObject() const
 		{
@@ -268,6 +263,11 @@ namespace KlayGE
 	protected:
 		void Destroy();
 
+		void AssignCapVertexFormats(std::vector<ElementFormat>&& vertex_formats);
+		void AssignCapTextureFormats(std::vector<ElementFormat>&& texture_formats);
+		void AssignCapRenderTargetFormats(std::map<ElementFormat, std::vector<uint32_t>>&& render_target_formats);
+		void AssignCapUavFormats(std::vector<ElementFormat>&& uav_formats);
+
 	private:
 		virtual void CheckConfig(RenderSettings& settings);
 		virtual void StereoscopicForLCDShutter(int32_t eye);
@@ -323,8 +323,6 @@ namespace KlayGE
 		float default_fov_;
 		float default_render_width_scale_;
 		float default_render_height_scale_;
-
-		uint32_t motion_frames_;
 
 		StereoMethod stereo_method_;
 		float stereo_separation_;

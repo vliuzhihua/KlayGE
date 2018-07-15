@@ -30,25 +30,27 @@
 
 #include <KlayGE/KlayGE.hpp>
 #include <KFL/CXX17.hpp>
+#include <KFL/CXX17/iterator.hpp>
 #include <KFL/ErrorHandling.hpp>
 #include <KFL/Util.hpp>
 #include <KFL/COMPtr.hpp>
+#include <KFL/Hash.hpp>
 #include <KFL/Math.hpp>
 #include <KlayGE/SceneManager.hpp>
 #include <KlayGE/Context.hpp>
+#include <KlayGE/RenderFactory.hpp>
 #include <KlayGE/RenderSettings.hpp>
 #include <KlayGE/App3D.hpp>
 #include <KlayGE/Window.hpp>
 #include <KFL/ArrayRef.hpp>
 
 #include <cstring>
+#include <string>
+
 #include <boost/assert.hpp>
-#include <boost/lexical_cast.hpp>
 
 #include <KlayGE/D3D12/D3D12RenderEngine.hpp>
 #include <KlayGE/D3D12/D3D12Mapping.hpp>
-#include <KlayGE/D3D12/D3D12RenderFactory.hpp>
-#include <KlayGE/D3D12/D3D12RenderFactoryInternal.hpp>
 #include <KlayGE/D3D12/D3D12RenderView.hpp>
 #include <KlayGE/D3D12/D3D12Texture.hpp>
 #include <KlayGE/D3D12/D3D12InterfaceLoader.hpp>
@@ -67,13 +69,9 @@ using namespace Microsoft::WRL::Wrappers;
 
 namespace KlayGE
 {
-	D3D12RenderWindow::D3D12RenderWindow(D3D12AdapterPtr const & adapter, std::string const & name, RenderSettings const & settings)
-#ifdef KLAYGE_PLATFORM_WINDOWS_DESKTOP
-						: hWnd_(nullptr),
-#else
-						:
-#endif
-							adapter_(adapter), dxgi_allow_tearing_(false)
+	D3D12RenderWindow::D3D12RenderWindow(D3D12Adapter* adapter, std::string const & name, RenderSettings const & settings)
+						: adapter_(adapter), dxgi_allow_tearing_(false),
+							frame_latency_waitable_obj_(0)
 	{
 		// Store info
 		name_				= name;
@@ -82,16 +80,22 @@ namespace KlayGE
 
 		ElementFormat format = settings.color_fmt;
 
-		WindowPtr const & main_wnd = Context::Instance().AppInstance().MainWnd();
+		auto main_wnd = Context::Instance().AppInstance().MainWnd().get();
 #ifdef KLAYGE_PLATFORM_WINDOWS_DESKTOP
 		hWnd_ = main_wnd->HWnd();
 #else
 		wnd_ = main_wnd->GetWindow();
 #endif
-		on_exit_size_move_connect_ = main_wnd->OnExitSizeMove().connect(std::bind(&D3D12RenderWindow::OnExitSizeMove, this,
-			std::placeholders::_1));
-		on_size_connect_ = main_wnd->OnSize().connect(std::bind(&D3D12RenderWindow::OnSize, this,
-			std::placeholders::_1, std::placeholders::_2));
+		on_exit_size_move_connect_ = main_wnd->OnExitSizeMove().connect(
+			[this](Window const & win)
+			{
+				this->OnExitSizeMove(win);
+			});
+		on_size_connect_ = main_wnd->OnSize().connect(
+			[this](Window const & win, bool active)
+			{
+				this->OnSize(win, active);
+			});
 
 		if (this->FullScreen())
 		{
@@ -151,25 +155,25 @@ namespace KlayGE
 
 			ArrayRef<D3D_FEATURE_LEVEL> feature_levels;
 			{
-				static std::string_view const feature_level_names[] =
+				static size_t constexpr feature_level_name_hashes[] =
 				{
-					"12_1",
-					"12_0",
-					"11_1",
-					"11_0"
+					CT_HASH("12_1"),
+					CT_HASH("12_0"),
+					CT_HASH("11_1"),
+					CT_HASH("11_0")
 				};
-				KLAYGE_STATIC_ASSERT(std::size(feature_level_names) == std::size(all_feature_levels));
+				KLAYGE_STATIC_ASSERT(std::size(feature_level_name_hashes) == std::size(all_feature_levels));
 
 				uint32_t feature_level_start_index = 0;
 				for (size_t index = 0; index < settings.options.size(); ++ index)
 				{
-					std::string_view opt_name = settings.options[index].first;
-					std::string_view opt_val = settings.options[index].second;
-					if ("level" == opt_name)
+					size_t const opt_name_hash = RT_HASH(settings.options[index].first.c_str());
+					size_t const opt_val_hash = RT_HASH(settings.options[index].second.c_str());
+					if (CT_HASH("level") == opt_name_hash)
 					{
-						for (uint32_t i = feature_level_start_index; i < std::size(feature_level_names); ++ i)
+						for (uint32_t i = feature_level_start_index; i < std::size(feature_level_name_hashes); ++ i)
 						{
-							if (feature_level_names[i] == opt_val)
+							if (feature_level_name_hashes[i] == opt_val_hash)
 							{
 								feature_level_start_index = i;
 								break;
@@ -178,7 +182,7 @@ namespace KlayGE
 					}
 				}
 
-				feature_levels = ArrayRef<D3D_FEATURE_LEVEL>(all_feature_levels).Slice(feature_level_start_index);
+				feature_levels = MakeArrayRef(all_feature_levels).Slice(feature_level_start_index);
 			}
 
 			for (size_t i = 0; i < feature_levels.size(); ++ i)
@@ -236,9 +240,7 @@ namespace KlayGE
 						description_ += fl_str.data();
 						if (settings.sample_count > 1)
 						{
-							description_ += L" ("
-								+ boost::lexical_cast<std::wstring>(settings.sample_count)
-								+ L"x AA)";
+							description_ += L" (" + std::to_wstring(settings.sample_count) + L"x AA)";
 						}
 						break;
 					}
@@ -277,7 +279,10 @@ namespace KlayGE
 			&disp_info_stat));
 
 		auto callback = Callback<ITypedEventHandler<DisplayInformation*, IInspectable*>>(
-			std::bind(&D3D12RenderWindow::OnStereoEnabledChanged, this, std::placeholders::_1, std::placeholders::_2));
+			[this](IDisplayInformation* sender, IInspectable* args)
+			{
+				return this->OnStereoEnabledChanged(sender, args);
+			});
 
 		ComPtr<IDisplayInformation> disp_info;
 		TIFHR(disp_info_stat->GetForCurrentView(&disp_info));
@@ -291,7 +296,7 @@ namespace KlayGE
 		sc_desc1_.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
 		sc_desc1_.BufferCount = NUM_BACK_BUFFERS;
 		sc_desc1_.AlphaMode = DXGI_ALPHA_MODE_UNSPECIFIED;
-		sc_desc1_.Flags = DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH;
+		sc_desc1_.Flags = DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH | DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT;
 		if (stereo)
 		{
 			sc_desc1_.SampleDesc.Count = 1;
@@ -339,7 +344,27 @@ namespace KlayGE
 
 		this->UpdateSurfacesPtrs();
 
-		this->WaitForGPU();
+#ifdef KLAYGE_DEBUG
+		ID3D12InfoQueue* d3d_info_queue = nullptr;
+		if (SUCCEEDED(d3d_device->QueryInterface(IID_ID3D12InfoQueue, reinterpret_cast<void**>(&d3d_info_queue))))
+		{
+			d3d_info_queue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_CORRUPTION, true);
+			d3d_info_queue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_ERROR, true);
+
+			D3D12_MESSAGE_ID hide[] =
+			{
+				D3D12_MESSAGE_ID_CLEARRENDERTARGETVIEW_MISMATCHINGCLEARVALUE,
+				D3D12_MESSAGE_ID_CLEARDEPTHSTENCILVIEW_MISMATCHINGCLEARVALUE,
+			};
+
+			D3D12_INFO_QUEUE_FILTER filter = {};
+			filter.DenyList.NumIDs = static_cast<UINT>(std::size(hide));
+			filter.DenyList.pIDList = hide;
+			d3d_info_queue->AddStorageFilterEntries(&filter);
+
+			d3d_info_queue->Release();
+		}
+#endif
 	}
 
 	D3D12RenderWindow::~D3D12RenderWindow()
@@ -385,7 +410,7 @@ namespace KlayGE
 		{
 			clr_views_[i].reset();
 		}
-		rs_view_.reset();
+		ds_view_.reset();
 
 		for (size_t i = 0; i < render_targets_.size(); ++ i)
 		{
@@ -395,7 +420,7 @@ namespace KlayGE
 		}
 		depth_stencil_.reset();
 
-		UINT flags = 0;
+		UINT flags = DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT;
 		if (this->FullScreen())
 		{
 			flags |= DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH;
@@ -550,7 +575,10 @@ namespace KlayGE
 
 	void D3D12RenderWindow::Destroy()
 	{
-		this->WaitForGPU();
+		RenderFactory& rf = Context::Instance().RenderFactoryInstance();
+		D3D12RenderEngine& d3d12_re = *checked_cast<D3D12RenderEngine*>(&rf.RenderEngineInstance());
+
+		d3d12_re.ForceFinish();
 
 #ifdef KLAYGE_PLATFORM_WINDOWS_DESKTOP
 		if (swap_chain_)
@@ -558,8 +586,6 @@ namespace KlayGE
 			swap_chain_->SetFullscreenState(false, nullptr);
 		}
 
-		RenderFactory& rf = Context::Instance().RenderFactoryInstance();
-		D3D12RenderEngine& d3d12_re = *checked_cast<D3D12RenderEngine*>(&rf.RenderEngineInstance());
 		d3d12_re.DXGIFactory4()->UnregisterStereoStatus(stereo_cookie_);
 #else
 		ComPtr<IDisplayInformationStatics> disp_info_stat;
@@ -572,6 +598,11 @@ namespace KlayGE
 
 		this->FullScreen(false);
 #endif
+
+		if (frame_latency_waitable_obj_ != 0)
+		{
+			::CloseHandle(frame_latency_waitable_obj_);
+		}
 
 		for (size_t i = 0; i < render_targets_.size(); ++ i)
 		{
@@ -672,6 +703,12 @@ namespace KlayGE
 		swap_chain_ = MakeCOMPtr(sc3);
 		sc->Release();
 
+		if (frame_latency_waitable_obj_ != 0)
+		{
+			::CloseHandle(frame_latency_waitable_obj_);
+		}
+		frame_latency_waitable_obj_ = swap_chain_->GetFrameLatencyWaitableObject();
+
 		if (try_hdr_display)
 		{
 			IDXGISwapChain4* sc4;
@@ -695,19 +732,15 @@ namespace KlayGE
 		{
 			RenderFactory& rf = Context::Instance().RenderFactoryInstance();
 			D3D12RenderEngine& d3d12_re = *checked_cast<D3D12RenderEngine*>(&rf.RenderEngineInstance());
+			auto* cmd_list = d3d12_re.D3DRenderCmdList();
 
-			D3D12_RESOURCE_BARRIER barrier;
-			barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-			barrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
-			auto rt_tex = checked_cast<D3D12Texture*>(render_targets_[curr_back_buffer_].get());
-			if (rt_tex->UpdateResourceBarrier(0, barrier, D3D12_RESOURCE_STATE_PRESENT))
-			{
-				d3d12_re.D3DRenderCmdList()->ResourceBarrier(1, &barrier);
-			}
+			auto* rt_tex = checked_cast<D3D12Texture*>(render_targets_[curr_back_buffer_].get());
+			rt_tex->UpdateResourceBarrier(cmd_list, 0, D3D12_RESOURCE_STATE_PRESENT);
+			d3d12_re.FlushResourceBarriers(cmd_list);
 
-			d3d12_re.ForceFlush();
+			d3d12_re.CommitRenderCmd();
 
-			bool allow_tearing = dxgi_allow_tearing_;
+			bool allow_tearing = dxgi_allow_tearing_ && (sync_interval_ == 0);
 #ifdef KLAYGE_PLATFORM_WINDOWS_DESKTOP
 			allow_tearing &= !isFullScreen_;
 #endif
@@ -715,6 +748,8 @@ namespace KlayGE
 			TIFHR(swap_chain_->Present(sync_interval_, present_flags));
 
 			curr_back_buffer_ = swap_chain_->GetCurrentBackBufferIndex();
+
+			this->Attach(ATT_Color0, render_target_render_views_[curr_back_buffer_]);
 		}
 	}
 
@@ -722,15 +757,8 @@ namespace KlayGE
 	{
 		if (swap_chain_)
 		{
-			this->WaitForGPU();
+			::WaitForSingleObjectEx(frame_latency_waitable_obj_, 1000, true);
 		}
-	}
-
-	void D3D12RenderWindow::OnBind()
-	{
-		this->Attach(ATT_Color0, render_target_render_views_[curr_back_buffer_]);
-
-		D3D12FrameBuffer::OnBind();
 	}
 
 	void D3D12RenderWindow::OnExitSizeMove(Window const & /*win*/)
@@ -766,14 +794,4 @@ namespace KlayGE
 		return S_OK;
 	}
 #endif
-
-	void D3D12RenderWindow::WaitForGPU()
-	{
-		RenderFactory& rf = Context::Instance().RenderFactoryInstance();
-		D3D12RenderEngine& d3d12_re = *checked_cast<D3D12RenderEngine*>(&rf.RenderEngineInstance());
-
-		d3d12_re.SyncRenderCmd();
-		d3d12_re.SyncComputeCmd();
-		d3d12_re.SyncCopyCmd();
-	}
 }

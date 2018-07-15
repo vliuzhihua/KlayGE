@@ -1,4 +1,4 @@
-DOWNLOAD_FILE("KlayGE/Samples/media/VideoTexture/big_buck_bunny.avi" "cbda47a1678ce70b6720856736100979d469e159" "5074a181b6f246d1eaa7879010f2c2319a3cd857")
+DOWNLOAD_DEPENDENCY("KlayGE/Samples/media/VideoTexture/big_buck_bunny.avi" "5074a181b6f246d1eaa7879010f2c2319a3cd857")
 
 SET(SOURCE_FILES
 	${KLAYGE_PROJECT_DIR}/Samples/src/VideoTexture/VideoTexture.cpp
@@ -42,6 +42,7 @@ SET(CONTENT_FILES
 	${KLAYGE_PROJECT_DIR}/media/Textures/2D/SMAASearchTex.dds
 	${KLAYGE_PROJECT_DIR}/media/Textures/2D/ui.dds
 	${KLAYGE_PROJECT_DIR}/media/Textures/3D/color_grading.dds
+	${KLAYGE_PROJECT_DIR}/Samples/media/VideoTexture/big_buck_bunny.avi
 	${KLAYGE_PROJECT_DIR}/Samples/media/VideoTexture/VideoTexture.kfx
 	${KLAYGE_PROJECT_DIR}/Samples/media/Common/teapot.meshml.model_bin
 )

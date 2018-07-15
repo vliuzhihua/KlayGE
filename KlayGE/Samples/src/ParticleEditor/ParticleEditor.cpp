@@ -154,7 +154,11 @@ void ParticleEditorApp::OnCreate()
 	actionMap.AddActions(actions, actions + std::size(actions));
 
 	action_handler_t input_handler = MakeSharedPtr<input_signal>();
-	input_handler->connect(std::bind(&ParticleEditorApp::InputHandler, this, std::placeholders::_1, std::placeholders::_2));
+	input_handler->connect(
+		[this](InputEngine const & sender, InputAction const & action)
+		{
+			this->InputHandler(sender, action);
+		});
 	inputEngine.ActionMap(actionMap, input_handler);
 
 	terrain_ = MakeSharedPtr<TerrainObject>();
@@ -178,7 +182,7 @@ void ParticleEditorApp::OnCreate()
 		scene_depth_buffer_->GetViewport()->camera = screen_buffer->GetViewport()->camera;
 	}
 
-	copy_pp_ = SyncLoadPostProcess("Copy.ppml", "copy");
+	copy_pp_ = SyncLoadPostProcess("Copy.ppml", "Copy");
 
 	UIManager::Instance().Load(ResLoader::Instance().Open("ParticleEditor.uiml"));
 	dialog_ = UIManager::Instance().GetDialogs()[0];
@@ -219,40 +223,116 @@ void ParticleEditorApp::OnCreate()
 
 	this->LoadParticleSystem(ResLoader::Instance().Locate("Fire.psml"));
 
-	dialog_->Control<UIButton>(id_open_)->OnClickedEvent().connect(std::bind(&ParticleEditorApp::OpenHandler, this, std::placeholders::_1));
-	dialog_->Control<UIButton>(id_save_as_)->OnClickedEvent().connect(std::bind(&ParticleEditorApp::SaveAsHandler, this, std::placeholders::_1));
+	dialog_->Control<UIButton>(id_open_)->OnClickedEvent().connect(
+		[this](UIButton const & sender)
+		{
+			this->OpenHandler(sender);
+		});
+	dialog_->Control<UIButton>(id_save_as_)->OnClickedEvent().connect(
+		[this](UIButton const & sender)
+		{
+			this->SaveAsHandler(sender);
+		});
 
-	dialog_->Control<UISlider>(id_gravity_slider_)->OnValueChangedEvent().connect(std::bind(&ParticleEditorApp::GravityChangedHandler, this, std::placeholders::_1));
+	dialog_->Control<UISlider>(id_gravity_slider_)->OnValueChangedEvent().connect(
+		[this](UISlider const & sender)
+		{
+			this->GravityChangedHandler(sender);
+		});
 	this->GravityChangedHandler(*dialog_->Control<UISlider>(id_gravity_slider_));
-	dialog_->Control<UISlider>(id_density_slider_)->OnValueChangedEvent().connect(std::bind(&ParticleEditorApp::DensityChangedHandler, this, std::placeholders::_1));
+	dialog_->Control<UISlider>(id_density_slider_)->OnValueChangedEvent().connect(
+		[this](UISlider const & sender)
+		{
+			this->DensityChangedHandler(sender);
+		});
 	this->DensityChangedHandler(*dialog_->Control<UISlider>(id_density_slider_));
-	dialog_->Control<UISlider>(id_freq_slider_)->OnValueChangedEvent().connect(std::bind(&ParticleEditorApp::FreqChangedHandler, this, std::placeholders::_1));
+	dialog_->Control<UISlider>(id_freq_slider_)->OnValueChangedEvent().connect(
+		[this](UISlider const & sender)
+		{
+			this->FreqChangedHandler(sender);
+		});
 	this->FreqChangedHandler(*dialog_->Control<UISlider>(id_freq_slider_));
-	dialog_->Control<UISlider>(id_angle_slider_)->OnValueChangedEvent().connect(std::bind(&ParticleEditorApp::AngleChangedHandler, this, std::placeholders::_1));
+	dialog_->Control<UISlider>(id_angle_slider_)->OnValueChangedEvent().connect(
+		[this](UISlider const & sender)
+		{
+			this->AngleChangedHandler(sender);
+		});
 	this->AngleChangedHandler(*dialog_->Control<UISlider>(id_angle_slider_));
-	dialog_->Control<UISlider>(id_detail_x_slider_)->OnValueChangedEvent().connect(std::bind(&ParticleEditorApp::DetailXChangedHandler, this, std::placeholders::_1));
+	dialog_->Control<UISlider>(id_detail_x_slider_)->OnValueChangedEvent().connect(
+		[this](UISlider const & sender)
+		{
+			this->DetailXChangedHandler(sender);
+		});
 	this->DetailXChangedHandler(*dialog_->Control<UISlider>(id_detail_x_slider_));
-	dialog_->Control<UISlider>(id_detail_y_slider_)->OnValueChangedEvent().connect(std::bind(&ParticleEditorApp::DetailYChangedHandler, this, std::placeholders::_1));
+	dialog_->Control<UISlider>(id_detail_y_slider_)->OnValueChangedEvent().connect(
+		[this](UISlider const & sender)
+		{
+			this->DetailYChangedHandler(sender);
+		});
 	this->DetailYChangedHandler(*dialog_->Control<UISlider>(id_detail_y_slider_));
-	dialog_->Control<UISlider>(id_detail_z_slider_)->OnValueChangedEvent().connect(std::bind(&ParticleEditorApp::DetailZChangedHandler, this, std::placeholders::_1));
+	dialog_->Control<UISlider>(id_detail_z_slider_)->OnValueChangedEvent().connect(
+		[this](UISlider const & sender)
+		{
+			this->DetailZChangedHandler(sender);
+		});
 	this->DetailZChangedHandler(*dialog_->Control<UISlider>(id_detail_z_slider_));
-	dialog_->Control<UISlider>(id_min_velocity_slider_)->OnValueChangedEvent().connect(std::bind(&ParticleEditorApp::MinVelocityChangedHandler, this, std::placeholders::_1));
+	dialog_->Control<UISlider>(id_min_velocity_slider_)->OnValueChangedEvent().connect(
+		[this](UISlider const & sender)
+		{
+			this->MinVelocityChangedHandler(sender);
+		});
 	this->MinVelocityChangedHandler(*dialog_->Control<UISlider>(id_min_velocity_slider_));
-	dialog_->Control<UISlider>(id_max_velocity_slider_)->OnValueChangedEvent().connect(std::bind(&ParticleEditorApp::MaxVelocityChangedHandler, this, std::placeholders::_1));
+	dialog_->Control<UISlider>(id_max_velocity_slider_)->OnValueChangedEvent().connect(
+		[this](UISlider const & sender)
+		{
+			this->MaxVelocityChangedHandler(sender);
+		});
 	this->MaxVelocityChangedHandler(*dialog_->Control<UISlider>(id_max_velocity_slider_));
-	dialog_->Control<UISlider>(id_min_life_slider_)->OnValueChangedEvent().connect(std::bind(&ParticleEditorApp::MinLifeChangedHandler, this, std::placeholders::_1));
+	dialog_->Control<UISlider>(id_min_life_slider_)->OnValueChangedEvent().connect(
+		[this](UISlider const & sender)
+		{
+			this->MinLifeChangedHandler(sender);
+		});
 	this->MinLifeChangedHandler(*dialog_->Control<UISlider>(id_min_life_slider_));
-	dialog_->Control<UISlider>(id_max_life_slider_)->OnValueChangedEvent().connect(std::bind(&ParticleEditorApp::MaxLifeChangedHandler, this, std::placeholders::_1));
+	dialog_->Control<UISlider>(id_max_life_slider_)->OnValueChangedEvent().connect(
+		[this](UISlider const & sender)
+		{
+			this->MaxLifeChangedHandler(sender);
+		});
 	this->MaxLifeChangedHandler(*dialog_->Control<UISlider>(id_max_life_slider_));
 
-	dialog_->Control<UICheckBox>(id_fps_camera_)->OnChangedEvent().connect(std::bind(&ParticleEditorApp::FPSCameraHandler, this, std::placeholders::_1));
+	dialog_->Control<UICheckBox>(id_fps_camera_)->OnChangedEvent().connect(
+		[this](UICheckBox const & sender)
+		{
+			this->FPSCameraHandler(sender);
+		});
 
-	dialog_->Control<UITexButton>(id_particle_alpha_from_button_)->OnClickedEvent().connect(std::bind(&ParticleEditorApp::ChangeParticleAlphaFromHandler, this, std::placeholders::_1));
-	dialog_->Control<UITexButton>(id_particle_alpha_to_button_)->OnClickedEvent().connect(std::bind(&ParticleEditorApp::ChangeParticleAlphaToHandler, this, std::placeholders::_1));
-	dialog_->Control<UITexButton>(id_particle_color_from_button_)->OnClickedEvent().connect(std::bind(&ParticleEditorApp::ChangeParticleColorFromHandler, this, std::placeholders::_1));
-	dialog_->Control<UITexButton>(id_particle_color_to_button_)->OnClickedEvent().connect(std::bind(&ParticleEditorApp::ChangeParticleColorToHandler, this, std::placeholders::_1));
+	dialog_->Control<UITexButton>(id_particle_alpha_from_button_)->OnClickedEvent().connect(
+		[this](UITexButton const & sender)
+		{
+			this->ChangeParticleAlphaFromHandler(sender);
+		});
+	dialog_->Control<UITexButton>(id_particle_alpha_to_button_)->OnClickedEvent().connect(
+		[this](UITexButton const & sender)
+		{
+			this->ChangeParticleAlphaToHandler(sender);
+		});
+	dialog_->Control<UITexButton>(id_particle_color_from_button_)->OnClickedEvent().connect(
+		[this](UITexButton const & sender)
+		{
+			this->ChangeParticleColorFromHandler(sender);
+		});
+	dialog_->Control<UITexButton>(id_particle_color_to_button_)->OnClickedEvent().connect(
+		[this](UITexButton const & sender)
+		{
+			this->ChangeParticleColorToHandler(sender);
+		});
 
-	dialog_->Control<UIComboBox>(id_curve_type_)->OnSelectionChangedEvent().connect(std::bind(&ParticleEditorApp::CurveTypeChangedHandler, this, std::placeholders::_1));
+	dialog_->Control<UIComboBox>(id_curve_type_)->OnSelectionChangedEvent().connect(
+		[this](UIComboBox const & sender)
+		{
+			this->CurveTypeChangedHandler(sender);
+		});
 }
 
 void ParticleEditorApp::OnResize(uint32_t width, uint32_t height)
@@ -263,63 +343,21 @@ void ParticleEditorApp::OnResize(uint32_t width, uint32_t height)
 	RenderEngine& re = rf.RenderEngineInstance();
 	RenderDeviceCaps const & caps = re.DeviceCaps();
 
-	ElementFormat fmt;
-	if (caps.fp_color_support && caps.rendertarget_format_support(EF_B10G11R11F, 1, 0))
-	{
-		fmt = EF_B10G11R11F;
-	}
-	else if (caps.rendertarget_format_support(EF_ABGR8, 1, 0))
-	{
-		fmt = EF_ABGR8;
-	}
-	else
-	{
-		BOOST_ASSERT(caps.rendertarget_format_support(EF_ARGB8, 1, 0));
-		fmt = EF_ARGB8;
-	}
+	auto fmt = caps.BestMatchTextureRenderTargetFormat({ EF_B10G11R11F, EF_ABGR8, EF_ARGB8 }, 1, 0);
+	BOOST_ASSERT(fmt != EF_Unknown);
 	scene_tex_ = rf.MakeTexture2D(width, height, 1, 1, fmt, 1, 0, EAH_GPU_Read | EAH_GPU_Write);
 
-	if (caps.pack_to_rgba_required)
-	{
-		if (caps.rendertarget_format_support(EF_ABGR8, 1, 0))
-		{
-			fmt = EF_ABGR8;
-		}
-		else if (caps.rendertarget_format_support(EF_ARGB8, 1, 0))
-		{
-			BOOST_ASSERT(caps.rendertarget_format_support(EF_ARGB8, 1, 0));
-			fmt = EF_ARGB8;
-		}
-	}
-	else
-	{
-		if (caps.rendertarget_format_support(EF_R16F, 1, 0))
-		{
-			fmt = EF_R16F;
-		}
-		else if (caps.rendertarget_format_support(EF_R32F, 1, 0))
-		{
-			BOOST_ASSERT(caps.rendertarget_format_support(EF_R32F, 1, 0));
-			fmt = EF_R32F;
-		}
-	}
+	fmt = caps.BestMatchTextureRenderTargetFormat(
+		caps.pack_to_rgba_required ? MakeArrayRef({ EF_ABGR8, EF_ARGB8 }) : MakeArrayRef({ EF_R16F, EF_R32F }), 1, 0);
+	BOOST_ASSERT(fmt != EF_Unknown);
 	scene_depth_tex_ = rf.MakeTexture2D(width, height, 1, 1, fmt, 1, 0, EAH_GPU_Read | EAH_GPU_Write);
-
-	ElementFormat ds_fmt;
-	if (caps.rendertarget_format_support(EF_D24S8, 1, 0))
-	{
-		ds_fmt = EF_D24S8;
-	}
-	else
-	{
-		BOOST_ASSERT(caps.rendertarget_format_support(EF_D16, 1, 0));
-
-		ds_fmt = EF_D16;
-	}
 
 	RenderViewPtr ds_view;
 	if (depth_texture_support_)
 	{
+		auto const ds_fmt = caps.BestMatchTextureRenderTargetFormat({ EF_D24S8, EF_D16 }, 1, 0);
+		BOOST_ASSERT(ds_fmt != EF_Unknown);
+
 		scene_ds_tex_ = rf.MakeTexture2D(width, height, 1, 1, ds_fmt, 1, 0, EAH_GPU_Read | EAH_GPU_Write);
 		ds_view = rf.Make2DDepthStencilRenderView(*scene_ds_tex_, 0, 1, 0);
 
@@ -743,11 +781,13 @@ void ParticleEditorApp::LoadParticleAlpha(int id, std::string const & name)
 			}
 		}
 
+		auto const fmt = rf.RenderEngineInstance().DeviceCaps().BestMatchTextureFormat({ EF_ABGR8, EF_ARGB8 });
+		BOOST_ASSERT(fmt != EF_Unknown);
+
 		ElementInitData init_data;
 		init_data.data = &data[0];
 		init_data.row_pitch = tex->Width(0) * 4;
-		tex_for_button = rf.MakeTexture2D(cpu_tex->Width(0), cpu_tex->Height(0), 1, 1,
-			rf.RenderEngineInstance().DeviceCaps().texture_format_support(EF_ABGR8) ? EF_ABGR8 : EF_ARGB8, 1, 0,
+		tex_for_button = rf.MakeTexture2D(cpu_tex->Width(0), cpu_tex->Height(0), 1, 1, fmt, 1, 0,
 			EAH_GPU_Read | EAH_Immutable, init_data);
 	}
 	else
@@ -762,7 +802,8 @@ void ParticleEditorApp::LoadParticleColor(int id, KlayGE::Color const & clr)
 	RenderFactory& rf = Context::Instance().RenderFactoryInstance();
 	RenderDeviceCaps const & caps = rf.RenderEngineInstance().DeviceCaps();
 
-	ElementFormat fmt = caps.texture_format_support(EF_ABGR8) ? EF_ABGR8 : EF_ARGB8;
+	auto const fmt = caps.BestMatchTextureFormat({ EF_ABGR8, EF_ARGB8 });
+	BOOST_ASSERT(fmt != EF_Unknown);
 
 	uint32_t data;
 	data = 0xFF000000 | ((EF_ABGR8 == fmt) ? clr.ABGR() : clr.ARGB());

@@ -22,6 +22,7 @@
 
 #include <KlayGE/KlayGE.hpp>
 #include <KFL/CXX17.hpp>
+#include <KFL/CXX17/iterator.hpp>
 #include <KFL/ErrorHandling.hpp>
 #include <KFL/Util.hpp>
 #include <KFL/Math.hpp>
@@ -35,9 +36,10 @@
 #include <KFL/ArrayRef.hpp>
 
 #include <map>
+#include <string>
 #include <system_error>
+
 #include <boost/assert.hpp>
-#include <boost/lexical_cast.hpp>
 
 #include <glloader/glloader.h>
 
@@ -57,10 +59,16 @@ namespace KlayGE
 		color_bits_ = NumFormatBits(settings.color_fmt);
 
 		WindowPtr const & main_wnd = Context::Instance().AppInstance().MainWnd();
-		on_exit_size_move_connect_ = main_wnd->OnExitSizeMove().connect(std::bind(&OGLRenderWindow::OnExitSizeMove, this,
-			std::placeholders::_1));
-		on_size_connect_ = main_wnd->OnSize().connect(std::bind(&OGLRenderWindow::OnSize, this,
-			std::placeholders::_1, std::placeholders::_2));
+		on_exit_size_move_connect_ = main_wnd->OnExitSizeMove().connect(
+			[this](Window const & win)
+			{
+				this->OnExitSizeMove(win);
+			});
+		on_size_connect_ = main_wnd->OnSize().connect(
+			[this](Window const & win, bool active)
+			{
+				this->OnSize(win, active);
+			});
 
 		static std::pair<int, int> constexpr all_versions[] =
 		{
@@ -103,7 +111,7 @@ namespace KlayGE
 				}
 			}
 
-			available_versions = ArrayRef<std::pair<int, int>>(all_versions).Slice(version_start_index);
+			available_versions = MakeArrayRef(all_versions).Slice(version_start_index);
 		}
 
 #if defined KLAYGE_PLATFORM_WINDOWS
@@ -438,7 +446,7 @@ namespace KlayGE
 		description_ = vendor + L" " + renderer + L" " + version;
 		if (sample_count > 1)
 		{
-			description_ += L" (" + boost::lexical_cast<std::wstring>(sample_count) + L"x AA)";
+			description_ += L" (" + std::to_wstring(sample_count) + L"x AA)";
 		}
 	}
 

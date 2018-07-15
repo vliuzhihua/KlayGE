@@ -12,25 +12,28 @@
 
 #include <KlayGE/KlayGE.hpp>
 #include <KFL/CXX17.hpp>
+#include <KFL/CXX17/iterator.hpp>
 #include <KFL/ErrorHandling.hpp>
 #include <KFL/Util.hpp>
 #include <KFL/COMPtr.hpp>
+#include <KFL/Hash.hpp>
 #include <KFL/Math.hpp>
 #include <KlayGE/SceneManager.hpp>
 #include <KlayGE/Context.hpp>
+#include <KlayGE/RenderFactory.hpp>
 #include <KlayGE/RenderSettings.hpp>
 #include <KlayGE/App3D.hpp>
 #include <KlayGE/Window.hpp>
 #include <KFL/ArrayRef.hpp>
 
 #include <cstring>
-#include <boost/assert.hpp>
-#include <boost/lexical_cast.hpp>
+#include <string>
 
+#include <boost/assert.hpp>
+
+#include <KlayGE/D3D11/D3D11Adapter.hpp>
 #include <KlayGE/D3D11/D3D11RenderEngine.hpp>
 #include <KlayGE/D3D11/D3D11Mapping.hpp>
-#include <KlayGE/D3D11/D3D11RenderFactory.hpp>
-#include <KlayGE/D3D11/D3D11RenderFactoryInternal.hpp>
 #include <KlayGE/D3D11/D3D11RenderView.hpp>
 #include <KlayGE/D3D11/D3D11RenderWindow.hpp>
 #include <KlayGE/D3D11/D3D11Texture.hpp>
@@ -51,13 +54,8 @@ using namespace Microsoft::WRL::Wrappers;
 namespace KlayGE
 {
 	D3D11RenderWindow::D3D11RenderWindow(D3D11Adapter* adapter, std::string const & name, RenderSettings const & settings)
-#ifdef KLAYGE_PLATFORM_WINDOWS_DESKTOP
-						: hWnd_(nullptr),
-#else
-						:
-#endif
-							adapter_(adapter), dxgi_stereo_support_(false), dxgi_allow_tearing_(false), dxgi_async_swap_chain_(false),
-								frame_latency_waitable_obj_(0)
+						: adapter_(adapter), dxgi_stereo_support_(false), dxgi_allow_tearing_(false), dxgi_async_swap_chain_(false),
+							frame_latency_waitable_obj_(0)
 	{
 		// Store info
 		name_				= name;
@@ -66,16 +64,22 @@ namespace KlayGE
 
 		ElementFormat format = settings.color_fmt;
 
-		WindowPtr const & main_wnd = Context::Instance().AppInstance().MainWnd();
+		auto main_wnd = Context::Instance().AppInstance().MainWnd().get();
 #ifdef KLAYGE_PLATFORM_WINDOWS_DESKTOP
 		hWnd_ = main_wnd->HWnd();
 #else
 		wnd_ = main_wnd->GetWindow();
 #endif
-		on_exit_size_move_connect_ = main_wnd->OnExitSizeMove().connect(std::bind(&D3D11RenderWindow::OnExitSizeMove, this,
-			std::placeholders::_1));
-		on_size_connect_ = main_wnd->OnSize().connect(std::bind(&D3D11RenderWindow::OnSize, this,
-			std::placeholders::_1, std::placeholders::_2));
+		on_exit_size_move_connect_ = main_wnd->OnExitSizeMove().connect(
+			[this](Window const & win)
+			{
+				this->OnExitSizeMove(win);
+			});
+		on_size_connect_ = main_wnd->OnSize().connect(
+			[this](Window const & win, bool active)
+			{
+				this->OnSize(win, active);
+			});
 
 		if (this->FullScreen())
 		{
@@ -156,14 +160,14 @@ namespace KlayGE
 
 			ArrayRef<D3D_FEATURE_LEVEL> feature_levels;
 			{
-				static std::string_view const feature_level_names[] =
+				static size_t constexpr feature_level_name_hashes[] =
 				{
-					"12_1",
-					"12_0",
-					"11_1",
-					"11_0"
+					CT_HASH("12_1"),
+					CT_HASH("12_0"),
+					CT_HASH("11_1"),
+					CT_HASH("11_0")
 				};
-				KLAYGE_STATIC_ASSERT(std::size(feature_level_names) == std::size(all_feature_levels));
+				KLAYGE_STATIC_ASSERT(std::size(feature_level_name_hashes) == std::size(all_feature_levels));
 
 				uint32_t feature_level_start_index = 0;
 				if (d3d11_re.DXGISubVer() < 4)
@@ -177,13 +181,13 @@ namespace KlayGE
 				}
 				for (size_t index = 0; index < settings.options.size(); ++ index)
 				{
-					std::string_view opt_name = settings.options[index].first;
-					std::string_view opt_val = settings.options[index].second;
-					if ("level" == opt_name)
+					size_t const opt_name_hash = RT_HASH(settings.options[index].first.c_str());
+					size_t const opt_val_hash = RT_HASH(settings.options[index].second.c_str());
+					if (CT_HASH("level") == opt_name_hash)
 					{
-						for (uint32_t i = feature_level_start_index; i < std::size(feature_level_names); ++ i)
+						for (uint32_t i = feature_level_start_index; i < std::size(feature_level_name_hashes); ++ i)
 						{
-							if (feature_level_names[i] == opt_val)
+							if (feature_level_name_hashes[i] == opt_val_hash)
 							{
 								feature_level_start_index = i;
 								break;
@@ -192,7 +196,7 @@ namespace KlayGE
 					}
 				}
 
-				feature_levels = ArrayRef<D3D_FEATURE_LEVEL>(all_feature_levels).Slice(feature_level_start_index);
+				feature_levels = MakeArrayRef(all_feature_levels).Slice(feature_level_start_index);
 			}
 
 			for (auto const & dev_type_beh : dev_type_behaviors)
@@ -277,9 +281,7 @@ namespace KlayGE
 						description_ += fl_str.data();
 						if (settings.sample_count > 1)
 						{
-							description_ += L" ("
-								+ boost::lexical_cast<std::wstring>(settings.sample_count)
-								+ L"x AA)";
+							description_ += L" (" + std::to_wstring(settings.sample_count) + L"x AA)";
 						}
 						break;
 					}
@@ -420,7 +422,10 @@ namespace KlayGE
 			&disp_info_stat));
 
 		auto callback = Callback<ITypedEventHandler<DisplayInformation*, IInspectable*>>(
-			std::bind(&D3D11RenderWindow::OnStereoEnabledChanged, this, std::placeholders::_1, std::placeholders::_2));
+			[this](IDisplayInformation* sender, IInspectable* args)
+			{
+				return this->OnStereoEnabledChanged(sender, args);
+			});
 
 		ComPtr<IDisplayInformation> disp_info;
 		TIFHR(disp_info_stat->GetForCurrentView(&disp_info));
@@ -510,7 +515,27 @@ namespace KlayGE
 		swap_chain_->SetFullscreenState(this->FullScreen(), nullptr);
 #endif
 
+		{
+			ID3D10Multithread* d3d_multithread;
+			if (SUCCEEDED(d3d_device->QueryInterface(IID_ID3D10Multithread, reinterpret_cast<void**>(&d3d_multithread))))
+			{
+				d3d_multithread->SetMultithreadProtected(true);
+				d3d_multithread->Release();
+			}
+		}
+
 		this->UpdateSurfacesPtrs();
+
+#ifdef KLAYGE_DEBUG
+		ID3D11InfoQueue* d3d_info_queue = nullptr;
+		if (SUCCEEDED(d3d_device->QueryInterface(IID_ID3D11InfoQueue, reinterpret_cast<void**>(&d3d_info_queue))))
+		{
+			d3d_info_queue->SetBreakOnSeverity(D3D11_MESSAGE_SEVERITY_CORRUPTION, true);
+			d3d_info_queue->SetBreakOnSeverity(D3D11_MESSAGE_SEVERITY_ERROR, true);
+
+			d3d_info_queue->Release();
+		}
+#endif
 	}
 
 	D3D11RenderWindow::~D3D11RenderWindow()
@@ -557,7 +582,7 @@ namespace KlayGE
 		{
 			clr_views_[i].reset();
 		}
-		rs_view_.reset();
+		ds_view_.reset();
 
 		render_target_view_right_eye_.reset();
 		depth_stencil_view_right_eye_.reset();
@@ -922,6 +947,10 @@ namespace KlayGE
 			IDXGISwapChain3* sc3;
 			if (SUCCEEDED(swap_chain_->QueryInterface(IID_IDXGISwapChain3, reinterpret_cast<void**>(&sc3))))
 			{
+				if (frame_latency_waitable_obj_ != 0)
+				{
+					::CloseHandle(frame_latency_waitable_obj_);
+				}
 				frame_latency_waitable_obj_ = sc3->GetFrameLatencyWaitableObject();
 				sc3->Release();
 			}
@@ -948,7 +977,7 @@ namespace KlayGE
 	{
 		if (swap_chain_)
 		{
-			bool allow_tearing = dxgi_allow_tearing_;
+			bool allow_tearing = dxgi_allow_tearing_ && (sync_interval_ == 0);
 #ifdef KLAYGE_PLATFORM_WINDOWS_DESKTOP
 			allow_tearing &= !isFullScreen_;
 #endif
@@ -977,6 +1006,7 @@ namespace KlayGE
 			if (DXGI_PRESENT_ALLOW_TEARING == present_flags)
 			{
 				d3d11_re.InvalidRTVCache();
+				views_dirty_ = true;
 			}
 		}
 	}

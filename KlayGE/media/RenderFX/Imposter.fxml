@@ -1,7 +1,7 @@
 <?xml version='1.0'?>
 
 <effect>
-	<include name="GBufferNoSkinning.fxml"/>
+	<include name="GBuffer.fxml"/>
 
 	<cbuffer name="per_frame">
 		<parameter type="float4x4" name="billboard_mat"/>
@@ -14,11 +14,7 @@ void ImpostorGBufferVS(float2 pos2 : POSITION,
 			out float4 oTexCoord_2xy : TEXCOORD0,
 			out float4 oTsToView0_2z : TEXCOORD1,
 			out float4 oTsToView1_Depth : TEXCOORD2,
-#ifdef NOPERSPECTIVE_SUPPORT
-			out noperspective float2 oScreenTc : TEXCOORD3,
-#else
-			out float3 oScreenTc : TEXCOORD3,
-#endif
+			out SS_TEXCOORD_TYPE oScreenTc : TEXCOORD3,
 			out float4 oPos : SV_Position)
 {
 	float4 pos = float4(pos2 * pos_extent.xy + pos_center.xy, 0, 1);
@@ -41,22 +37,15 @@ void ImpostorGBufferVS(float2 pos2 : POSITION,
 
 	oTsToView1_Depth.w = oPos.w;
 
-	oScreenTc.xy = oPos.xy / oPos.w * 0.5f;
-	oScreenTc.y *= KLAYGE_FLIPPING;
-	oScreenTc.xy += 0.5f;
-
-#ifndef NOPERSPECTIVE_SUPPORT
-	oScreenTc.z = oPos.w;
-	oScreenTc.xy *= oScreenTc.z;
-#endif
+	oScreenTc = EncodeSSTexcoord(oPos);
 }
 
 void ImpostorGBufferAlphaTestMRTPS(float4 texcoord_2xy : TEXCOORD0, float4 ts_to_view0_2z : TEXCOORD1, float3 ts_to_view1 : TEXCOORD2,
-					out float4 mrt_0 : SV_Target0, out float4 mrt_1 : SV_Target1)
+					out float4 rt0 : SV_Target0, out float4 rt1 : SV_Target1)
 {
-	mrt_0 = normal_tex.Sample(bilinear_sampler, texcoord_2xy.xy);
-	mrt_1 = albedo_tex.Sample(bilinear_sampler, texcoord_2xy.xy);
-	clip(dot(mrt_1, mrt_1) - 1.0f / 255);
+	rt0 = normal_tex.Sample(bilinear_sampler, texcoord_2xy.xy);
+	rt1 = albedo_tex.Sample(bilinear_sampler, texcoord_2xy.xy);
+	clip(dot(rt1, rt1) - 1.0f / 255);
 }
 		]]>
 	</shader>

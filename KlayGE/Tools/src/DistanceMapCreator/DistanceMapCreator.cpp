@@ -11,11 +11,11 @@
 
 #include <cmath>
 #include <iostream>
-#include <sstream>
 #include <string>
 #include <vector>
 #include <ctime>
 #include <cstring>
+
 #include <boost/assert.hpp>
 
 using namespace std;
@@ -249,18 +249,15 @@ int main(int argc, char* argv[])
 	}
 	if (argc > 3)
 	{
-		std::stringstream ss(argv[3]);
-		ss >> width;
+		width = std::stoi(argv[3]);
 	}
 	if (argc > 4)
 	{
-		std::stringstream ss(argv[4]);
-		ss >> height;
+		height = std::stoi(argv[4]);
 	}
 	if (argc > 5)
 	{
-		std::stringstream ss(argv[5]);
-		ss >> depth;
+		depth = std::stoi(argv[5]);
 	}
 
 	Context::Instance().LoadCfg("KlayGE.cfg");

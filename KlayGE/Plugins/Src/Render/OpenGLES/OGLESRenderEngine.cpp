@@ -31,8 +31,9 @@
 
 #include <algorithm>
 #include <cstring>
+#include <string>
+
 #include <boost/assert.hpp>
-#include <boost/lexical_cast.hpp>
 
 #include <KlayGE/OpenGLES/OGLESMapping.hpp>
 #include <KlayGE/OpenGLES/OGLESRenderWindow.hpp>
@@ -150,19 +151,12 @@ namespace
 		KFL_UNUSED(length);
 		KFL_UNUSED(user_param);
 
-		std::string dbg = std::string("OpenGL debug output: source: ") + DebugSourceString(source) + "; "
-			+ "type: " + DebugTypeString(type) + "; "
-			+ "id: " + boost::lexical_cast<std::string>(id)+ "; "
-			+ "severity: " + DebugSeverityString(severity) + "; "
-			+ "message: " + message;
-		if (GL_DEBUG_TYPE_ERROR == type)
-		{
-			KlayGE::LogError(dbg.c_str());
-		}
-		else
-		{
-			KlayGE::LogInfo(dbg.c_str());
-		}
+		auto& os = (GL_DEBUG_TYPE_ERROR == type) ? KlayGE::LogError() : KlayGE::LogInfo();
+		os << "OpenGL debug output: source: " << DebugSourceString(source) << "; "
+			<< "type: " << DebugTypeString(type) << "; "
+			<< "id: " << id << "; "
+			<< "severity: " << DebugSeverityString(severity) << "; "
+			<< "message: " << message << std::endl;
 	}
 #endif
 }
@@ -211,8 +205,6 @@ namespace KlayGE
 	void OGLESRenderEngine::DoCreateRenderWindow(std::string const & name,
 		RenderSettings const & settings)
 	{
-		motion_frames_ = settings.motion_frames;
-
 		FrameBufferPtr win = MakeSharedPtr<OGLESRenderWindow>(name, settings);
 
 		if (glloader_GLES_VERSION_3_2())
@@ -310,7 +302,6 @@ namespace KlayGE
 		active_tex_unit_ = GL_TEXTURE0;
 		glActiveTexture(active_tex_unit_);
 
-		binded_targets_.clear();
 		binded_textures_.clear();
 		binded_samplers_.clear();
 		binded_buffers_.clear();
@@ -332,10 +323,9 @@ namespace KlayGE
 
 	void OGLESRenderEngine::BindTextures(GLuint first, GLsizei count, GLuint const * targets, GLuint const * textures, bool force)
 	{
-		if (first + count > binded_targets_.size())
+		if (first + count > binded_textures_.size())
 		{
-			binded_targets_.resize(first + count, 0);
-			binded_textures_.resize(binded_targets_.size(), 0xFFFFFFFF);
+			binded_textures_.resize(first + count, std::make_pair(0, 0xFFFFFFFF));
 		}
 
 		bool dirty = force;
@@ -343,13 +333,13 @@ namespace KlayGE
 		{
 			uint32_t start_dirty = first;
 			uint32_t end_dirty = first + count;
-			while ((start_dirty != end_dirty) && (binded_targets_[start_dirty] == targets[start_dirty])
-				&& (binded_textures_[start_dirty] == textures[start_dirty]))
+			while ((start_dirty != end_dirty) && (binded_textures_[start_dirty].first == targets[start_dirty])
+				&& (binded_textures_[start_dirty].second == textures[start_dirty]))
 			{
 				++ start_dirty;
 			}
-			while ((start_dirty != end_dirty) && (binded_targets_[end_dirty - 1] == targets[end_dirty - 1])
-				&& (binded_textures_[end_dirty - 1] == textures[end_dirty - 1]))
+			while ((start_dirty != end_dirty) && (binded_textures_[end_dirty - 1].first == targets[end_dirty - 1])
+				&& (binded_textures_[end_dirty - 1].second == textures[end_dirty - 1]))
 			{
 				-- end_dirty;
 			}
@@ -365,10 +355,9 @@ namespace KlayGE
 			{
 				this->ActiveTexture(GL_TEXTURE0 + i);
 				glBindTexture(targets[i], textures[i]);
-			}
 
-			memcpy(&binded_targets_[first], &targets[first], count * sizeof(targets[0]));
-			memcpy(&binded_textures_[first], &textures[first], count * sizeof(textures[0]));
+				binded_textures_[i] = std::make_pair(targets[i], textures[i]);
+			}
 		}
 	}
 
@@ -452,6 +441,44 @@ namespace KlayGE
 
 			memcpy(&binded[first], buffers, count * sizeof(buffers[0]));
 		}
+	}
+
+	void OGLESRenderEngine::DeleteTextures(GLsizei n, GLuint const * textures)
+	{
+		for (GLsizei i = 0; i < n; ++ i)
+		{
+			for (auto iter = binded_textures_.begin(); iter != binded_textures_.end();)
+			{
+				if (iter->second == textures[i])
+				{
+					iter = binded_textures_.erase(iter);
+				}
+				else
+				{
+					++ iter;
+				}
+			}
+		}
+		glDeleteTextures(n, textures);
+	}
+
+	void OGLESRenderEngine::DeleteSamplers(GLsizei n, GLuint const * samplers)
+	{
+		for (GLsizei i = 0; i < n; ++ i)
+		{
+			for (auto iter = binded_samplers_.begin(); iter != binded_samplers_.end();)
+			{
+				if (*iter == samplers[i])
+				{
+					iter = binded_samplers_.erase(iter);
+				}
+				else
+				{
+					++ iter;
+				}
+			}
+		}
+		glDeleteSamplers(n, samplers);
 	}
 
 	void OGLESRenderEngine::DeleteBuffers(GLsizei n, GLuint const * buffers)
@@ -1227,7 +1254,7 @@ namespace KlayGE
 		glScissor(x, y, width, height);
 	}
 
-	void OGLESRenderEngine::GetCustomAttrib(std::string_view name, void* value)
+	void OGLESRenderEngine::GetCustomAttrib(std::string_view name, void* value) const
 	{
 		size_t const name_hash = HashRange(name.begin(), name.end());
 		if (CT_HASH("VENDOR") == name_hash)
@@ -1284,7 +1311,7 @@ namespace KlayGE
 		}
 		else if (0 == name.find("FEATURE_NAME_"))
 		{
-			int const n = boost::lexical_cast<int>(name.substr(13));
+			int const n = std::stoi(std::string(name.substr(13)));
 			*static_cast<std::string*>(value) = glloader_get_feature_name(n);
 		}
 	}
@@ -1333,30 +1360,6 @@ namespace KlayGE
 	void OGLESRenderEngine::AdjustProjectionMatrix(float4x4& proj_mat)
 	{
 		proj_mat *= MathLib::scaling(1.0f, 1.0f, 2.0f) * MathLib::translation(0.0f, 0.0f, -1.0f);
-	}
-
-	bool OGLESRenderEngine::VertexFormatSupport(ElementFormat elem_fmt)
-	{
-		auto iter = std::lower_bound(vertex_format_.begin(), vertex_format_.end(), elem_fmt);
-		return (iter != vertex_format_.end()) && (*iter == elem_fmt);
-	}
-
-	bool OGLESRenderEngine::TextureFormatSupport(ElementFormat elem_fmt)
-	{
-		auto iter = std::lower_bound(texture_format_.begin(), texture_format_.end(), elem_fmt);
-		return (iter != texture_format_.end()) && (*iter == elem_fmt);
-	}
-
-	bool OGLESRenderEngine::RenderTargetFormatSupport(ElementFormat elem_fmt, uint32_t sample_count, uint32_t /*sample_quality*/)
-	{
-		auto iter = std::lower_bound(rendertarget_format_.begin(), rendertarget_format_.end(), elem_fmt);
-		return (iter != rendertarget_format_.end()) && (*iter == elem_fmt) && (sample_count <= max_samples_);
-	}
-
-	bool OGLESRenderEngine::UAVFormatSupport(ElementFormat elem_fmt)
-	{
-		KFL_UNUSED(elem_fmt);
-		return false;
 	}
 
 	// 填充设备能力
@@ -1479,6 +1482,7 @@ namespace KlayGE
 		}
 		caps_.multithread_rendering_support = false;
 		caps_.multithread_res_creating_support = false;
+		caps_.arbitrary_multithread_rendering_support = false;
 		caps_.mrt_independent_bit_depths_support = false;
 		caps_.logic_op_support = false;
 		caps_.independent_blend_support = false;
@@ -1509,6 +1513,7 @@ namespace KlayGE
 		{
 			caps_.render_to_texture_array_support = false;
 		}
+		caps_.explicit_multi_sample_support = false;	// TODO
 		if (glloader_GLES_VERSION_3_2() || glloader_GLES_OES_texture_buffer() || glloader_GLES_EXT_texture_buffer())
 		{
 			caps_.load_from_buffer_support = true;
@@ -1517,6 +1522,8 @@ namespace KlayGE
 		{
 			caps_.load_from_buffer_support = false;
 		}
+		caps_.uavs_at_every_stage_support = false;	// TODO
+		caps_.rovs_support = false;	// TODO
 
 		caps_.gs_support = glloader_GLES_VERSION_3_2() || glloader_GLES_OES_geometry_shader()
 			|| glloader_GLES_EXT_geometry_shader() || glloader_GLES_ANDROID_extension_pack_es31a();
@@ -1535,214 +1542,240 @@ namespace KlayGE
 			caps_.tess_method = TM_No;
 		}
 
-		vertex_format_.push_back(EF_A8);
-		vertex_format_.push_back(EF_R8);
-		vertex_format_.push_back(EF_GR8);
-		vertex_format_.push_back(EF_BGR8);
-		if (glloader_GLES_EXT_texture_format_BGRA8888())
 		{
-			vertex_format_.push_back(EF_ARGB8);
-		}
-		vertex_format_.push_back(EF_ABGR8);
-		vertex_format_.push_back(EF_R8UI);
-		vertex_format_.push_back(EF_GR8UI);
-		vertex_format_.push_back(EF_BGR8UI);
-		vertex_format_.push_back(EF_ABGR8UI);
-		vertex_format_.push_back(EF_SIGNED_R8);
-		vertex_format_.push_back(EF_SIGNED_GR8);
-		vertex_format_.push_back(EF_SIGNED_BGR8);
-		vertex_format_.push_back(EF_SIGNED_ABGR8);
-		vertex_format_.push_back(EF_R8I);
-		vertex_format_.push_back(EF_GR8I);
-		vertex_format_.push_back(EF_BGR8I);
-		vertex_format_.push_back(EF_ABGR8I);
-		if (glloader_GLES_OES_vertex_type_10_10_10_2())
-		{
-			vertex_format_.push_back(EF_A2BGR10);
-		}
-		vertex_format_.push_back(EF_R16);
-		vertex_format_.push_back(EF_GR16);
-		vertex_format_.push_back(EF_BGR16);
-		vertex_format_.push_back(EF_ABGR16);
-		vertex_format_.push_back(EF_R16UI);
-		vertex_format_.push_back(EF_GR16UI);
-		vertex_format_.push_back(EF_BGR16UI);
-		vertex_format_.push_back(EF_ABGR16UI);
-		vertex_format_.push_back(EF_SIGNED_R16);
-		vertex_format_.push_back(EF_SIGNED_GR16);
-		vertex_format_.push_back(EF_SIGNED_BGR16);
-		vertex_format_.push_back(EF_SIGNED_ABGR16);
-		vertex_format_.push_back(EF_R16I);
-		vertex_format_.push_back(EF_GR16I);
-		vertex_format_.push_back(EF_BGR16I);
-		vertex_format_.push_back(EF_ABGR16I);
-		vertex_format_.push_back(EF_R32UI);
-		vertex_format_.push_back(EF_GR32UI);
-		vertex_format_.push_back(EF_BGR32UI);
-		vertex_format_.push_back(EF_ABGR32UI);
-		vertex_format_.push_back(EF_R32I);
-		vertex_format_.push_back(EF_GR32I);
-		vertex_format_.push_back(EF_BGR32I);
-		vertex_format_.push_back(EF_ABGR32I);
-		vertex_format_.push_back(EF_R32F);
-		vertex_format_.push_back(EF_GR32F);
-		vertex_format_.push_back(EF_BGR32F);
-		vertex_format_.push_back(EF_ABGR32F);
-		vertex_format_.push_back(EF_R16F);
-		vertex_format_.push_back(EF_GR16F);
-		vertex_format_.push_back(EF_BGR16F);
-		vertex_format_.push_back(EF_ABGR16F);
+			std::vector<ElementFormat> vertex_formats =
+			{
+				EF_A8,
+				EF_R8,
+				EF_GR8,
+				EF_BGR8,
+				EF_ABGR8,
+				EF_R8UI,
+				EF_GR8UI,
+				EF_BGR8UI,
+				EF_ABGR8UI,
+				EF_SIGNED_R8,
+				EF_SIGNED_GR8,
+				EF_SIGNED_BGR8,
+				EF_SIGNED_ABGR8,
+				EF_R8I,
+				EF_GR8I,
+				EF_BGR8I,
+				EF_ABGR8I,
+				EF_R16,
+				EF_GR16,
+				EF_BGR16,
+				EF_ABGR16,
+				EF_R16UI,
+				EF_GR16UI,
+				EF_BGR16UI,
+				EF_ABGR16UI,
+				EF_SIGNED_R16,
+				EF_SIGNED_GR16,
+				EF_SIGNED_BGR16,
+				EF_SIGNED_ABGR16,
+				EF_R16I,
+				EF_GR16I,
+				EF_BGR16I,
+				EF_ABGR16I,
+				EF_R32UI,
+				EF_GR32UI,
+				EF_BGR32UI,
+				EF_ABGR32UI,
+				EF_R32I,
+				EF_GR32I,
+				EF_BGR32I,
+				EF_ABGR32I,
+				EF_R32F,
+				EF_GR32F,
+				EF_BGR32F,
+				EF_ABGR32F,
+				EF_R16F,
+				EF_GR16F,
+				EF_BGR16F,
+				EF_ABGR16F
+			};
+			if (glloader_GLES_EXT_texture_format_BGRA8888())
+			{
+				vertex_formats.push_back(EF_ARGB8);
+			}
+			if (glloader_GLES_OES_vertex_type_10_10_10_2())
+			{
+				vertex_formats.push_back(EF_A2BGR10);
+			}
 
-		texture_format_.push_back(EF_A8);
-		texture_format_.push_back(EF_ARGB4);
-		texture_format_.push_back(EF_R8);
-		texture_format_.push_back(EF_SIGNED_R8);
-		texture_format_.push_back(EF_GR8);
-		texture_format_.push_back(EF_ABGR8);
-		if (glloader_GLES_EXT_texture_format_BGRA8888())
-		{
-			texture_format_.push_back(EF_ARGB8);
+			this->AssignCapVertexFormats(std::move(vertex_formats));
 		}
-		texture_format_.push_back(EF_A2BGR10);
-		texture_format_.push_back(EF_R8UI);
-		texture_format_.push_back(EF_R8I);
-		texture_format_.push_back(EF_GR8UI);
-		texture_format_.push_back(EF_GR8I);
-		texture_format_.push_back(EF_BGR8UI);
-		texture_format_.push_back(EF_BGR8I);
-		texture_format_.push_back(EF_R16UI);
-		texture_format_.push_back(EF_R16I);
-		texture_format_.push_back(EF_GR16UI);
-		texture_format_.push_back(EF_GR16I);
-		texture_format_.push_back(EF_BGR16UI);
-		texture_format_.push_back(EF_BGR16I);
-		texture_format_.push_back(EF_ABGR16UI);
-		texture_format_.push_back(EF_ABGR16I);
-		texture_format_.push_back(EF_R32UI);
-		texture_format_.push_back(EF_R32I);
-		texture_format_.push_back(EF_GR32UI);
-		texture_format_.push_back(EF_GR32I);
-		texture_format_.push_back(EF_BGR32UI);
-		texture_format_.push_back(EF_BGR32I);
-		texture_format_.push_back(EF_ABGR32UI);
-		texture_format_.push_back(EF_ABGR32I);
-		if (!this->HackForPVR() && !this->HackForAndroidEmulator())
 		{
-			texture_format_.push_back(EF_R16F);
-			texture_format_.push_back(EF_GR16F);
-			texture_format_.push_back(EF_BGR16F);
-			texture_format_.push_back(EF_ABGR16F);
-		}
-		texture_format_.push_back(EF_B10G11R11F);
-		if (glloader_GLES_OES_texture_float())
-		{
-			texture_format_.push_back(EF_R32F);
-			texture_format_.push_back(EF_GR32F);
-			texture_format_.push_back(EF_BGR32F);
-			texture_format_.push_back(EF_ABGR32F);
-		}
-		if (glloader_GLES_EXT_texture_compression_dxt1() || glloader_GLES_EXT_texture_compression_s3tc())
-		{
-			texture_format_.push_back(EF_BC1);
-		}
-		if (glloader_GLES_EXT_texture_compression_s3tc())
-		{
-			texture_format_.push_back(EF_BC2);
-			texture_format_.push_back(EF_BC3);
-		}
-		if (glloader_GLES_EXT_texture_compression_latc() && !(this->HackForPVR() || this->HackForMali() || this->HackForAdreno()))
-		{
-			texture_format_.push_back(EF_BC4);
-			texture_format_.push_back(EF_BC5);
-			texture_format_.push_back(EF_SIGNED_BC4);
-			texture_format_.push_back(EF_SIGNED_BC5);
-		}
-		texture_format_.push_back(EF_D16);
-		texture_format_.push_back(EF_D24S8);
-		texture_format_.push_back(EF_D32F);
-		texture_format_.push_back(EF_ABGR8_SRGB);
-		texture_format_.push_back(EF_ETC1);
-		texture_format_.push_back(EF_ETC2_R11);
-		texture_format_.push_back(EF_SIGNED_ETC2_R11);
-		texture_format_.push_back(EF_ETC2_GR11);
-		texture_format_.push_back(EF_SIGNED_ETC2_GR11);
-		texture_format_.push_back(EF_ETC2_BGR8);
-		texture_format_.push_back(EF_ETC2_BGR8_SRGB);
-		texture_format_.push_back(EF_ETC2_A1BGR8);
-		texture_format_.push_back(EF_ETC2_A1BGR8_SRGB);
-		texture_format_.push_back(EF_ETC2_ABGR8);
-		texture_format_.push_back(EF_ETC2_ABGR8_SRGB);
+			std::vector<ElementFormat> texture_formats =
+			{
+				EF_A8,
+				EF_ARGB4,
+				EF_R8,
+				EF_SIGNED_R8,
+				EF_GR8,
+				EF_ABGR8,
+				EF_A2BGR10,
+				EF_R8UI,
+				EF_R8I,
+				EF_GR8UI,
+				EF_GR8I,
+				EF_BGR8UI,
+				EF_BGR8I,
+				EF_R16UI,
+				EF_R16I,
+				EF_GR16UI,
+				EF_GR16I,
+				EF_BGR16UI,
+				EF_BGR16I,
+				EF_ABGR16UI,
+				EF_ABGR16I,
+				EF_R32UI,
+				EF_R32I,
+				EF_GR32UI,
+				EF_GR32I,
+				EF_BGR32UI,
+				EF_BGR32I,
+				EF_ABGR32UI,
+				EF_ABGR32I,
+				EF_B10G11R11F,
+				EF_D16,
+				EF_D24S8,
+				EF_D32F,
+				EF_ABGR8_SRGB,
+				EF_ETC1,
+				EF_ETC2_R11,
+				EF_SIGNED_ETC2_R11,
+				EF_ETC2_GR11,
+				EF_SIGNED_ETC2_GR11,
+				EF_ETC2_BGR8,
+				EF_ETC2_BGR8_SRGB,
+				EF_ETC2_A1BGR8,
+				EF_ETC2_A1BGR8_SRGB,
+				EF_ETC2_ABGR8,
+				EF_ETC2_ABGR8_SRGB
+			};
+			if (glloader_GLES_EXT_texture_format_BGRA8888())
+			{
+				texture_formats.push_back(EF_ARGB8);
+			}
+			if (!this->HackForPVR() && !this->HackForAndroidEmulator())
+			{
+				texture_formats.insert(texture_formats.end(),
+					{
+						EF_R16F,
+						EF_GR16F,
+						EF_BGR16F,
+						EF_ABGR16F
+					});
+			}
+			if (glloader_GLES_OES_texture_float())
+			{
+				texture_formats.insert(texture_formats.end(),
+					{
+						EF_R32F,
+						EF_GR32F,
+						EF_BGR32F,
+						EF_ABGR32F
+					});
+			}
+			if (glloader_GLES_EXT_texture_compression_dxt1() || glloader_GLES_EXT_texture_compression_s3tc())
+			{
+				texture_formats.push_back(EF_BC1);
+			}
+			if (glloader_GLES_EXT_texture_compression_s3tc())
+			{
+				texture_formats.insert(texture_formats.end(),
+					{
+						EF_BC2,
+						EF_BC3
+					});
+			}
+			if (glloader_GLES_EXT_texture_compression_latc() && !(this->HackForPVR() || this->HackForMali() || this->HackForAdreno()))
+			{
+				texture_formats.insert(texture_formats.end(),
+					{
+						EF_BC4,
+						EF_BC5,
+						EF_SIGNED_BC4,
+						EF_SIGNED_BC5
+					});
+			}
 
-		GLint max_samples;
-		glGetIntegerv(GL_MAX_SAMPLES, &max_samples);
-		max_samples_ = static_cast<uint32_t>(max_samples);
+			this->AssignCapTextureFormats(std::move(texture_formats));
+		}
+		{
+			GLint max_samples;
+			glGetIntegerv(GL_MAX_SAMPLES, &max_samples);
 
-		rendertarget_format_.push_back(EF_R8);
-		rendertarget_format_.push_back(EF_GR8);
-		if (glloader_GLES_EXT_texture_format_BGRA8888())
-		{
-			rendertarget_format_.push_back(EF_ARGB8);
-		}
-		rendertarget_format_.push_back(EF_ABGR8);
-		rendertarget_format_.push_back(EF_SIGNED_ABGR8);
-		rendertarget_format_.push_back(EF_A2BGR10);
-		rendertarget_format_.push_back(EF_R16UI);
-		rendertarget_format_.push_back(EF_R16I);
-		rendertarget_format_.push_back(EF_GR16UI);
-		rendertarget_format_.push_back(EF_GR16I);
-		rendertarget_format_.push_back(EF_ABGR16UI);
-		rendertarget_format_.push_back(EF_ABGR16I);
-		rendertarget_format_.push_back(EF_R32UI);
-		rendertarget_format_.push_back(EF_R32I);
-		rendertarget_format_.push_back(EF_GR32UI);
-		rendertarget_format_.push_back(EF_GR32I);
-		rendertarget_format_.push_back(EF_ABGR32UI);
-		rendertarget_format_.push_back(EF_ABGR32I);
-		if (glloader_GLES_VERSION_3_2() || glloader_GLES_EXT_color_buffer_half_float() || glloader_GLES_EXT_color_buffer_float())
-		{
-			rendertarget_format_.push_back(EF_R16F);
-			rendertarget_format_.push_back(EF_GR16F);
-		}
-		if (glloader_GLES_VERSION_3_2() || glloader_GLES_EXT_color_buffer_half_float() || glloader_GLES_EXT_color_buffer_float()
-			|| this->HackForTegra())
-		{
-			rendertarget_format_.push_back(EF_ABGR16F);
-		}
-		if (glloader_GLES_VERSION_3_2() || glloader_GLES_APPLE_color_buffer_packed_float() || glloader_GLES_NV_packed_float())
-		{
-			rendertarget_format_.push_back(EF_B10G11R11F);
-		}
-		if (glloader_GLES_VERSION_3_2() || glloader_GLES_EXT_color_buffer_float())
-		{
-			rendertarget_format_.push_back(EF_R32F);
-			rendertarget_format_.push_back(EF_GR32F);
-			rendertarget_format_.push_back(EF_ABGR32F);
-		}
-		rendertarget_format_.push_back(EF_D16);
-		rendertarget_format_.push_back(EF_D24S8);
-		rendertarget_format_.push_back(EF_D32F);
-		rendertarget_format_.push_back(EF_ABGR8_SRGB);
+			std::map<ElementFormat, std::vector<uint32_t>> render_target_formats;
+			auto add_render_target_format = [&render_target_formats, &max_samples](ArrayRef<ElementFormat> fmts)
+			{
+				for (auto fmt : fmts)
+				{
+					for (int i = 1; i <= max_samples; i *= 2)
+					{
+						render_target_formats[fmt].push_back(RenderDeviceCaps::EncodeSampleCountQuality(i, 1));
+					}
+				}
+			};
 
-		std::sort(vertex_format_.begin(), vertex_format_.end());
-		vertex_format_.erase(std::unique(vertex_format_.begin(), vertex_format_.end()), vertex_format_.end());
-		std::sort(texture_format_.begin(), texture_format_.end());
-		texture_format_.erase(std::unique(texture_format_.begin(), texture_format_.end()), texture_format_.end());
-		std::sort(rendertarget_format_.begin(), rendertarget_format_.end());
-		rendertarget_format_.erase(std::unique(rendertarget_format_.begin(), rendertarget_format_.end()), rendertarget_format_.end());
+			add_render_target_format(
+				{
+					EF_R8,
+					EF_GR8,
+					EF_ABGR8,
+					EF_SIGNED_ABGR8,
+					EF_A2BGR10,
+					EF_R16UI,
+					EF_R16I,
+					EF_GR16UI,
+					EF_GR16I,
+					EF_ABGR16UI,
+					EF_ABGR16I,
+					EF_R32UI,
+					EF_R32I,
+					EF_GR32UI,
+					EF_GR32I,
+					EF_ABGR32UI,
+					EF_ABGR32I,
+					EF_D16,
+					EF_D24S8,
+					EF_D32F,
+					EF_ABGR8_SRGB
+				});
+			if (glloader_GLES_EXT_texture_format_BGRA8888())
+			{
+				add_render_target_format(EF_ARGB8);
+			}
+			if (glloader_GLES_VERSION_3_2() || glloader_GLES_EXT_color_buffer_half_float() || glloader_GLES_EXT_color_buffer_float())
+			{
+				add_render_target_format(
+					{
+						EF_R16F,
+						EF_GR16F
+					});
+			}
+			if (glloader_GLES_VERSION_3_2() || glloader_GLES_EXT_color_buffer_half_float() || glloader_GLES_EXT_color_buffer_float()
+				|| this->HackForTegra())
+			{
+				add_render_target_format(EF_ABGR16F);
+			}
+			if (glloader_GLES_VERSION_3_2() || glloader_GLES_APPLE_color_buffer_packed_float() || glloader_GLES_NV_packed_float())
+			{
+				add_render_target_format(EF_B10G11R11F);
+			}
+			if (glloader_GLES_VERSION_3_2() || glloader_GLES_EXT_color_buffer_float())
+			{
+				add_render_target_format(
+					{
+						EF_R32F,
+						EF_GR32F,
+						EF_ABGR32F
+					});
+			}
 
-		caps_.vertex_format_support = std::bind<bool>(&OGLESRenderEngine::VertexFormatSupport, this,
-			std::placeholders::_1);
-		caps_.texture_format_support = std::bind<bool>(&OGLESRenderEngine::TextureFormatSupport, this,
-			std::placeholders::_1);
-		caps_.rendertarget_format_support = std::bind<bool>(&OGLESRenderEngine::RenderTargetFormatSupport, this,
-			std::placeholders::_1, std::placeholders::_2, std::placeholders::_3);
-		caps_.uav_format_support = std::bind<bool>(&OGLESRenderEngine::UAVFormatSupport, this,
-			std::placeholders::_1);
-
-		caps_.depth_texture_support = (caps_.texture_format_support(EF_D24S8) || caps_.texture_format_support(EF_D16));
-		caps_.fp_color_support = ((caps_.texture_format_support(EF_B10G11R11F) && caps_.rendertarget_format_support(EF_B10G11R11F, 1, 0))
-			|| (caps_.texture_format_support(EF_ABGR16F) && caps_.rendertarget_format_support(EF_ABGR16F, 1, 0)));
-		caps_.pack_to_rgba_required = !(caps_.texture_format_support(EF_R16F) && caps_.rendertarget_format_support(EF_R16F, 1, 0)
-			&& caps_.texture_format_support(EF_R32F) && caps_.rendertarget_format_support(EF_R32F, 1, 0));
+			this->AssignCapRenderTargetFormats(std::move(render_target_formats));
+		}
 	}
 }

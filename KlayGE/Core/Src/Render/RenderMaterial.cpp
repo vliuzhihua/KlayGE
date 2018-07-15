@@ -38,17 +38,17 @@
 #include <KFL/CXX17/filesystem.hpp>
 
 #include <fstream>
+#include <string>
 
-#if defined(KLAYGE_COMPILER_GCC)
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations" // Ignore auto_ptr declaration
+#if defined(KLAYGE_COMPILER_CLANGC2)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wunused-variable" // Ignore unused variable (mpl_assertion_in_line_xxx) in boost
 #endif
 #include <boost/algorithm/string/split.hpp>
-#if defined(KLAYGE_COMPILER_GCC)
-#pragma GCC diagnostic pop
+#if defined(KLAYGE_COMPILER_CLANGC2)
+#pragma clang diagnostic pop
 #endif
 #include <boost/algorithm/string/trim.hpp>
-#include <boost/lexical_cast.hpp>
 
 #include <KlayGE/RenderMaterial.hpp>
 
@@ -57,7 +57,7 @@ namespace
 	using namespace KlayGE;
 
 	template <int N>
-	void ExtractFVector(std::string const & value_str, float* v)
+	void ExtractFVector(std::string_view value_str, float* v)
 	{
 		std::vector<std::string> strs;
 		boost::algorithm::split(strs, value_str, boost::is_any_of(" "));
@@ -144,7 +144,7 @@ namespace
 				XMLAttributePtr attr = root->Attrib("name");
 				if (attr)
 				{
-					mtl_desc_.mtl_data->name = attr->ValueString();
+					mtl_desc_.mtl_data->name = std::string(attr->ValueString());
 				}
 				else
 				{
@@ -177,7 +177,7 @@ namespace
 				attr = albedo_node->Attrib("texture");
 				if (attr)
 				{
-					mtl_desc_.mtl_data->tex_names[RenderMaterial::TS_Albedo] = attr->ValueString();
+					mtl_desc_.mtl_data->tex_names[RenderMaterial::TS_Albedo] = std::string(attr->ValueString());
 				}
 			}
 
@@ -192,7 +192,7 @@ namespace
 				attr = metalness_node->Attrib("texture");
 				if (attr)
 				{
-					mtl_desc_.mtl_data->tex_names[RenderMaterial::TS_Metalness] = attr->ValueString();
+					mtl_desc_.mtl_data->tex_names[RenderMaterial::TS_Metalness] = std::string(attr->ValueString());
 				}
 			}
 
@@ -207,7 +207,7 @@ namespace
 				attr = glossiness_node->Attrib("texture");
 				if (attr)
 				{
-					mtl_desc_.mtl_data->tex_names[RenderMaterial::TS_Glossiness] = attr->ValueString();
+					mtl_desc_.mtl_data->tex_names[RenderMaterial::TS_Glossiness] = std::string(attr->ValueString());
 				}
 			}
 
@@ -222,7 +222,7 @@ namespace
 				attr = emissive_node->Attrib("texture");
 				if (attr)
 				{
-					mtl_desc_.mtl_data->tex_names[RenderMaterial::TS_Emissive] = attr->ValueString();
+					mtl_desc_.mtl_data->tex_names[RenderMaterial::TS_Emissive] = std::string(attr->ValueString());
 				}
 			}
 
@@ -232,7 +232,7 @@ namespace
 				XMLAttributePtr attr = normal_node->Attrib("texture");
 				if (attr)
 				{
-					mtl_desc_.mtl_data->tex_names[RenderMaterial::TS_Normal] = attr->ValueString();
+					mtl_desc_.mtl_data->tex_names[RenderMaterial::TS_Normal] = std::string(attr->ValueString());
 				}
 			}
 
@@ -242,7 +242,7 @@ namespace
 				XMLAttributePtr attr = height_node->Attrib("texture");
 				if (attr)
 				{
-					mtl_desc_.mtl_data->tex_names[RenderMaterial::TS_Height] = attr->ValueString();
+					mtl_desc_.mtl_data->tex_names[RenderMaterial::TS_Height] = std::string(attr->ValueString());
 				}
 
 				attr = height_node->Attrib("offset");
@@ -264,8 +264,8 @@ namespace
 				XMLAttributePtr attr = detail_node->Attrib("mode");
 				if (attr)
 				{
-					std::string const & mode_str = attr->ValueString();
-					size_t const mode_hash = RT_HASH(mode_str.c_str());
+					std::string_view const mode_str = attr->ValueString();
+					size_t const mode_hash = HashRange(mode_str.begin(), mode_str.end());
 					if (CT_HASH("Flat Tessellation") == mode_hash)
 					{
 						mtl_desc_.mtl_data->detail_mode = RenderMaterial::SDM_FlatTessellation;
@@ -447,10 +447,10 @@ namespace KlayGE
 		{
 			XMLNodePtr albedo_node = doc.AllocNode(XNT_Element, "albedo");
 
-			std::string color_str = boost::lexical_cast<std::string>(mtl->albedo.x())
-				+ ' ' + boost::lexical_cast<std::string>(mtl->albedo.y())
-				+ ' ' + boost::lexical_cast<std::string>(mtl->albedo.z())
-				+ ' ' + boost::lexical_cast<std::string>(mtl->albedo.w());
+			std::string color_str = std::to_string(mtl->albedo.x())
+				+ ' ' + std::to_string(mtl->albedo.y())
+				+ ' ' + std::to_string(mtl->albedo.z())
+				+ ' ' + std::to_string(mtl->albedo.w());
 			albedo_node->AppendAttrib(doc.AllocAttribString("color", color_str));
 
 			if (!mtl->tex_names[RenderMaterial::TS_Albedo].empty())
@@ -500,9 +500,9 @@ namespace KlayGE
 
 			if ((mtl->emissive.x() > 0) || (mtl->emissive.y() > 0) || (mtl->emissive.z() > 0))
 			{
-				std::string color_str = boost::lexical_cast<std::string>(mtl->emissive.x())
-					+ ' ' + boost::lexical_cast<std::string>(mtl->emissive.y())
-					+ ' ' + boost::lexical_cast<std::string>(mtl->emissive.z());
+				std::string color_str = std::to_string(mtl->emissive.x())
+					+ ' ' + std::to_string(mtl->emissive.y())
+					+ ' ' + std::to_string(mtl->emissive.z());
 				emissive_node->AppendAttrib(doc.AllocAttribString("color", color_str));
 			}
 			if (!mtl->tex_names[RenderMaterial::TS_Emissive].empty())

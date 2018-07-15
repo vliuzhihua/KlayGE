@@ -51,14 +51,7 @@ namespace KlayGE
 {
 	LRESULT Window::WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 	{
-#ifdef KLAYGE_COMPILER_MSVC
-#pragma warning(push)
-#pragma warning(disable: 4312) // LONG_PTR to Window*, could cast to a greater size
-#endif
 		Window* win = reinterpret_cast<Window*>(::GetWindowLongPtrW(hWnd, GWLP_USERDATA));
-#ifdef KLAYGE_COMPILER_MSVC
-#pragma warning(pop)
-#endif
 		if (win != nullptr)
 		{
 			return win->MsgProc(hWnd, uMsg, wParam, lParam);
@@ -87,7 +80,7 @@ namespace KlayGE
 				if (S_OK == DynamicGetDpiForMonitor(mon, MDT_DEFAULT, &dpi_x, &dpi_y))
 				{
 					Window* win = reinterpret_cast<Window*>(lparam);
-					win->dpi_scale_ = std::max(win->dpi_scale_, static_cast<float>(std::max(dpi_x, dpi_y)) / USER_DEFAULT_SCREEN_DPI);
+					win->UpdateDpiScale(std::max(win->dpi_scale_, static_cast<float>(std::max(dpi_x, dpi_y)) / USER_DEFAULT_SCREEN_DPI));
 				}
 			}
 
@@ -98,86 +91,62 @@ namespace KlayGE
 	}
 #endif
 
-	Window::Window(std::string const & name, RenderSettings const & settings)
+	Window::Window(std::string const & name, RenderSettings const & settings, void* native_wnd)
 		: active_(false), ready_(false), closed_(false), keep_screen_on_(settings.keep_screen_on),
-			dpi_scale_(1), win_rotation_(WR_Identity), hide_(settings.hide_win)
+			dpi_scale_(1), effective_dpi_scale_(1), win_rotation_(WR_Identity), hide_(settings.hide_win)
 	{
-		this->DetectsDPI();
+		this->DetectsDpi();
 		this->KeepScreenOn();
 
-		HINSTANCE hInst = ::GetModuleHandle(nullptr);
-
-		// Register the window class
 		Convert(wname_, name);
-		WNDCLASSEXW wc;
-		wc.cbSize = sizeof(wc);
-		wc.style = CS_HREDRAW | CS_VREDRAW;
-		wc.lpfnWndProc = WndProc;
-		wc.cbClsExtra = 0;
-		wc.cbWndExtra = sizeof(this);
-		wc.hInstance = hInst;
-		wc.hIcon = nullptr;
-		wc.hCursor = ::LoadCursor(nullptr, IDC_ARROW);
-		wc.hbrBackground = static_cast<HBRUSH>(::GetStockObject(BLACK_BRUSH));
-		wc.lpszMenuName = nullptr;
-		wc.lpszClassName = wname_.c_str();
-		wc.hIconSm = nullptr;
-		::RegisterClassExW(&wc);
 
-		if (settings.full_screen)
+		if (native_wnd != nullptr)
 		{
-			win_style_ = WS_POPUP;
+			wnd_ = static_cast<HWND>(native_wnd);
+			default_wnd_proc_ = reinterpret_cast<WNDPROC>(::GetWindowLongPtrW(wnd_, GWLP_WNDPROC));
+			::SetWindowLongPtrW(wnd_, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(WndProc));
+			external_wnd_ = true;
 		}
 		else
 		{
-			win_style_ = WS_OVERLAPPEDWINDOW;
+			HINSTANCE hInst = ::GetModuleHandle(nullptr);
+
+			// Register the window class
+			WNDCLASSEXW wc;
+			wc.cbSize = sizeof(wc);
+			wc.style = CS_HREDRAW | CS_VREDRAW;
+			wc.lpfnWndProc = WndProc;
+			wc.cbClsExtra = 0;
+			wc.cbWndExtra = sizeof(this);
+			wc.hInstance = hInst;
+			wc.hIcon = nullptr;
+			wc.hCursor = ::LoadCursor(nullptr, IDC_ARROW);
+			wc.hbrBackground = static_cast<HBRUSH>(::GetStockObject(BLACK_BRUSH));
+			wc.lpszMenuName = nullptr;
+			wc.lpszClassName = wname_.c_str();
+			wc.hIconSm = nullptr;
+			::RegisterClassExW(&wc);
+
+			if (settings.full_screen)
+			{
+				win_style_ = WS_POPUP;
+			}
+			else
+			{
+				win_style_ = WS_OVERLAPPEDWINDOW;
+			}
+
+			RECT rc = { 0, 0, static_cast<LONG>(settings.width * dpi_scale_ + 0.5f), static_cast<LONG>(settings.height * dpi_scale_ + 0.5f) };
+			::AdjustWindowRect(&rc, win_style_, false);
+
+			// Create our main window
+			// Pass pointer to self
+			wnd_ = ::CreateWindowW(wname_.c_str(), wname_.c_str(), win_style_, settings.left, settings.top,
+				rc.right - rc.left, rc.bottom - rc.top, 0, 0, hInst, nullptr);
+
+			default_wnd_proc_ = ::DefWindowProc;
+			external_wnd_ = false;
 		}
-
-		RECT rc = { 0, 0, static_cast<LONG>(settings.width * dpi_scale_ + 0.5f), static_cast<LONG>(settings.height * dpi_scale_ + 0.5f) };
-		::AdjustWindowRect(&rc, win_style_, false);
-
-		// Create our main window
-		// Pass pointer to self
-		wnd_ = ::CreateWindowW(wname_.c_str(), wname_.c_str(), win_style_, settings.left, settings.top,
-			rc.right - rc.left, rc.bottom - rc.top, 0, 0, hInst, nullptr);
-
-		default_wnd_proc_ = ::DefWindowProc;
-		external_wnd_ = false;
-
-		::GetClientRect(wnd_, &rc);
-		left_ = rc.left;
-		top_ = rc.top;
-		width_ = rc.right - rc.left;
-		height_ = rc.bottom - rc.top;
-
-#ifdef KLAYGE_COMPILER_MSVC
-#pragma warning(push)
-#pragma warning(disable: 4244) // Pointer to LONG_PTR, possible loss of data
-#endif
-		::SetWindowLongPtrW(wnd_, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(this));
-#ifdef KLAYGE_COMPILER_MSVC
-#pragma warning(pop)
-#endif
-
-		::ShowWindow(wnd_, hide_ ? SW_HIDE : SW_SHOWNORMAL);
-		::UpdateWindow(wnd_);
-
-		ready_ = true;
-	}
-
-	Window::Window(std::string const & name, RenderSettings const & settings, void* native_wnd)
-		: active_(false), ready_(false), closed_(false), keep_screen_on_(settings.keep_screen_on),
-			dpi_scale_(1), win_rotation_(WR_Identity), hide_(settings.hide_win)
-	{
-		this->DetectsDPI();
-		this->KeepScreenOn();
-
-		Convert(wname_, name);
-
-		wnd_ = static_cast<HWND>(native_wnd);
-		default_wnd_proc_ = reinterpret_cast<WNDPROC>(::GetWindowLongPtrW(wnd_, GWLP_WNDPROC));
-		::SetWindowLongPtrW(wnd_, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(WndProc));
-		external_wnd_ = true;
 
 		RECT rc;
 		::GetClientRect(wnd_, &rc);
@@ -186,15 +155,9 @@ namespace KlayGE
 		width_ = rc.right - rc.left;
 		height_ = rc.bottom - rc.top;
 
-#ifdef KLAYGE_COMPILER_MSVC
-#pragma warning(push)
-#pragma warning(disable: 4244) // Pointer to LONG_PTR, possible loss of data
-#endif
 		::SetWindowLongPtrW(wnd_, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(this));
-#ifdef KLAYGE_COMPILER_MSVC
-#pragma warning(pop)
-#endif
 
+		::ShowWindow(wnd_, hide_ ? SW_HIDE : SW_SHOWNORMAL);
 		::UpdateWindow(wnd_);
 
 		ready_ = true;
@@ -211,14 +174,7 @@ namespace KlayGE
 
 		if (wnd_ != nullptr)
 		{
-#ifdef KLAYGE_COMPILER_MSVC
-#pragma warning(push)
-#pragma warning(disable: 4244) // Pointer to LONG_PTR, possible loss of data
-#endif
 			::SetWindowLongPtrW(wnd_, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(nullptr));
-#ifdef KLAYGE_COMPILER_MSVC
-#pragma warning(pop)
-#endif
 			if (!external_wnd_)
 			{
 				::DestroyWindow(wnd_);
@@ -341,7 +297,7 @@ namespace KlayGE
 				rc.right = static_cast<uint32_t>(rc.right / dpi_scale_ + 0.5f);
 				rc.bottom = static_cast<uint32_t>(rc.bottom / dpi_scale_ + 0.5f);
 
-				dpi_scale_ = static_cast<float>(HIWORD(wParam)) / USER_DEFAULT_SCREEN_DPI;
+				this->UpdateDpiScale(static_cast<float>(HIWORD(wParam)) / USER_DEFAULT_SCREEN_DPI);
 
 				rc.left = static_cast<int32_t>(rc.left * dpi_scale_ + 0.5f);
 				rc.top = static_cast<int32_t>(rc.top * dpi_scale_ + 0.5f);
@@ -382,7 +338,7 @@ namespace KlayGE
 		return default_wnd_proc_(hWnd, uMsg, wParam, lParam);
 	}
 
-	void Window::DetectsDPI()
+	void Window::DetectsDpi()
 	{
 #if (_WIN32_WINNT >= _WIN32_WINNT_WINBLUE)
 		HMODULE shcore = ::LoadLibraryEx(TEXT("SHCore.dll"), nullptr, 0);

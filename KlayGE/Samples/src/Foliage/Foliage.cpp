@@ -41,7 +41,7 @@ namespace
 		{
 			RenderEffectPtr effect = SyncLoadRenderEffect("FoggySkyBox.fxml");
 
-			gbuffer_mrt_tech_ = effect->TechniqueByName("GBufferFoggySkyBoxMRT");
+			gbuffer_mrt_tech_ = effect->TechniqueByName("GBufferSkyBoxMRTTech");
 			special_shading_tech_ = effect->TechniqueByName("SpecialShadingFoggySkyBox");
 			this->Technique(effect, gbuffer_mrt_tech_);
 		}
@@ -168,7 +168,11 @@ void FoliageApp::OnCreate()
 	actionMap.AddActions(actions, actions + std::size(actions));
 
 	action_handler_t input_handler = MakeSharedPtr<input_signal>();
-	input_handler->connect(std::bind(&FoliageApp::InputHandler, this, std::placeholders::_1, std::placeholders::_2));
+	input_handler->connect(
+		[this](InputEngine const & sender, InputAction const & action)
+		{
+			this->InputHandler(sender, action);
+		});
 	inputEngine.ActionMap(actionMap, input_handler);
 
 	UIManager::Instance().Load(ResLoader::Instance().Open("Foliage.uiml"));
@@ -176,9 +180,17 @@ void FoliageApp::OnCreate()
 	id_light_shaft_ = dialog_params_->IDFromName("LightShaft");
 	id_fps_camera_ = dialog_params_->IDFromName("FPSCamera");
 
-	dialog_params_->Control<UICheckBox>(id_light_shaft_)->OnChangedEvent().connect(std::bind(&FoliageApp::LightShaftHandler, this, std::placeholders::_1));
+	dialog_params_->Control<UICheckBox>(id_light_shaft_)->OnChangedEvent().connect(
+		[this](UICheckBox const & sender)
+		{
+			this->LightShaftHandler(sender);
+		});
 
-	dialog_params_->Control<UICheckBox>(id_fps_camera_)->OnChangedEvent().connect(std::bind(&FoliageApp::FPSCameraHandler, this, std::placeholders::_1));
+	dialog_params_->Control<UICheckBox>(id_fps_camera_)->OnChangedEvent().connect(
+		[this](UICheckBox const & sender)
+		{
+			this->FPSCameraHandler(sender);
+		});
 }
 
 void FoliageApp::OnResize(uint32_t width, uint32_t height)
@@ -236,10 +248,13 @@ void FoliageApp::DoUpdateOverlay()
 		<< deferred_rendering_->NumVerticesRendered() << " Vertices";
 	font_->RenderText(0, 36, Color(1, 1, 1, 1), stream.str(), 16);
 
-	stream.str(L"");
-	stream << checked_cast<ProceduralTerrain*>(terrain_->GetRenderable().get())->Num3DPlants() << " 3D plants "
-		<< checked_cast<ProceduralTerrain*>(terrain_->GetRenderable().get())->NumImpostorPlants() << " impostor plants";
-	font_->RenderText(0, 54, Color(1, 1, 1, 1), stream.str(), 16);
+	if (!checked_cast<ProceduralTerrain*>(terrain_->GetRenderable().get())->UseDrawIndirect())
+	{
+		stream.str(L"");
+		stream << checked_cast<ProceduralTerrain*>(terrain_->GetRenderable().get())->Num3DPlants() << " 3D plants "
+			<< checked_cast<ProceduralTerrain*>(terrain_->GetRenderable().get())->NumImpostorPlants() << " impostor plants";
+		font_->RenderText(0, 54, Color(1, 1, 1, 1), stream.str(), 16);
+	}
 }
 
 uint32_t FoliageApp::DoUpdate(uint32_t pass)
@@ -250,8 +265,8 @@ uint32_t FoliageApp::DoUpdate(uint32_t pass)
 		if (light_shaft_on_)
 		{
 			light_shaft_pp_->SetParam(0, -sun_light_->Direction() * 10000.0f + this->ActiveCamera().EyePos());
-			light_shaft_pp_->InputPin(0, deferred_rendering_->PrevFrameShadingTex(0));
-			light_shaft_pp_->InputPin(1, deferred_rendering_->PrevFrameDepthTex(0));
+			light_shaft_pp_->InputPin(0, deferred_rendering_->PrevFrameResolvedShadingTex(0));
+			light_shaft_pp_->InputPin(1, deferred_rendering_->PrevFrameResolvedDepthTex(0));
 			light_shaft_pp_->Apply();
 		}
 	}

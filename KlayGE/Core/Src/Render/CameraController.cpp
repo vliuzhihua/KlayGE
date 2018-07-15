@@ -25,6 +25,7 @@
 
 #include <KlayGE/KlayGE.hpp>
 #include <KFL/CXX17/iterator.hpp>
+#include <KFL/CustomizedStreamBuf.hpp>
 #include <KFL/ErrorHandling.hpp>
 #include <KFL/Util.hpp>
 #include <KlayGE/Context.hpp>
@@ -37,8 +38,8 @@
 #include <KlayGE/App3D.hpp>
 #include <KFL/Hash.hpp>
 
-#include <sstream>
-#include <boost/lexical_cast.hpp>
+#include <istream>
+#include <string>
 
 #include <KlayGE/CameraController.hpp>
 
@@ -99,8 +100,11 @@ namespace KlayGE
 			actionMap.AddActions(actions, actions + std::size(actions));
 
 			action_handler_t input_handler = MakeSharedPtr<input_signal>();
-			input_handler->connect(std::bind(&FirstPersonCameraController::InputHandler, this,
-				std::placeholders::_1, std::placeholders::_2));
+			input_handler->connect(
+				[this](InputEngine const & ie, InputAction const & action)
+				{
+					this->InputHandler(ie, action);
+				});
 			inputEngine.ActionMap(actionMap, input_handler);
 		}
 	}
@@ -289,8 +293,11 @@ namespace KlayGE
 			actionMap.AddActions(actions, actions + std::size(actions));
 
 			action_handler_t input_handler = MakeSharedPtr<input_signal>();
-			input_handler->connect(std::bind(&TrackballCameraController::InputHandler, this,
-				std::placeholders::_1, std::placeholders::_2));
+			input_handler->connect(
+				[this](InputEngine const & ie, InputAction const & action)
+				{
+					this->InputHandler(ie, action);
+				});
 			inputEngine.ActionMap(actionMap, input_handler);
 		}
 	}
@@ -609,8 +616,11 @@ namespace KlayGE
 		CameraController::AttachCamera(camera);
 
 		start_time_ = Context::Instance().AppInstance().AppTime();
-		camera.BindUpdateFunc(std::bind(&CameraPathController::UpdateCameraFunc, this,
-			std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
+		camera.BindUpdateFunc(
+			[this](Camera& camera, float app_time, float elapsed_time)
+			{
+				this->UpdateCameraFunc(camera, app_time, elapsed_time);
+			});
 	}
 
 	void CameraPathController::DetachCamera()
@@ -767,8 +777,8 @@ namespace KlayGE
 
 		for (XMLNodePtr curve_node = root->FirstNode("curve"); curve_node; curve_node = curve_node->NextSibling("curve"))
 		{
-			std::string type_str = curve_node->Attrib("type")->ValueString();
-			size_t const type_str_hash = RT_HASH(type_str.c_str());
+			std::string_view const type_str = curve_node->Attrib("type")->ValueString();
+			size_t const type_str_hash = HashRange(type_str.begin(), type_str.end());
 			CameraPathController::InterpolateType type;
 			if (CT_HASH("linear") == type_str_hash)
 			{
@@ -798,18 +808,21 @@ namespace KlayGE
 
 				float3 eye_ctrl_pt;
 				{
-					std::istringstream attr_ss(key_node->Attrib("eye")->ValueString());
-					attr_ss >> eye_ctrl_pt.x() >> eye_ctrl_pt.y() >> eye_ctrl_pt.z();
-				}				
+					auto v = key_node->Attrib("eye")->ValueString();
+					MemInputStreamBuf stream_buff(v.data(), v.size());
+					std::istream(&stream_buff) >> eye_ctrl_pt.x() >> eye_ctrl_pt.y() >> eye_ctrl_pt.z();
+				}
 				float3 target_ctrl_pt;
 				{
-					std::istringstream attr_ss(key_node->Attrib("target")->ValueString());
-					attr_ss >> target_ctrl_pt.x() >> target_ctrl_pt.y() >> target_ctrl_pt.z();
-				}				
+					auto v = key_node->Attrib("target")->ValueString();
+					MemInputStreamBuf stream_buff(v.data(), v.size());
+					std::istream(&stream_buff) >> target_ctrl_pt.x() >> target_ctrl_pt.y() >> target_ctrl_pt.z();
+				}
 				float3 up_ctrl_pt;
 				{
-					std::istringstream attr_ss(key_node->Attrib("up")->ValueString());
-					attr_ss >> up_ctrl_pt.x() >> up_ctrl_pt.y() >> up_ctrl_pt.z();
+					auto v = key_node->Attrib("up")->ValueString();
+					MemInputStreamBuf stream_buff(v.data(), v.size());
+					std::istream(&stream_buff) >> up_ctrl_pt.x() >> up_ctrl_pt.y() >> up_ctrl_pt.z();
 				}
 
 				bool corner;
@@ -875,23 +888,23 @@ namespace KlayGE
 
 				{
 					float3 const & eye_ctrl_pt = path->EyeControlPoint(curve_id, key_id);
-					std::string eye_str = boost::lexical_cast<std::string>(eye_ctrl_pt.x())
-						+ ' ' + boost::lexical_cast<std::string>(eye_ctrl_pt.y())
-						+ ' ' + boost::lexical_cast<std::string>(eye_ctrl_pt.z());
+					std::string eye_str = std::to_string(eye_ctrl_pt.x())
+						+ ' ' + std::to_string(eye_ctrl_pt.y())
+						+ ' ' + std::to_string(eye_ctrl_pt.z());
 					key_node->AppendAttrib(doc.AllocAttribString("eye", eye_str));
 				}
 				{
 					float3 const & target_ctrl_pt = path->TargetControlPoint(curve_id, key_id);
-					std::string target_str = boost::lexical_cast<std::string>(target_ctrl_pt.x())
-						+ ' ' + boost::lexical_cast<std::string>(target_ctrl_pt.y())
-						+ ' ' + boost::lexical_cast<std::string>(target_ctrl_pt.z());
+					std::string target_str = std::to_string(target_ctrl_pt.x())
+						+ ' ' + std::to_string(target_ctrl_pt.y())
+						+ ' ' + std::to_string(target_ctrl_pt.z());
 					key_node->AppendAttrib(doc.AllocAttribString("target", target_str));
 				}
 				{
 					float3 const & up_ctrl_pt = path->EyeControlPoint(curve_id, key_id);
-					std::string up_str = boost::lexical_cast<std::string>(up_ctrl_pt.x())
-						+ ' ' + boost::lexical_cast<std::string>(up_ctrl_pt.y())
-						+ ' ' + boost::lexical_cast<std::string>(up_ctrl_pt.z());
+					std::string up_str = std::to_string(up_ctrl_pt.x())
+						+ ' ' + std::to_string(up_ctrl_pt.y())
+						+ ' ' + std::to_string(up_ctrl_pt.z());
 					key_node->AppendAttrib(doc.AllocAttribString("up", up_str));
 				}
 

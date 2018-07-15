@@ -35,13 +35,12 @@
 
 #include <KFL/Vector.hpp>
 #include <KFL/Color.hpp>
-#include <KFL/Thread.hpp>
 
-#include <vector>
-#include <set>
+#include <bitset>
 #include <map>
+#include <mutex>
 #include <unordered_map>
-#include <atomic>
+#include <vector>
 
 #include <KlayGE/RenderEngine.hpp>
 #include <KlayGE/ShaderObject.hpp>
@@ -83,18 +82,13 @@ namespace KlayGE
 
 		IDXGIFactory4* DXGIFactory4() const;
 		IDXGIFactory5* DXGIFactory5() const;
+		IDXGIFactory6* DXGIFactory6() const;
 		uint8_t DXGISubVer() const;
 
 		ID3D12Device* D3DDevice() const;
 		ID3D12CommandQueue* D3DRenderCmdQueue() const;
 		ID3D12CommandAllocator* D3DRenderCmdAllocator() const;
 		ID3D12GraphicsCommandList* D3DRenderCmdList() const;
-		ID3D12CommandQueue* D3DComputeCmdQueue() const;
-		ID3D12CommandAllocator* D3DComputeCmdAllocator() const;
-		ID3D12GraphicsCommandList*D3DComputeCmdList() const;
-		ID3D12CommandQueue* D3DCopyCmdQueue() const;
-		ID3D12CommandAllocator* D3DCopyCmdAllocator() const;
-		ID3D12GraphicsCommandList* D3DCopyCmdList() const;
 		ID3D12CommandAllocator* D3DResCmdAllocator() const;
 		ID3D12GraphicsCommandList* D3DResCmdList() const;
 		std::mutex& D3DResCmdListMutex()
@@ -103,20 +97,14 @@ namespace KlayGE
 		}
 		D3D_FEATURE_LEVEL DeviceFeatureLevel() const;
 		void D3DDevice(ID3D12Device* device, ID3D12CommandQueue* cmd_queue, D3D_FEATURE_LEVEL feature_level);
-		void ClearPSOCache();
+		void ClearTempObjs();
 		void CommitRenderCmd();
-		void CommitComputeCmd();
-		void CommitCopyCmd();
 		void SyncRenderCmd();
-		void SyncComputeCmd();
-		void SyncCopyCmd();
 		void ResetRenderCmd();
-		void ResetComputeCmd();
-		void ResetCopyCmd();
 		void CommitResCmd();
 
 		void ForceFlush();
-		void ForceCPUGPUSync();
+		void ForceFinish();
 
 		virtual TexturePtr const & ScreenDepthStencilTexture() const override;
 
@@ -158,6 +146,14 @@ namespace KlayGE
 		void OMSetStencilRef(uint16_t stencil_ref);
 		void OMSetBlendFactor(Color const & blend_factor);
 		void RSSetViewports(UINT NumViewports, D3D12_VIEWPORT const * pViewports);
+		void SetPipelineState(ID3D12PipelineState* pso);
+		void SetGraphicsRootSignature(ID3D12RootSignature* root_signature);
+		void SetComputeRootSignature(ID3D12RootSignature* root_signature);
+		void RSSetScissorRects(D3D12_RECT const & rect);
+		void IASetPrimitiveTopology(RenderLayout::topology_type primitive_topology);
+		void SetDescriptorHeaps(ArrayRef<ID3D12DescriptorHeap*> descriptor_heaps);
+		void IASetVertexBuffers(uint32_t start_slot, ArrayRef<D3D12_VERTEX_BUFFER_VIEW> views);
+		void IASetIndexBuffer(D3D12_INDEX_BUFFER_VIEW const & view);
 		
 		void ResetRenderStates();
 
@@ -185,6 +181,10 @@ namespace KlayGE
 		{
 			return cbv_srv_uav_desc_size_;
 		}
+		uint32_t SamplerDescSize() const
+		{
+			return sampler_desc_size_;
+		}
 
 		uint32_t AllocRTV();
 		uint32_t AllocDSV();
@@ -203,20 +203,33 @@ namespace KlayGE
 		}
 
 		ID3D12RootSignaturePtr const & CreateRootSignature(
-			std::array<size_t, ShaderObject::ST_NumShaderTypes * 4> const & num,
+			std::array<uint32_t, ShaderObject::ST_NumShaderTypes * 4> const & num,
 			bool has_vs, bool has_stream_output);
 		ID3D12PipelineStatePtr const & CreateRenderPSO(D3D12_GRAPHICS_PIPELINE_STATE_DESC const & desc);
 		ID3D12PipelineStatePtr const & CreateComputePSO(D3D12_COMPUTE_PIPELINE_STATE_DESC const & desc);
 		ID3D12DescriptorHeapPtr CreateDynamicCBVSRVUAVDescriptorHeap(uint32_t num);
 
-		void AddResourceForRecyclingAfterSync(D3D12GraphicsBuffer* buff)
+		ID3D12ResourcePtr AllocTempBuffer(bool is_upload, uint32_t size_in_byte);
+		void RecycleTempBuffer(ID3D12ResourcePtr const & buff, bool is_upload, uint32_t size_in_byte);
+
+		void ReleaseAfterSync(ID3D12ResourcePtr const & buff);
+
+		void AddResourceBarrier(ID3D12GraphicsCommandList* cmd_list, ArrayRef<D3D12_RESOURCE_BARRIER> barriers);
+		void FlushResourceBarriers(ID3D12GraphicsCommandList* cmd_list);
+
+	private:
+		struct CmdAllocatorDependencies
 		{
-			recycle_res_after_sync_.insert(buff);
-		}
+			ID3D12CommandAllocatorPtr cmd_allocator;
+			std::vector<ID3D12DescriptorHeapPtr> cbv_srv_uav_heap_cache_;
+			std::vector<std::pair<ID3D12ResourcePtr, uint32_t>> recycle_after_sync_upload_buffs_;
+			std::vector<std::pair<ID3D12ResourcePtr, uint32_t>> recycle_after_sync_readback_buffs_;
+			std::vector<ID3D12ResourcePtr> release_after_sync_buffs_;
+		};
 
 	private:
 		D3D12AdapterList const & D3DAdapters() const;
-		D3D12AdapterPtr const & ActiveAdapter() const;
+		D3D12Adapter& ActiveAdapter() const;
 
 		virtual void DoCreateRenderWindow(std::string const & name, RenderSettings const & settings) override;
 		virtual void DoBindFrameBuffer(FrameBufferPtr const & fb) override;
@@ -235,63 +248,63 @@ namespace KlayGE
 
 		virtual void StereoscopicForLCDShutter(int32_t eye) override;
 
-		bool VertexFormatSupport(ElementFormat elem_fmt);
-		bool TextureFormatSupport(ElementFormat elem_fmt);
-		bool RenderTargetFormatSupport(ElementFormat elem_fmt, uint32_t sample_count, uint32_t sample_quality);
-		bool UAVFormatSupport(ElementFormat elem_fmt);
-
 		virtual void CheckConfig(RenderSettings& settings) override;
 
-		void UpdateRenderPSO(RenderEffect const & effect, RenderTechnique const & tech,
-			RenderPass const & pass, RenderLayout const & rl);
+		void UpdateRenderPSO(RenderEffect const & effect, RenderPass const & pass, RenderLayout const & rl,
+			bool has_tessellation);
 		void UpdateComputePSO(RenderEffect const & effect, RenderPass const & pass);
+		void UpdateCbvSrvUavSamplerHeaps(ShaderObject const & so);
+
+		std::shared_ptr<CmdAllocatorDependencies> AllocCmdAllocator();
+		void RecycleCmdAllocator(std::shared_ptr<CmdAllocatorDependencies> const & cmd_allocator, uint64_t fence_val);
+
+		std::vector<D3D12_RESOURCE_BARRIER>* FindResourceBarriers(ID3D12GraphicsCommandList* cmd_list, bool allow_creation);
 
 	private:
-		enum EngineType
-		{
-			ET_Render,
-			ET_Compute,
-			ET_Copy
-		};
-
 		// Direct3D rendering device
 		// Only created after top-level window created
 		IDXGIFactory4Ptr gi_factory_4_;
 		IDXGIFactory5Ptr gi_factory_5_;
+		IDXGIFactory6Ptr gi_factory_6_;
 		uint8_t dxgi_sub_ver_;
 
 		ID3D12DevicePtr d3d_device_;
 		ID3D12CommandQueuePtr d3d_render_cmd_queue_;
-		ID3D12CommandAllocatorPtr d3d_render_cmd_allocator_;
+		std::list<std::pair<std::shared_ptr<CmdAllocatorDependencies>, uint64_t>> d3d_render_cmd_allocators_;
+		std::shared_ptr<CmdAllocatorDependencies> curr_render_cmd_allocator_;
 		ID3D12GraphicsCommandListPtr d3d_render_cmd_list_;
-		ID3D12CommandQueuePtr d3d_compute_cmd_queue_;
-		ID3D12CommandAllocatorPtr d3d_compute_cmd_allocator_;
-		ID3D12GraphicsCommandListPtr d3d_compute_cmd_list_;
-		ID3D12CommandQueuePtr d3d_copy_cmd_queue_;
-		ID3D12CommandAllocatorPtr d3d_copy_cmd_allocator_;
-		ID3D12GraphicsCommandListPtr d3d_copy_cmd_list_;
 		ID3D12CommandAllocatorPtr d3d_res_cmd_allocator_;
 		ID3D12GraphicsCommandListPtr d3d_res_cmd_list_;
 		std::mutex res_cmd_list_mutex_;
 		D3D_FEATURE_LEVEL d3d_feature_level_;
-		EngineType last_engine_type_;
 
 		// List of D3D drivers installed (video cards)
 		// Enumerates itself
 		D3D12AdapterList adapterList_;
 
-		uint16_t stencil_ref_cache_;
-		Color blend_factor_cache_;
 		RenderLayout::topology_type topology_type_cache_;
-		D3D12_VIEWPORT viewport_cache_;
 		D3D12_RECT scissor_rc_cache_;
 		std::vector<GraphicsBufferPtr> so_buffs_;
-		std::set<D3D12GraphicsBuffer*> recycle_res_after_sync_;
-		std::vector<ID3D12DescriptorHeapPtr> cbv_srv_uav_heap_cache_;
 		std::unordered_map<size_t, ID3D12RootSignaturePtr> root_signatures_;
 		std::unordered_map<size_t, ID3D12PipelineStatePtr> graphics_psos_;
 		std::unordered_map<size_t, ID3D12PipelineStatePtr> compute_psos_;
 		std::unordered_map<size_t, ID3D12DescriptorHeapPtr> cbv_srv_uav_heaps_;
+
+		uint16_t curr_stencil_ref_;
+		Color curr_blend_factor_;
+		D3D12_VIEWPORT curr_viewport_;
+		ID3D12PipelineState* curr_pso_;
+		ID3D12RootSignature* curr_graphics_root_signature_;
+		ID3D12RootSignature* curr_compute_root_signature_;
+		D3D12_RECT curr_scissor_rc_;
+		D3D12_PRIMITIVE_TOPOLOGY curr_topology_;
+		std::array<ID3D12DescriptorHeap*, 2> curr_desc_heaps_;
+		uint32_t curr_num_desc_heaps_;
+		std::vector<D3D12_VERTEX_BUFFER_VIEW> curr_vbvs_;
+		D3D12_INDEX_BUFFER_VIEW curr_ibv_;
+
+		std::multimap<uint32_t, ID3D12ResourcePtr> temp_upload_free_buffs_;
+		std::multimap<uint32_t, ID3D12ResourcePtr> temp_readback_free_buffs_;
 
 		ID3D12DescriptorHeapPtr rtv_desc_heap_;
 		uint32_t rtv_desc_size_;
@@ -299,9 +312,10 @@ namespace KlayGE
 		uint32_t dsv_desc_size_;
 		ID3D12DescriptorHeapPtr cbv_srv_uav_desc_heap_;
 		uint32_t cbv_srv_uav_desc_size_;
-		std::vector<bool> rtv_heap_occupied_;
-		std::vector<bool> dsv_heap_occupied_;
-		std::vector<bool> cbv_srv_uav_heap_occupied_;
+		uint32_t sampler_desc_size_;
+		std::bitset<NUM_MAX_RENDER_TARGET_VIEWS> rtv_heap_occupied_;
+		std::bitset<NUM_MAX_DEPTH_STENCIL_VIEWS> dsv_heap_occupied_;
+		std::bitset<NUM_MAX_CBV_SRV_UAVS> cbv_srv_uav_heap_occupied_;
 
 		D3D12_CPU_DESCRIPTOR_HANDLE null_srv_handle_;
 		D3D12_CPU_DESCRIPTOR_HANDLE null_uav_handle_;
@@ -321,25 +335,22 @@ namespace KlayGE
 
 		StereoMethod stereo_method_;
 
-		std::vector<ElementFormat> vertex_format_;
-		std::vector<ElementFormat> texture_format_;
-		std::map<ElementFormat, std::vector<std::pair<uint32_t, uint32_t>>> rendertarget_format_;
-		std::vector<ElementFormat> uav_format_;
-
 		double inv_timestamp_freq_;
 
 		FencePtr render_cmd_fence_;
 		uint64_t render_cmd_fence_val_;
-		FencePtr compute_cmd_fence_;
-		uint64_t compute_cmd_fence_val_;
-		FencePtr copy_cmd_fence_;
-		uint64_t copy_cmd_fence_val_;
 
 		FencePtr res_cmd_fence_;
 		uint64_t res_cmd_fence_val_;
 
 		RenderEffectPtr blit_effect_;
 		RenderTechnique* bilinear_blit_tech_;
+
+		std::shared_ptr<ID3D12CommandSignature> draw_indirect_signature_;
+		std::shared_ptr<ID3D12CommandSignature> draw_indexed_indirect_signature_;
+		std::shared_ptr<ID3D12CommandSignature> dispatch_indirect_signature_;
+
+		std::vector<std::pair<ID3D12GraphicsCommandList*, std::vector<D3D12_RESOURCE_BARRIER>>> res_barriers_;
 	};
 }
 

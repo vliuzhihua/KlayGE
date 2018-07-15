@@ -12,6 +12,7 @@
 
 #include <KlayGE/KlayGE.hpp>
 #include <KFL/CXX17.hpp>
+#include <KFL/CXX17/iterator.hpp>
 #include <KFL/ErrorHandling.hpp>
 #include <KFL/Util.hpp>
 #include <KFL/Math.hpp>
@@ -24,9 +25,10 @@
 #include <KlayGE/Window.hpp>
 
 #include <map>
+#include <string>
 #include <system_error>
+
 #include <boost/assert.hpp>
-#include <boost/lexical_cast.hpp>
 
 #include <glloader/glloader.h>
 
@@ -53,10 +55,16 @@ namespace KlayGE
 		color_bits_			= NumFormatBits(settings.color_fmt);
 
 		WindowPtr const & main_wnd = Context::Instance().AppInstance().MainWnd();		
-		on_exit_size_move_connect_ = main_wnd->OnExitSizeMove().connect(std::bind(&OGLESRenderWindow::OnExitSizeMove, this,
-			std::placeholders::_1));
-		on_size_connect_ = main_wnd->OnSize().connect(std::bind(&OGLESRenderWindow::OnSize, this,
-			std::placeholders::_1, std::placeholders::_2));
+		on_exit_size_move_connect_ = main_wnd->OnExitSizeMove().connect(
+			[this](Window const & win)
+			{
+				this->OnExitSizeMove(win);
+			});
+		on_size_connect_ = main_wnd->OnSize().connect(
+			[this](Window const & win, bool active)
+			{
+				this->OnSize(win, active);
+			});
 
 		if (isFullScreen_)
 		{
@@ -176,12 +184,12 @@ namespace KlayGE
 				}
 			}
 
-			available_versions = ArrayRef<std::pair<int, int>>(all_versions).Slice(version_start_index);
+			available_versions = MakeArrayRef(all_versions).Slice(version_start_index);
 		}
 
 		std::vector<EGLint> visual_attr =
 		{
-			EGL_RENDERABLE_TYPE, EGL_OPENGL_ES3_BIT_KHR,
+			EGL_RENDERABLE_TYPE, EGL_OPENGL_ES3_BIT,
 			EGL_RED_SIZE, r_size,
 			EGL_GREEN_SIZE, g_size,
 			EGL_BLUE_SIZE, b_size,
@@ -236,15 +244,15 @@ namespace KlayGE
 		context_ = nullptr;
 		EGLint ctx_attr[] =
 		{
-			EGL_CONTEXT_MAJOR_VERSION_KHR, available_versions[0].first,
-			EGL_CONTEXT_MINOR_VERSION_KHR, available_versions[0].second,
+			EGL_CONTEXT_MAJOR_VERSION, available_versions[0].first,
+			EGL_CONTEXT_MINOR_VERSION, available_versions[0].second,
 			EGL_NONE
 		};
 		size_t test_version_index = 0;
 		while ((nullptr == context_) && (test_version_index < available_versions.size()))
 		{
 			ctx_attr[1] = available_versions[test_version_index].first;
-			ctx_attr[2] = EGL_CONTEXT_MINOR_VERSION_KHR;
+			ctx_attr[2] = EGL_CONTEXT_MINOR_VERSION;
 			ctx_attr[3] = available_versions[test_version_index].second;
 			context_ = eglCreateContext(display_, cfg_, EGL_NO_CONTEXT, ctx_attr);
 
@@ -286,7 +294,7 @@ namespace KlayGE
 		description_ = vendor + L" " + renderer + L" " + version;
 		if (settings.sample_count > 1)
 		{
-			description_ += L" (" + boost::lexical_cast<std::wstring>(settings.sample_count) + L"x AA)";
+			description_ += L" (" + std::to_wstring(settings.sample_count) + L"x AA)";
 		}
 	}
 

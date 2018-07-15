@@ -19,11 +19,36 @@
 #include <KlayGE/Texture.hpp>
 #include <KlayGE/RenderFactory.hpp>
 #include <KlayGE/RenderEngine.hpp>
-#include <KFL/Thread.hpp>
 
 #include <cstring>
-#include <d3d9.h>
 #include <boost/assert.hpp>
+
+#if defined(KLAYGE_COMPILER_GCC)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wcomment" // Ignore "/*" within block comment
+#pragma GCC diagnostic ignored "-Wunknown-pragmas" // Ignore unknown pragmas
+#elif defined(KLAYGE_COMPILER_CLANGC2)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wcomment" // Ignore "/*" within block comment
+#pragma clang diagnostic ignored "-Wmicrosoft-enum-value" // Ignore D3DBUSIMPL_MODIFIER_NON_STANDARD definition
+#endif
+#include <d3d9.h>
+#if defined(KLAYGE_COMPILER_GCC)
+#pragma GCC diagnostic pop
+#elif defined(KLAYGE_COMPILER_CLANGC2)
+#pragma clang diagnostic pop
+#endif
+#ifdef KLAYGE_COMPILER_GCC
+#define _WIN32_WINNT_BACKUP _WIN32_WINNT
+#undef _WIN32_WINNT
+#define _WIN32_WINNT 0x0501
+#endif
+#include <strmif.h>
+#ifdef KLAYGE_COMPILER_GCC
+#undef _WIN32_WINNT
+#define _WIN32_WINNT _WIN32_WINNT_BACKUP
+#endif
+#include <vmr9.h>
 
 #include <KlayGE/DShow/DShowVMR9Allocator.hpp>
 
@@ -155,47 +180,15 @@ namespace KlayGE
 
 
 		RenderFactory& rf = Context::Instance().RenderFactoryInstance();
-		ElementFormat fmt;
-		if (Context::Instance().Config().graphics_cfg.gamma)
+		auto const & caps = rf.RenderEngineInstance().DeviceCaps();
+		static ElementFormat constexpr backup_fmts[] = { EF_ABGR8_SRGB, EF_ARGB8_SRGB, EF_ABGR8, EF_ARGB8 };
+		ArrayRef<ElementFormat> fmt_options = backup_fmts;
+		if (!Context::Instance().Config().graphics_cfg.gamma)
 		{
-			if (rf.RenderEngineInstance().DeviceCaps().texture_format_support(EF_ABGR8_SRGB))
-			{
-				fmt = EF_ABGR8_SRGB;
-			}
-			else
-			{
-				if (rf.RenderEngineInstance().DeviceCaps().texture_format_support(EF_ARGB8_SRGB))
-				{
-					fmt = EF_ARGB8_SRGB;
-				}
-				else
-				{
-					if (rf.RenderEngineInstance().DeviceCaps().texture_format_support(EF_ABGR8))
-					{
-						fmt = EF_ABGR8;
-					}
-					else
-					{
-						BOOST_ASSERT(rf.RenderEngineInstance().DeviceCaps().texture_format_support(EF_ARGB8));
-
-						fmt = EF_ARGB8;
-					}
-				}
-			}
+			fmt_options = fmt_options.Slice(2);
 		}
-		else
-		{
-			if (rf.RenderEngineInstance().DeviceCaps().texture_format_support(EF_ABGR8))
-			{
-				fmt = EF_ABGR8;
-			}
-			else
-			{
-				BOOST_ASSERT(rf.RenderEngineInstance().DeviceCaps().texture_format_support(EF_ARGB8));
-
-				fmt = EF_ARGB8;
-			}
-		}
+		auto const fmt = caps.BestMatchTextureFormat(fmt_options);
+		BOOST_ASSERT(fmt != EF_Unknown);
 		present_tex_ = rf.MakeTexture2D(lpAllocInfo->dwWidth, lpAllocInfo->dwHeight, 1, 1, fmt, 1, 0, EAH_CPU_Write | EAH_GPU_Read);
 
 		IDirect3DSurface9* surf;

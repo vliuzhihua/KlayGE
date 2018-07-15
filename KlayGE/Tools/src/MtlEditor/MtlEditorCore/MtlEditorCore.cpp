@@ -131,6 +131,16 @@ namespace
 			ResLoader::Instance().Unload(renderable_);
 		}
 
+		uint32_t NumLods() const
+		{
+			return checked_pointer_cast<DetailedSkinnedModel>(renderable_)->NumLods();
+		}
+
+		void ActiveLod(int32_t lod)
+		{
+			checked_pointer_cast<DetailedSkinnedModel>(renderable_)->ActiveLod(lod);
+		}
+
 		uint32_t NumFrames() const
 		{
 			return checked_pointer_cast<DetailedSkinnedModel>(renderable_)->NumFrames();
@@ -283,17 +293,8 @@ namespace KlayGE
 		RenderEngine& re = rf.RenderEngineInstance();
 		deferred_rendering_->SetupViewport(0, re.CurFrameBuffer(), 0);
 
-		ElementFormat fmt;
-		if (re.DeviceCaps().texture_format_support(EF_ABGR8))
-		{
-			fmt = EF_ABGR8;
-		}
-		else
-		{
-			BOOST_ASSERT(re.DeviceCaps().texture_format_support(EF_ABGR8));
-
-			fmt = EF_ARGB8;
-		}
+		auto const fmt = re.DeviceCaps().BestMatchTextureRenderTargetFormat({ EF_ABGR8, EF_ARGB8 }, 1, 0);
+		BOOST_ASSERT(fmt != EF_Unknown);
 
 		selective_tex_ = rf.MakeTexture2D(width, height, 1, 1, fmt, 1, 0, EAH_GPU_Write);
 		selective_cpu_tex_ = rf.MakeTexture2D(width, height, 1, 1, fmt, 1, 0, EAH_CPU_Read);
@@ -338,20 +339,10 @@ namespace KlayGE
 			clear_clr.g() = 0.133f;
 			clear_clr.b() = 0.325f;
 		}
-		uint32_t texel;
-		ElementFormat fmt;
-		if (re.DeviceCaps().texture_format_support(EF_ABGR8))
-		{
-			fmt = EF_ABGR8;
-			texel = clear_clr.ABGR();
-		}
-		else
-		{
-			BOOST_ASSERT(re.DeviceCaps().texture_format_support(EF_ARGB8));
-
-			fmt = EF_ARGB8;
-			texel = clear_clr.ARGB();
-		}
+		;
+		auto const fmt = re.DeviceCaps().BestMatchTextureFormat({ EF_ABGR8, EF_ARGB8 });
+		BOOST_ASSERT(fmt != EF_Unknown);
+		uint32_t texel = ((fmt == EF_ABGR8) ? clear_clr.ABGR() : clear_clr.ARGB());
 		ElementInitData init_data[6];
 		for (int i = 0; i < 6; ++ i)
 		{
@@ -450,7 +441,7 @@ namespace KlayGE
 
 			if (failed)
 			{
-				LogError("MeshConv failed. Forgot to build Tools?");
+				LogError() << "MeshConv failed. Forgot to build Tools?" << std::endl;
 				return false;
 			}
 
@@ -751,6 +742,16 @@ namespace KlayGE
 	float MtlEditorCore::ModelFrameRate() const
 	{
 		return static_cast<float>(checked_pointer_cast<ModelObject>(model_)->FrameRate());
+	}
+
+	uint32_t MtlEditorCore::NumLods() const
+	{
+		return checked_pointer_cast<ModelObject>(model_)->NumLods();
+	}
+
+	void MtlEditorCore::ActiveLod(int32_t lod)
+	{
+		checked_pointer_cast<ModelObject>(model_)->ActiveLod(lod);
 	}
 
 	uint32_t MtlEditorCore::NumMeshes() const

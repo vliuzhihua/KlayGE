@@ -1,13 +1,6 @@
 #include <KlayGE/KlayGE.hpp>
 
-#ifdef KLAYGE_COMPILER_MSVC
-#pragma warning(push)
-#pragma warning(disable: 4793) // boost::signals2::detail::do_postconstruct/do_predestruct can't have /clr
-#endif
 #include "../MtlEditorCore/MtlEditorCore.hpp"
-#ifdef KLAYGE_COMPILER_MSVC
-#pragma warning(pop)
-#endif
 
 #include "MtlEditorCoreWrapper.hpp"
 
@@ -31,6 +24,7 @@ namespace KlayGE
 		Context::Instance().LoadCfg("KlayGE.cfg");
 
 		ContextCfg cfg = Context::Instance().Config();
+		cfg.render_factory_name = "D3D11";
 		cfg.deferred_rendering = true;
 		Context::Instance().Config(cfg);
 
@@ -171,6 +165,16 @@ namespace KlayGE
 	void MtlEditorCoreWrapper::KeyPress(int key)
 	{
 		core_->KeyPress(key);
+	}
+
+	uint32_t MtlEditorCoreWrapper::NumLods()
+	{
+		return core_->NumLods();
+	}
+
+	void MtlEditorCoreWrapper::ActiveLod(int lod)
+	{
+		core_->ActiveLod(lod);
 	}
 
 	uint32_t MtlEditorCoreWrapper::NumMeshes()

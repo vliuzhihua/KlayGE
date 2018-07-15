@@ -8,11 +8,7 @@
 #  KLAYGE_3DSMAX_UNICODE  - True if the 3DSMax is unicode version (>=2013).
 #
 
-IF(COMMAND CMAKE_POLICY)
-	IF(NOT (CMAKE_VERSION VERSION_LESS 3.1))
-		CMAKE_POLICY(SET CMP0053 OLD)
-	ENDIF()
-ENDIF()
+SET(ProgramFilesX86 "ProgramFiles(x86)")
 
 IF(NOT KLAYGE_3DSMAX_PATH)
 	FIND_PATH(KLAYGE_3DSMAX_PATH 3dsmax.exe
@@ -22,13 +18,13 @@ IF(NOT KLAYGE_3DSMAX_PATH)
 		"$ENV{ADSK_3DSMAX_2012}"
 		"$ENV{3DSMAX_2011_PATH}"
 		"$ENV{ProgramFiles}/Autodesk/3ds Max 2010"
-		"$ENV{ProgramFiles(x86)}/Autodesk/3ds Max 2010"
+		"$ENV{${ProgramFilesX86}}/Autodesk/3ds Max 2010"
 		"$ENV{ProgramFiles}/Autodesk/3ds Max 2009 SDK"
-		"$ENV{ProgramFiles(x86)}/Autodesk/3ds Max 2009"
+		"$ENV{${ProgramFilesX86}}/Autodesk/3ds Max 2009"
 		"$ENV{ProgramFiles}/Autodesk/3ds Max 2008"
-		"$ENV{ProgramFiles(x86)}/Autodesk/3ds Max 2008"
+		"$ENV{${ProgramFilesX86}}/Autodesk/3ds Max 2008"
 		"$ENV{ProgramFiles}/Autodesk/3ds Max 9"
-		"$ENV{ProgramFiles(x86)}/Autodesk/3ds Max 9"
+		"$ENV{${ProgramFilesX86}}/Autodesk/3ds Max 9"
 	)
 ENDIF()
 
@@ -40,13 +36,13 @@ IF(NOT KLAYGE_3DSMAX_SDK_PATH)
 		"$ENV{ADSK_3DSMAX_SDK_2012}/maxsdk"
 		"$ENV{3DSMAX_2011_SDK_PATH}/maxsdk"
 		"$ENV{ProgramFiles}/Autodesk/3ds Max 2010 SDK/maxsdk"
-		"$ENV{ProgramFiles(x86)}/Autodesk/3ds Max 2010 SDK/maxsdk"
+		"$ENV{${ProgramFilesX86}}/Autodesk/3ds Max 2010 SDK/maxsdk"
 		"$ENV{ProgramFiles}/Autodesk/3ds Max 2009 SDK/maxsdk"
-		"$ENV{ProgramFiles(x86)}/Autodesk/3ds Max 2009 SDK/maxsdk"
+		"$ENV{${ProgramFilesX86}}/Autodesk/3ds Max 2009 SDK/maxsdk"
 		"$ENV{ProgramFiles}/Autodesk/3ds Max 2008 SDK/maxsdk"
-		"$ENV{ProgramFiles(x86)}/Autodesk/3ds Max 2008 SDK/maxsdk"
+		"$ENV{${ProgramFilesX86}}/Autodesk/3ds Max 2008 SDK/maxsdk"
 		"$ENV{ProgramFiles}/Autodesk/3ds Max 9 SDK/maxsdk"
-		"$ENV{ProgramFiles(x86)}/Autodesk/3ds Max 9 SDK/maxsdk"
+		"$ENV{${ProgramFilesX86}}/Autodesk/3ds Max 9 SDK/maxsdk"
 	)
 ENDIF()
 
@@ -60,6 +56,13 @@ ENDIF()
 IF(KLAYGE_3DSMAX_SDK_PATH)
 	SET(KLAYGE_3DSMAX_SDK_FOUND TRUE)
 	MESSAGE(STATUS "Found 3DSMax SDK: ${KLAYGE_3DSMAX_SDK_PATH}")
+
+	SET(KLAYGE_3DSMAX_INCLUDE_DIR "${KLAYGE_3DSMAX_SDK_PATH}/maxsdk/include")
+	SET(KLAYGE_3DSMAX_LIBRARY_DIR "${KLAYGE_3DSMAX_SDK_PATH}/maxsdk/${KLAYGE_ARCH_NAME}/lib")
+	SET(KLAYGE_3DSMAX_CORE_LIBRARY "${KLAYGE_3DSMAX_LIBRARY_DIR}/core.lib")
+	SET(KLAYGE_3DSMAX_GEOM_LIBRARY "${KLAYGE_3DSMAX_LIBRARY_DIR}/geom.lib")
+	SET(KLAYGE_3DSMAX_MAXUTIL_LIBRARY "${KLAYGE_3DSMAX_LIBRARY_DIR}/maxutil.lib")
+	SET(KLAYGE_3DSMAX_MESH_LIBRARY "${KLAYGE_3DSMAX_LIBRARY_DIR}/mesh.lib")
 ELSE()
 	MESSAGE(STATUS "Could NOT find 3DSMax SDK.")
 ENDIF()

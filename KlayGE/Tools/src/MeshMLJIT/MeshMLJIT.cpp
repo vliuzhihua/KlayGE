@@ -13,27 +13,27 @@
 
 #include <iostream>
 #include <fstream>
-#include <sstream>
 #include <vector>
 #include <cstring>
+#include <string>
 
-#if defined(KLAYGE_COMPILER_GCC)
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations" // Ignore auto_ptr declaration
+#if defined(KLAYGE_COMPILER_CLANGC2)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wunused-variable" // Ignore unused variable (mpl_assertion_in_line_xxx) in boost
 #endif
 #include <boost/algorithm/string/split.hpp>
-#if defined(KLAYGE_COMPILER_GCC)
-#pragma GCC diagnostic pop
+#if defined(KLAYGE_COMPILER_CLANGC2)
+#pragma clang diagnostic pop
 #endif
 #include <boost/algorithm/string/trim.hpp>
 
-#if defined(KLAYGE_COMPILER_GCC)
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations" // Ignore auto_ptr declaration
+#if defined(KLAYGE_COMPILER_CLANGC2)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wunused-variable" // Ignore unused variable (mpl_assertion_in_line_xxx) in boost
 #endif
 #include <boost/program_options.hpp>
-#if defined(KLAYGE_COMPILER_GCC)
-#pragma GCC diagnostic pop
+#if defined(KLAYGE_COMPILER_CLANGC2)
+#pragma clang diagnostic pop
 #endif
 
 using namespace std;
@@ -76,24 +76,9 @@ namespace
 	}
 
 	std::string const JIT_EXT_NAME = ".model_bin";
-	uint32_t const MODEL_BIN_VERSION = 14;
-
-	struct KeyFrames
-	{
-		std::vector<uint32_t> frame_id;
-		std::vector<Quaternion> bind_real;
-		std::vector<Quaternion> bind_dual;
-		std::vector<float> bind_scale;
-	};
-
-	struct AABBKeyFrames
-	{
-		std::vector<uint32_t> frame_id;
-		std::vector<AABBox> bb;
-	};
 
 	template <int N>
-	void ExtractFVector(std::string const & value_str, float* v)
+	void ExtractFVector(std::string_view value_str, float* v)
 	{
 		std::vector<std::string> strs;
 		boost::algorithm::split(strs, value_str, boost::is_any_of(" "));
@@ -112,7 +97,7 @@ namespace
 	}
 
 	template <int N>
-	void ExtractUIVector(std::string const & value_str, uint32_t* v)
+	void ExtractUIVector(std::string_view value_str, uint32_t* v)
 	{
 		std::vector<std::string> strs;
 		boost::algorithm::split(strs, value_str, boost::is_any_of(" "));
@@ -138,7 +123,7 @@ namespace
 			OfflineRenderMaterial offline_mtl;
 			auto& mtl = offline_mtl.material;
 
-			mtl.name = "Material " + boost::lexical_cast<std::string>(mtl_index);
+			mtl.name = "Material " + std::to_string(mtl_index);
 
 			mtl.albedo = float4(0, 0, 0, 1);
 			mtl.metalness = 0;
@@ -157,7 +142,7 @@ namespace
 				XMLAttributePtr attr = mtl_node->Attrib("name");
 				if (attr)
 				{
-					mtl.name = attr->ValueString();
+					mtl.name = std::string(attr->ValueString());
 				}
 			}
 
@@ -337,8 +322,8 @@ namespace
 				XMLAttributePtr attr = detail_node->Attrib("mode");
 				if (attr)
 				{
-					std::string const & mode_str = attr->ValueString();
-					size_t const mode_hash = RT_HASH(mode_str.c_str());
+					std::string_view const mode_str = attr->ValueString();
+					size_t const mode_hash = HashRange(mode_str.begin(), mode_str.end());
 					if (CT_HASH("Flat Tessellation") == mode_hash)
 					{
 						mtl.detail_mode = RenderMaterial::SDM_FlatTessellation;
@@ -480,27 +465,11 @@ namespace
 		}
 	}
 
-	void CompileMeshesVerticesChunk(XMLNodePtr const & vertices_chunk,
-		AABBox& pos_bb, AABBox& tc_bb, std::vector<VertexElement>& vertex_elements,
-		std::vector<int16_t>& positions, std::vector<uint32_t>& normals,
-		std::vector<uint32_t>& tangent_quats, 
-		std::vector<uint32_t>& diffuses, std::vector<uint32_t>& speculars,
-		std::vector<int16_t>& tex_coords, 
-		std::vector<uint32_t>& bone_indices, std::vector<uint32_t>& bone_weights)
+	void CompileMeshBoundingBox(XMLNodePtr const & mesh_node,
+		AABBox& pos_bb, AABBox& tc_bb,
+		bool& recompute_pos_bb, bool& recompute_tc_bb)
 	{
-		std::vector<float3> mesh_positions;
-		std::vector<float3> mesh_normals;
-		std::vector<float4> mesh_tangents;
-		std::vector<float3> mesh_binormals;
-		std::vector<Quaternion> mesh_tangent_quats;
-		std::vector<float4> mesh_diffuses;
-		std::vector<float3> mesh_speculars;
-		std::vector<float2> mesh_tex_coords;
-		std::vector<uint32_t> mesh_bone_indices;
-		std::vector<uint32_t> mesh_bone_weights;
-
-		bool recompute_pos_bb;
-		XMLNodePtr pos_bb_node = vertices_chunk->FirstNode("pos_bb");
+		XMLNodePtr pos_bb_node = mesh_node->FirstNode("pos_bb");
 		if (pos_bb_node)
 		{
 			float3 pos_min_bb, pos_max_bb;
@@ -541,8 +510,7 @@ namespace
 			recompute_pos_bb = true;
 		}
 
-		bool recompute_tc_bb;
-		XMLNodePtr tc_bb_node = vertices_chunk->FirstNode("tc_bb");
+		XMLNodePtr tc_bb_node = mesh_node->FirstNode("tc_bb");
 		if (tc_bb_node)
 		{
 			float3 tc_min_bb, tc_max_bb;
@@ -567,7 +535,7 @@ namespace
 				}
 				else
 				{
-					XMLNodePtr tc_max_node = tc_bb_node->FirstNode("max");							
+					XMLNodePtr tc_max_node = tc_bb_node->FirstNode("max");
 					tc_max_bb.x() = tc_max_node->Attrib("x")->ValueFloat();
 					tc_max_bb.y() = tc_max_node->Attrib("y")->ValueFloat();
 				}
@@ -583,6 +551,27 @@ namespace
 		{
 			recompute_tc_bb = true;
 		}
+	}
+
+	void CompileMeshesVerticesChunk(XMLNodePtr const & vertices_chunk,
+		AABBox& pos_bb, AABBox& tc_bb, bool recompute_pos_bb, bool recompute_tc_bb,
+		std::vector<VertexElement>& vertex_elements,
+		std::vector<int16_t>& positions, std::vector<uint32_t>& normals,
+		std::vector<uint32_t>& tangent_quats, 
+		std::vector<uint32_t>& diffuses, std::vector<uint32_t>& speculars,
+		std::vector<int16_t>& tex_coords, 
+		std::vector<uint32_t>& bone_indices, std::vector<uint32_t>& bone_weights)
+	{
+		std::vector<float3> mesh_positions;
+		std::vector<float3> mesh_normals;
+		std::vector<float4> mesh_tangents;
+		std::vector<float3> mesh_binormals;
+		std::vector<Quaternion> mesh_tangent_quats;
+		std::vector<float4> mesh_diffuses;
+		std::vector<float3> mesh_speculars;
+		std::vector<float2> mesh_tex_coords;
+		std::vector<uint32_t> mesh_bone_indices;
+		std::vector<uint32_t> mesh_bone_weights;
 
 		bool has_normal = false;
 		bool has_diffuse = false;
@@ -701,10 +690,12 @@ namespace
 				{
 					XMLAttributePtr weight_attr = weight_node->Attrib("weight");
 
+					std::string_view const index_str = attr->ValueString();
+					std::string_view const weight_str = weight_attr->ValueString();
 					std::vector<std::string> index_strs;
 					std::vector<std::string> weight_strs;
-					boost::algorithm::split(index_strs, attr->ValueString(), boost::is_any_of(" "));
-					boost::algorithm::split(weight_strs, weight_attr->ValueString(), boost::is_any_of(" "));
+					boost::algorithm::split(index_strs, index_str, boost::is_any_of(" "));
+					boost::algorithm::split(weight_strs, weight_str, boost::is_any_of(" "));
 					
 					for (num_blend = 0; num_blend < 4; ++ num_blend)
 					{
@@ -1328,8 +1319,56 @@ namespace
 		}
 	}
 
+	void CompileMeshLodChunk(XMLNodePtr const & lod_node, uint32_t mesh_index,
+		std::vector<AABBox>& pos_bbs, std::vector<AABBox>& tc_bbs, bool recompute_pos_bb, bool recompute_tc_bb,
+		std::vector<uint32_t>& mesh_num_vertices, std::vector<uint32_t>& mesh_base_vertices,
+		std::vector<uint32_t>& mesh_num_indices, std::vector<uint32_t>& mesh_start_indices,
+		std::vector<VertexElement>& merged_ves, std::vector<std::vector<uint8_t>>& merged_vertices,
+		std::vector<uint8_t>& merged_indices, char& is_index_16_bit)
+	{
+		std::vector<VertexElement> ves;
+		std::vector<int16_t> positions;
+		std::vector<uint32_t> normals;
+		std::vector<uint32_t> tangent_quats;
+		std::vector<uint32_t> diffuses;
+		std::vector<uint32_t> speculars;
+		std::vector<int16_t> tex_coords;
+		std::vector<uint32_t> bone_indices;
+		std::vector<uint32_t> bone_weights;
+
+		XMLNodePtr vertices_chunk = lod_node->FirstNode("vertices_chunk");
+		if (vertices_chunk)
+		{
+			CompileMeshesVerticesChunk(vertices_chunk,
+				pos_bbs[mesh_index], tc_bbs[mesh_index], recompute_pos_bb, recompute_tc_bb,
+				ves,
+				positions, normals, tangent_quats,
+				diffuses, speculars, tex_coords,
+				bone_indices, bone_weights);
+			AppendMeshVertices(ves,
+				positions, normals, tangent_quats,
+				diffuses, speculars, tex_coords,
+				bone_indices, bone_weights,
+				mesh_num_vertices, mesh_base_vertices,
+				merged_ves, merged_vertices);
+		}
+
+		std::vector<uint8_t> triangle_indices;
+
+		XMLNodePtr triangles_chunk = lod_node->FirstNode("triangles_chunk");
+		if (triangles_chunk)
+		{
+			char is_index_16s = true;
+			CompileMeshesTrianglesChunk(triangles_chunk,
+				triangle_indices, is_index_16s);
+			AppendMeshIndices(triangle_indices, is_index_16s,
+				mesh_num_indices, mesh_start_indices, merged_indices,
+				is_index_16_bit);
+		}
+	}
+
 	void CompileMeshesChunk(XMLNodePtr const & meshes_chunk,
-		std::vector<std::string>& mesh_names, std::vector<int32_t>& mtl_ids,
+		std::vector<std::string>& mesh_names, std::vector<int32_t>& mtl_ids, std::vector<uint32_t>& mesh_lods,
 		std::vector<AABBox>& pos_bbs, std::vector<AABBox>& tc_bbs, 
 		std::vector<uint32_t>& mesh_num_vertices, std::vector<uint32_t>& mesh_base_vertices,
 		std::vector<uint32_t>& mesh_num_indices, std::vector<uint32_t>& mesh_start_indices,
@@ -1338,6 +1377,7 @@ namespace
 	{
 		mesh_names.clear();
 		mtl_ids.clear();
+		mesh_lods.clear();
 
 		mesh_num_vertices.clear();
 		mesh_num_indices.clear();
@@ -1348,64 +1388,70 @@ namespace
 		merged_indices.clear();
 		is_index_16_bit = true;
 
-		std::vector<VertexElement> ves;
-		std::vector<int16_t> positions;
-		std::vector<uint32_t> normals;
-		std::vector<uint32_t> tangent_quats;
-		std::vector<uint32_t> diffuses;
-		std::vector<uint32_t> speculars;
-		std::vector<int16_t> tex_coords;
-		std::vector<uint32_t> bone_indices;
-		std::vector<uint32_t> bone_weights;
-		std::vector<uint8_t> triangle_indices;
-
 		uint32_t mesh_index = 0;
 		for (XMLNodePtr mesh_node = meshes_chunk->FirstNode("mesh"); mesh_node; mesh_node = mesh_node->NextSibling("mesh"), ++ mesh_index)
 		{
-			mesh_names.push_back(mesh_node->Attrib("name")->ValueString());
+			mesh_names.push_back(std::string(mesh_node->Attrib("name")->ValueString()));
 			mtl_ids.push_back(mesh_node->Attrib("mtl_id")->ValueInt());
 
 			pos_bbs.resize(mesh_index + 1);
 			tc_bbs.resize(pos_bbs.size());
 
-			ves.clear();
-			positions.clear();
-			normals.clear();
-			tangent_quats.clear();
-			diffuses.clear();
-			speculars.clear();
-			tex_coords.clear();
-			bone_indices.clear();
-			bone_weights.clear();
-
-			XMLNodePtr vertices_chunk = mesh_node->FirstNode("vertices_chunk");
-			if (vertices_chunk)
+			bool recompute_pos_bb, recompute_tc_bb;
+			CompileMeshBoundingBox(mesh_node, pos_bbs[mesh_index], tc_bbs[mesh_index], recompute_pos_bb, recompute_tc_bb);
+			if (recompute_pos_bb && recompute_tc_bb)
 			{
-				CompileMeshesVerticesChunk(vertices_chunk,
-					pos_bbs[mesh_index], tc_bbs[mesh_index], ves,
-					positions, normals,	tangent_quats,
-					diffuses, speculars, tex_coords,
-					bone_indices, bone_weights);
-				AppendMeshVertices(ves,
-					positions, normals, tangent_quats, 
-					diffuses, speculars, tex_coords, 
-					bone_indices, bone_weights,
+				XMLNodePtr vertices_chunk = mesh_node->FirstNode("vertices_chunk");
+				if (vertices_chunk)
+				{
+					CompileMeshBoundingBox(vertices_chunk, pos_bbs[mesh_index], tc_bbs[mesh_index], recompute_pos_bb, recompute_tc_bb);
+				}
+			}
+
+			uint32_t mesh_lod;
+
+			XMLNodePtr lod_node = mesh_node->FirstNode("lod");
+			if (lod_node)
+			{
+				mesh_lod = 0;
+
+				for (; lod_node; lod_node = lod_node->NextSibling("lod"))
+				{
+					++ mesh_lod;
+				}
+
+				std::vector<XMLNodePtr> lod_nodes(mesh_lod);
+				for (lod_node = mesh_node->FirstNode("lod"); lod_node; lod_node = lod_node->NextSibling("lod"))
+				{
+					uint32_t const lod = lod_node->Attrib("value")->ValueUInt();
+					lod_nodes[lod] = lod_node;
+				}
+
+				for (uint32_t lod = 0; lod < mesh_lod; ++ lod)
+				{
+					CompileMeshLodChunk(lod_nodes[lod], mesh_index,
+						pos_bbs, tc_bbs, recompute_pos_bb, recompute_tc_bb,
+						mesh_num_vertices, mesh_base_vertices,
+						mesh_num_indices, mesh_start_indices,
+						merged_ves, merged_vertices,
+						merged_indices, is_index_16_bit);
+
+					recompute_pos_bb = false;
+					recompute_tc_bb = false;
+				}
+			}
+			else
+			{
+				mesh_lod = 1;
+				CompileMeshLodChunk(mesh_node, mesh_index,
+					pos_bbs, tc_bbs, recompute_pos_bb, recompute_tc_bb,
 					mesh_num_vertices, mesh_base_vertices,
-					merged_ves, merged_vertices);
+					mesh_num_indices, mesh_start_indices,
+					merged_ves, merged_vertices,
+					merged_indices, is_index_16_bit);
 			}
 
-			triangle_indices.clear();
-
-			XMLNodePtr triangles_chunk = mesh_node->FirstNode("triangles_chunk");
-			if (triangles_chunk)
-			{
-				char is_index_16s = true;
-				CompileMeshesTrianglesChunk(triangles_chunk,
-					triangle_indices, is_index_16s);
-				AppendMeshIndices(triangle_indices, is_index_16s,
-					mesh_num_indices, mesh_start_indices, merged_indices,
-					is_index_16_bit);
-			}
+			mesh_lods.push_back(mesh_lod);
 		}
 
 		if (is_index_16_bit)
@@ -1427,7 +1473,7 @@ namespace
 		Joint joint;
 		for (XMLNodePtr bone_node = bones_chunk->FirstNode("bone"); bone_node; bone_node = bone_node->NextSibling("bone"))
 		{
-			joint.name = bone_node->Attrib("name")->ValueString();
+			joint.name = std::string(bone_node->Attrib("name")->ValueString());
 			joint.parent = static_cast<int16_t>(bone_node->Attrib("parent")->ValueInt());
 
 			XMLNodePtr bind_pos_node = bone_node->FirstNode("bind_pos");
@@ -1500,7 +1546,7 @@ namespace
 
 	void CompileKeyFramesChunk(XMLNodePtr const & key_frames_chunk,
 		uint32_t& num_frames, uint32_t& frame_rate,
-		std::vector<KeyFrames>& kfss)
+		KeyFramesType& kfss)
 	{
 		XMLAttributePtr nf_attr = key_frames_chunk->Attrib("num_frames");
 		if (nf_attr)
@@ -1712,7 +1758,7 @@ namespace
 		{
 			for (; action_node; action_node = action_node->NextSibling("action"))
 			{
-				action.name = action_node->Attrib("name")->ValueString();
+				action.name = std::string(action_node->Attrib("name")->ValueString());
 
 				action.start_frame = action_node->Attrib("start")->ValueUInt();
 				action.end_frame = action_node->Attrib("end")->ValueUInt();
@@ -1727,240 +1773,6 @@ namespace
 			action.end_frame = num_frames;
 
 			actions.push_back(action);
-		}
-	}
-
-	void WriteMaterialsChunk(std::vector<OfflineRenderMaterial> const & mtls, std::ostream& os)
-	{
-		for (size_t i = 0; i < mtls.size(); ++ i)
-		{
-			auto& offline_mtl = mtls[i];
-			auto& mtl = offline_mtl.material;
-
-			WriteShortString(os, mtl.name);
-
-			for (uint32_t j = 0; j < 4; ++ j)
-			{
-				float const value = Native2LE(mtl.albedo[j]);
-				os.write(reinterpret_cast<char const *>(&value), sizeof(value));
-			}
-
-			float metalness = Native2LE(mtl.metalness);
-			os.write(reinterpret_cast<char*>(&metalness), sizeof(metalness));
-
-			float glossiness = Native2LE(mtl.glossiness);
-			os.write(reinterpret_cast<char*>(&glossiness), sizeof(glossiness));
-
-			for (uint32_t j = 0; j < 3; ++ j)
-			{
-				float const value = Native2LE(mtl.emissive[j]);
-				os.write(reinterpret_cast<char const *>(&value), sizeof(value));
-			}
-
-			uint8_t transparent = mtl.transparent;
-			os.write(reinterpret_cast<char*>(&transparent), sizeof(transparent));
-
-			uint8_t alpha_test = static_cast<uint8_t>(MathLib::clamp(static_cast<int>(mtl.alpha_test * 255.0f + 0.5f), 0, 255));
-			os.write(reinterpret_cast<char*>(&alpha_test), sizeof(alpha_test));
-
-			uint8_t sss = mtl.sss;
-			os.write(reinterpret_cast<char*>(&sss), sizeof(sss));
-
-			uint8_t two_sided = mtl.two_sided;
-			os.write(reinterpret_cast<char*>(&two_sided), sizeof(two_sided));
-
-			for (size_t j = 0; j < RenderMaterial::TS_NumTextureSlots; ++ j)
-			{
-				WriteShortString(os, mtl.tex_names[j]);
-			}
-			if (!mtl.tex_names[RenderMaterial::TS_Height].empty())
-			{
-				float height_offset = Native2LE(mtl.height_offset_scale.x());
-				os.write(reinterpret_cast<char*>(&height_offset), sizeof(height_offset));
-				float height_scale = Native2LE(mtl.height_offset_scale.y());
-				os.write(reinterpret_cast<char*>(&height_scale), sizeof(height_scale));
-			}
-
-			uint8_t detail_mode = static_cast<uint8_t>(mtl.detail_mode);
-			os.write(reinterpret_cast<char*>(&detail_mode), sizeof(detail_mode));
-			if (mtl.detail_mode != RenderMaterial::SDM_Parallax)
-			{
-				float tess_factor = Native2LE(mtl.tess_factors.x());
-				os.write(reinterpret_cast<char*>(&tess_factor), sizeof(tess_factor));
-				tess_factor = Native2LE(mtl.tess_factors.y());
-				os.write(reinterpret_cast<char*>(&tess_factor), sizeof(tess_factor));
-				tess_factor = Native2LE(mtl.tess_factors.z());
-				os.write(reinterpret_cast<char*>(&tess_factor), sizeof(tess_factor));
-				tess_factor = Native2LE(mtl.tess_factors.w());
-				os.write(reinterpret_cast<char*>(&tess_factor), sizeof(tess_factor));
-			}
-		}
-	}
-
-	void WriteMeshesChunk(std::vector<std::string> const & mesh_names, std::vector<int32_t> const & mtl_ids,
-		std::vector<AABBox> const & pos_bbs, std::vector<AABBox> const & tc_bbs,
-		std::vector<uint32_t> const & mesh_num_vertices, std::vector<uint32_t> const & mesh_base_vertices,
-		std::vector<uint32_t> const & mesh_num_indices, std::vector<uint32_t> const & mesh_start_indices,
-		std::vector<VertexElement> const & merged_ves,
-		std::vector<std::vector<uint8_t>> const & merged_vertices, std::vector<uint8_t> const & merged_indices,
-		char is_index_16_bit, std::ostream& os)
-	{
-		uint32_t num_merged_ves = Native2LE(static_cast<uint32_t>(merged_ves.size()));
-		os.write(reinterpret_cast<char*>(&num_merged_ves), sizeof(num_merged_ves));
-		for (size_t i = 0; i < merged_ves.size(); ++ i)
-		{
-			VertexElement ve = merged_ves[i];
-			ve.usage = Native2LE(ve.usage);
-			ve.format = Native2LE(ve.format);
-			os.write(reinterpret_cast<char*>(&ve), sizeof(ve));
-		}
-
-		uint32_t num_vertices = Native2LE(mesh_base_vertices.back());
-		os.write(reinterpret_cast<char*>(&num_vertices), sizeof(num_vertices));
-		uint32_t num_indices = Native2LE(mesh_start_indices.back());
-		os.write(reinterpret_cast<char*>(&num_indices), sizeof(num_indices));
-		os.write(&is_index_16_bit, sizeof(is_index_16_bit));
-
-		for (size_t i = 0; i < merged_vertices.size(); ++ i)
-		{
-			os.write(reinterpret_cast<char const *>(&merged_vertices[i][0]), merged_vertices[i].size() * sizeof(merged_vertices[i][0]));
-		}
-		os.write(reinterpret_cast<char const *>(&merged_indices[0]), merged_indices.size() * sizeof(merged_indices[0]));
-
-		for (uint32_t mesh_index = 0; mesh_index < mesh_num_vertices.size(); ++ mesh_index)
-		{
-			WriteShortString(os, mesh_names[mesh_index]);
-
-			int32_t mtl_id = Native2LE(mtl_ids[mesh_index]);
-			os.write(reinterpret_cast<char*>(&mtl_id), sizeof(mtl_id));
-
-			float3 min_bb;
-			min_bb.x() = Native2LE(pos_bbs[mesh_index].Min().x());
-			min_bb.y() = Native2LE(pos_bbs[mesh_index].Min().y());
-			min_bb.z() = Native2LE(pos_bbs[mesh_index].Min().z());
-			os.write(reinterpret_cast<char*>(&min_bb), sizeof(min_bb));
-			float3 max_bb;
-			max_bb.x() = Native2LE(pos_bbs[mesh_index].Max().x());
-			max_bb.y() = Native2LE(pos_bbs[mesh_index].Max().y());
-			max_bb.z() = Native2LE(pos_bbs[mesh_index].Max().z());
-			os.write(reinterpret_cast<char*>(&max_bb), sizeof(max_bb));
-
-			min_bb.x() = Native2LE(tc_bbs[mesh_index].Min().x());
-			min_bb.y() = Native2LE(tc_bbs[mesh_index].Min().y());
-			os.write(reinterpret_cast<char*>(&min_bb[0]), sizeof(min_bb[0]));
-			os.write(reinterpret_cast<char*>(&min_bb[1]), sizeof(min_bb[1]));
-			max_bb.x() = Native2LE(tc_bbs[mesh_index].Max().x());
-			max_bb.y() = Native2LE(tc_bbs[mesh_index].Max().y());
-			os.write(reinterpret_cast<char*>(&max_bb[0]), sizeof(max_bb[0]));
-			os.write(reinterpret_cast<char*>(&max_bb[1]), sizeof(max_bb[1]));
-
-			uint32_t nv = Native2LE(mesh_num_vertices[mesh_index]);
-			os.write(reinterpret_cast<char*>(&nv), sizeof(nv));
-			uint32_t bv = Native2LE(mesh_base_vertices[mesh_index]);
-			os.write(reinterpret_cast<char*>(&bv), sizeof(bv));
-			uint32_t ni = Native2LE(mesh_num_indices[mesh_index]);
-			os.write(reinterpret_cast<char*>(&ni), sizeof(ni));
-			uint32_t si = Native2LE(mesh_start_indices[mesh_index]);
-			os.write(reinterpret_cast<char*>(&si), sizeof(si));
-		}
-	}
-
-	void WriteBonesChunk(std::vector<Joint> const & joints, std::ostream& os)
-	{
-		for (size_t i = 0; i < joints.size(); ++ i)
-		{
-			WriteShortString(os, joints[i].name);
-
-			int16_t joint_parent = Native2LE(joints[i].parent);
-			os.write(reinterpret_cast<char*>(&joint_parent), sizeof(joint_parent));
-
-			Quaternion bind_real;
-			bind_real.x() = Native2LE(joints[i].bind_real.x());
-			bind_real.y() = Native2LE(joints[i].bind_real.y());
-			bind_real.z() = Native2LE(joints[i].bind_real.z());
-			bind_real.w() = Native2LE(joints[i].bind_real.w());
-			os.write(reinterpret_cast<char*>(&bind_real), sizeof(bind_real));
-			Quaternion bind_dual;
-			bind_dual.x() = Native2LE(joints[i].bind_dual.x());
-			bind_dual.y() = Native2LE(joints[i].bind_dual.y());
-			bind_dual.z() = Native2LE(joints[i].bind_dual.z());
-			bind_dual.w() = Native2LE(joints[i].bind_dual.w());
-			os.write(reinterpret_cast<char*>(&bind_dual), sizeof(bind_dual));
-		}
-	}
-
-	void WriteKeyFramesChunk(uint32_t num_frames, uint32_t frame_rate, std::vector<KeyFrames>& kfs,
-		std::ostream& os)
-	{
-		num_frames = Native2LE(num_frames);
-		os.write(reinterpret_cast<char*>(&num_frames), sizeof(num_frames));
-		frame_rate = Native2LE(frame_rate);
-		os.write(reinterpret_cast<char*>(&frame_rate), sizeof(frame_rate));
-
-		for (size_t i = 0; i < kfs.size(); ++ i)
-		{
-			uint32_t num_kf = Native2LE(static_cast<uint32_t>(kfs[i].frame_id.size()));
-			os.write(reinterpret_cast<char*>(&num_kf), sizeof(num_kf));
-
-			for (size_t j = 0; j < kfs[i].frame_id.size(); ++ j)
-			{
-				Quaternion bind_real = kfs[i].bind_real[j];
-				Quaternion bind_dual = kfs[i].bind_dual[j];
-				float bind_scale = kfs[i].bind_scale[j];
-
-				uint32_t frame_id = Native2LE(kfs[i].frame_id[j]);
-				os.write(reinterpret_cast<char*>(&frame_id), sizeof(frame_id));
-				bind_real *= bind_scale;
-				bind_real.x() = Native2LE(bind_real.x());
-				bind_real.y() = Native2LE(bind_real.y());
-				bind_real.z() = Native2LE(bind_real.z());
-				bind_real.w() = Native2LE(bind_real.w());
-				os.write(reinterpret_cast<char*>(&bind_real), sizeof(bind_real));
-				bind_dual.x() = Native2LE(bind_dual.x());
-				bind_dual.y() = Native2LE(bind_dual.y());
-				bind_dual.z() = Native2LE(bind_dual.z());
-				bind_dual.w() = Native2LE(bind_dual.w());
-				os.write(reinterpret_cast<char*>(&bind_dual), sizeof(bind_dual));
-			}
-		}
-	}
-
-	void WriteBBKeyFramesChunk(std::vector<AABBKeyFrames> const & bb_kfs, std::ostream& os)
-	{
-		for (size_t i = 0; i < bb_kfs.size(); ++ i)
-		{
-			uint32_t num_bb_kf = Native2LE(static_cast<uint32_t>(bb_kfs[i].frame_id.size()));
-			os.write(reinterpret_cast<char*>(&num_bb_kf), sizeof(num_bb_kf));
-
-			for (uint32_t j = 0; j < bb_kfs[i].frame_id.size(); ++ j)
-			{
-				uint32_t frame_id = Native2LE(bb_kfs[i].frame_id[j]);
-				os.write(reinterpret_cast<char*>(&frame_id), sizeof(frame_id));
-				float3 bb_min;
-				bb_min.x() = Native2LE(bb_kfs[i].bb[j].Min().x());
-				bb_min.y() = Native2LE(bb_kfs[i].bb[j].Min().y());
-				bb_min.z() = Native2LE(bb_kfs[i].bb[j].Min().z());
-				os.write(reinterpret_cast<char*>(&bb_min), sizeof(bb_min));
-				float3 bb_max = bb_kfs[i].bb[j].Max();
-				bb_max.x() = Native2LE(bb_kfs[i].bb[j].Max().x());
-				bb_max.y() = Native2LE(bb_kfs[i].bb[j].Max().y());
-				bb_max.z() = Native2LE(bb_kfs[i].bb[j].Max().z());
-				os.write(reinterpret_cast<char*>(&bb_max), sizeof(bb_max));
-			}
-		}
-	}
-
-	void WriteActionsChunk(std::vector<AnimationAction> const & actions, std::ostream& os)
-	{
-		for (size_t i = 0; i < actions.size(); ++ i)
-		{
-			WriteShortString(os, actions[i].name);
-
-			uint32_t sf = Native2LE(actions[i].start_frame);
-			os.write(reinterpret_cast<char*>(&sf), sizeof(sf));
-
-			uint32_t ef = Native2LE(actions[i].end_frame);
-			os.write(reinterpret_cast<char*>(&ef), sizeof(ef));
 		}
 	}
 
@@ -1982,7 +1794,8 @@ namespace
 			if (ext_name != ".dds")
 			{
 				std::string cmd = "texconv -f A8B8G8R8 -ft DDS -m 1 \"" + slot.first.string() + "\"";
-				system(cmd.c_str());
+				int err = system(cmd.c_str());
+				KFL_UNUSED(err);
 
 				std::string tex_base = (slot.first.parent_path() / slot.first.stem()).string();
 				deploy_files.emplace_back(filesystem::path(tex_base + ".dds"),
@@ -2009,7 +1822,7 @@ namespace
 						size_t j = 0;
 						do
 						{
-							std::stringstream ss;
+							std::ostringstream ss;
 							ss << tex_base << "_" << type << "_" << j << ".dds";
 							new_name = filesystem::path(ss.str());
 							++ j;
@@ -2074,7 +1887,8 @@ namespace
 			cout << "Processing " << df.first.string() << endl;
 
 			std::string cmd = "platformdeployer -P " + platform + " -I \"" + df.first.string() + "\" -T " + deploy_type;
-			system(cmd.c_str());
+			int err = system(cmd.c_str());
+			KFL_UNUSED(err);
 		}
 
 		filesystem::path output_folder = filesystem::path(output_name).parent_path();
@@ -2107,8 +1921,6 @@ namespace
 
 	void MeshMLJIT(std::string const & meshml_name, std::string const & output_name, std::string const & platform)
 	{
-		std::ostringstream ss;
-
 		ResIdentifierPtr file = ResLoader::Instance().Open(meshml_name);
 		KlayGE::XMLDocument doc;
 		XMLNodePtr root = doc.Parse(file);
@@ -2160,14 +1972,11 @@ namespace
 				}
 			}
 		}
-		{
-			uint32_t num_mtls = Native2LE(static_cast<uint32_t>(mtls.size()));
-			ss.write(reinterpret_cast<char*>(&num_mtls), sizeof(num_mtls));
-		}
 
 		XMLNodePtr meshes_chunk = root->FirstNode("meshes_chunk");
 		std::vector<std::string> mesh_names;
 		std::vector<int32_t> mtl_ids;
+		std::vector<uint32_t> mesh_lods;
 		std::vector<AABBox> pos_bbs;
 		std::vector<AABBox> tc_bbs;
 		std::vector<uint32_t> mesh_num_vertices;
@@ -2180,15 +1989,11 @@ namespace
 		char is_index_16_bit = true;
 		if (meshes_chunk)
 		{
-			CompileMeshesChunk(meshes_chunk, mesh_names, mtl_ids, pos_bbs, tc_bbs,
+			CompileMeshesChunk(meshes_chunk, mesh_names, mtl_ids, mesh_lods, pos_bbs, tc_bbs,
 				mesh_num_vertices, mesh_base_vertices,
 				mesh_num_indices, mesh_start_indices,
 				merged_ves, merged_vertices, merged_indices,
 				is_index_16_bit);
-		}
-		{
-			uint32_t num_meshes = Native2LE(static_cast<uint32_t>(pos_bbs.size()));
-			ss.write(reinterpret_cast<char*>(&num_meshes), sizeof(num_meshes));
 		}
 
 		XMLNodePtr bones_chunk = root->FirstNode("bones_chunk");
@@ -2197,23 +2002,22 @@ namespace
 		{
 			CompileBonesChunk(bones_chunk, joints);
 		}
-		{
-			uint32_t num_joints = Native2LE(static_cast<uint32_t>(joints.size()));
-			ss.write(reinterpret_cast<char*>(&num_joints), sizeof(num_joints));
-		}
 
 		XMLNodePtr key_frames_chunk = root->FirstNode("key_frames_chunk");
 		uint32_t num_frames = 0;
 		uint32_t frame_rate = 0;
-		std::vector<KeyFrames> kfs(joints.size());
-		std::vector<AABBKeyFrames> bb_kfs;
+		std::shared_ptr<std::vector<KeyFrames>> kfs;
 		if (key_frames_chunk)
 		{
-			CompileKeyFramesChunk(key_frames_chunk, num_frames, frame_rate, kfs);
+			kfs = MakeSharedPtr<KeyFramesType>(joints.size());
+			std::vector<AABBKeyFrames> bb_kfs;
 
-			for (size_t i = 0; i < kfs.size(); ++ i)
+			CompileKeyFramesChunk(key_frames_chunk, num_frames, frame_rate, *kfs);
+
+			for (size_t i = 0; i < kfs->size(); ++ i)
 			{
-				if (kfs[i].frame_id.empty())
+				auto& kf = (*kfs)[i];
+				if (kf.frame_id.empty())
 				{
 					Quaternion inv_parent_real;
 					Quaternion inv_parent_dual;
@@ -2231,78 +2035,35 @@ namespace
 						inv_parent_scale = 1 / joints[joints[i].parent].bind_scale;
 					}
 
-					kfs[i].frame_id.push_back(0);
-					kfs[i].bind_real.push_back(MathLib::mul_real(joints[i].bind_real, inv_parent_real));
-					kfs[i].bind_dual.push_back(MathLib::mul_dual(joints[i].bind_real, joints[i].bind_dual * inv_parent_scale,
+					kf.frame_id.push_back(0);
+					kf.bind_real.push_back(MathLib::mul_real(joints[i].bind_real, inv_parent_real));
+					kf.bind_dual.push_back(MathLib::mul_dual(joints[i].bind_real, joints[i].bind_dual * inv_parent_scale,
 						inv_parent_real, inv_parent_dual));
-					kfs[i].bind_scale.push_back(joints[i].bind_scale * inv_parent_scale);
+					kf.bind_scale.push_back(joints[i].bind_scale * inv_parent_scale);
 				}
 			}
 
 			XMLNodePtr bb_kfs_chunk = root->FirstNode("bb_key_frames_chunk");
 			CompileBBKeyFramesChunk(bb_kfs_chunk, pos_bbs, num_frames, bb_kfs);
 		}
-		{
-			uint32_t num_kfs = Native2LE(static_cast<uint32_t>(kfs.size()));
-			ss.write(reinterpret_cast<char*>(&num_kfs), sizeof(num_kfs));
-		}
 
 		XMLNodePtr actions_chunk = root->FirstNode("actions_chunk");
-		std::vector<AnimationAction> actions;
+		std::shared_ptr<std::vector<AnimationAction>> actions;
 		if (actions_chunk)
 		{
-			CompileActionsChunk(actions_chunk, num_frames, actions);
+			actions = MakeSharedPtr<std::vector<AnimationAction>>();
+			CompileActionsChunk(actions_chunk, num_frames, *actions);
 		}
+
+		std::vector<RenderMaterialPtr> output_mtls(mtls.size());
+		for (size_t i = 0; i < mtls.size(); ++ i)
 		{
-			uint32_t num_actions = Native2LE(key_frames_chunk ? std::max(static_cast<uint32_t>(actions.size()), 1U) : 0);
-			ss.write(reinterpret_cast<char*>(&num_actions), sizeof(num_actions));
+			output_mtls[i] = MakeSharedPtr<RenderMaterial>(mtls[i].material);
 		}
-
-		if (materials_chunk)
-		{
-			WriteMaterialsChunk(mtls, ss);
-		}
-
-		if (meshes_chunk)
-		{
-			WriteMeshesChunk(mesh_names, mtl_ids, pos_bbs, tc_bbs,
-				mesh_num_vertices, mesh_base_vertices, mesh_num_indices, mesh_start_indices,
-				merged_ves, merged_vertices, merged_indices, is_index_16_bit, ss);
-		}
-
-		if (bones_chunk)
-		{
-			WriteBonesChunk(joints, ss);
-		}
-
-		if (key_frames_chunk)
-		{
-			WriteKeyFramesChunk(num_frames, frame_rate, kfs, ss);
-			WriteBBKeyFramesChunk(bb_kfs, ss);
-			WriteActionsChunk(actions, ss);
-		}
-
-		std::ofstream ofs(output_name.c_str(), std::ios_base::binary);
-		BOOST_ASSERT(ofs);
-		uint32_t fourcc = Native2LE(MakeFourCC<'K', 'L', 'M', ' '>::value);
-		ofs.write(reinterpret_cast<char*>(&fourcc), sizeof(fourcc));
-
-		uint32_t ver = Native2LE(MODEL_BIN_VERSION);
-		ofs.write(reinterpret_cast<char*>(&ver), sizeof(ver));
-
-		uint64_t original_len = Native2LE(static_cast<uint64_t>(ss.str().size()));
-		ofs.write(reinterpret_cast<char*>(&original_len), sizeof(original_len));
-
-		std::ofstream::pos_type p = ofs.tellp();
-		uint64_t len = 0;
-		ofs.write(reinterpret_cast<char*>(&len), sizeof(len));
-
-		LZMACodec lzma;
-		len = lzma.Encode(ofs, ss.str().c_str(), ss.str().size());
-
-		ofs.seekp(p, std::ios_base::beg);
-		len = Native2LE(len);
-		ofs.write(reinterpret_cast<char*>(&len), sizeof(len));
+		SaveModel(output_name, output_mtls, merged_ves, is_index_16_bit, merged_vertices, merged_indices,
+			mesh_names, mtl_ids, mesh_lods, pos_bbs, tc_bbs,
+			mesh_num_vertices, mesh_base_vertices, mesh_num_indices, mesh_start_indices,
+			joints, actions, kfs, num_frames, frame_rate);
 	}
 }
 
@@ -2364,44 +2125,55 @@ int main(int argc, char* argv[])
 		filesystem::path input_path(input_name);
 		std::string base_name = input_path.stem().string();
 		filesystem::path folder = input_path.parent_path();
-		meshml_name = (folder / filesystem::path(base_name)).string() + ".7z//" + base_name + ".meshml";
+		std::string package_name = (folder / filesystem::path(base_name)).string() + ".7z";
+		if (!ResLoader::Instance().Locate(package_name).empty())
+		{
+			meshml_name = package_name + "//" + base_name + ".meshml";
+		}
 	}
 
-	std::string::size_type const pkt_offset(meshml_name.find("//"));
-	std::string file_name;
-	if (pkt_offset != std::string::npos)
+	if (meshml_name.empty())
 	{
-		std::string pkt_name = meshml_name.substr(0, pkt_offset);
-		std::string::size_type const password_offset = pkt_name.find("|");
-		if (password_offset != std::string::npos)
-		{
-			pkt_name = pkt_name.substr(0, password_offset - 1);
-		}
-
-		if (target_folder.empty())
-		{
-			target_folder = filesystem::path(pkt_name).parent_path();
-		}
-
-		file_name = meshml_name.substr(pkt_offset + 2);
+		cout << "Couldn't locate " << input_name << endl;
 	}
 	else
 	{
-		filesystem::path meshml_path(meshml_name);
-		if (target_folder.empty())
+		std::string::size_type const pkt_offset(meshml_name.find("//"));
+		std::string file_name;
+		if (pkt_offset != std::string::npos)
 		{
-			target_folder = meshml_path.parent_path();
+			std::string pkt_name = meshml_name.substr(0, pkt_offset);
+			std::string::size_type const password_offset = pkt_name.find("|");
+			if (password_offset != std::string::npos)
+			{
+				pkt_name = pkt_name.substr(0, password_offset - 1);
+			}
+
+			if (target_folder.empty())
+			{
+				target_folder = filesystem::path(pkt_name).parent_path();
+			}
+
+			file_name = meshml_name.substr(pkt_offset + 2);
 		}
-		file_name = meshml_path.filename().string();
-	}
+		else
+		{
+			filesystem::path meshml_path(meshml_name);
+			if (target_folder.empty())
+			{
+				target_folder = meshml_path.parent_path();
+			}
+			file_name = meshml_path.filename().string();
+		}
 
-	std::string output_name = (target_folder / filesystem::path(file_name)).string() + JIT_EXT_NAME;
+		std::string output_name = (target_folder / filesystem::path(file_name)).string() + JIT_EXT_NAME;
 
-	MeshMLJIT(meshml_name, output_name, platform);
+		MeshMLJIT(meshml_name, output_name, platform);
 
-	if (!quiet)
-	{
-		cout << "Binary model has been saved to " << output_name << "." << endl;
+		if (!quiet)
+		{
+			cout << "Binary model has been saved to " << output_name << "." << endl;
+		}
 	}
 
 	Context::Destroy();

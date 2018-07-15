@@ -72,10 +72,12 @@ namespace KlayGE
 		REDT_string,
 		REDT_texture1D,
 		REDT_texture2D,
+		REDT_texture2DMS,
 		REDT_texture3D,
 		REDT_textureCUBE,
 		REDT_texture1DArray,
 		REDT_texture2DArray,
+		REDT_texture2DMSArray,
 		REDT_texture3DArray,
 		REDT_textureCUBEArray,
 		REDT_sampler,
@@ -113,7 +115,17 @@ namespace KlayGE
 		REDT_rw_texture2DArray,
 		REDT_rw_byte_address_buffer,
 		REDT_append_structured_buffer,
-		REDT_consume_structured_buffer
+		REDT_consume_structured_buffer,
+		REDT_rasterizer_ordered_buffer,
+		REDT_rasterizer_ordered_byte_address_buffer,
+		REDT_rasterizer_ordered_structured_buffer,
+		REDT_rasterizer_ordered_texture1D,
+		REDT_rasterizer_ordered_texture1DArray,
+		REDT_rasterizer_ordered_texture2D,
+		REDT_rasterizer_ordered_texture2DArray,
+		REDT_rasterizer_ordered_texture3D,
+
+		REDT_count
 	};
 
 	struct KLAYGE_CORE_API TextureSubresource
@@ -226,16 +238,31 @@ namespace KlayGE
 		{
 			return 0;
 		}
+
+	protected:
+		struct CBufferDesc
+		{
+			RenderEffectConstantBuffer* cbuff;
+			uint32_t offset;
+			uint32_t stride;
+		};
 	};
 
 	template <typename T>
 	class RenderVariableConcrete : public RenderVariable
 	{
 	public:
-		RenderVariableConcrete()
-			: in_cbuff_(false)
+		explicit RenderVariableConcrete(bool in_cbuff)
+			: in_cbuff_(in_cbuff)
 		{
-			new (data_.val) T;
+			if (!in_cbuff_)
+			{
+				new (data_.val) T;
+			}
+		}
+		RenderVariableConcrete()
+			: RenderVariableConcrete(false)
+		{
 		}
 		virtual ~RenderVariableConcrete()
 		{
@@ -247,16 +274,11 @@ namespace KlayGE
 
 		std::unique_ptr<RenderVariable> Clone() override
 		{
-			auto ret = MakeUniquePtr<RenderVariableConcrete<T>>();
+			auto ret = MakeUniquePtr<RenderVariableConcrete<T>>(in_cbuff_);
 			if (in_cbuff_)
 			{
-				if (!ret->in_cbuff_)
-				{
-					ret->RetriveT().~T();
-				}
 				ret->data_ = data_;
 			}
-			ret->in_cbuff_ = in_cbuff_;
 			T val;
 			this->Value(val);
 			*ret = val;
@@ -267,11 +289,12 @@ namespace KlayGE
 		{
 			if (in_cbuff_)
 			{
-				T& val_in_cbuff = *(data_.cbuff_desc.cbuff->template VariableInBuff<T>(data_.cbuff_desc.offset));
+				auto& cbuff_desc = this->RetriveCBufferDesc();
+				T& val_in_cbuff = *(cbuff_desc.cbuff->template VariableInBuff<T>(cbuff_desc.offset));
 				if (val_in_cbuff != value)
 				{
 					val_in_cbuff = value;
-					data_.cbuff_desc.cbuff->Dirty(true);
+					cbuff_desc.cbuff->Dirty(true);
 				}
 			}
 			else
@@ -285,7 +308,8 @@ namespace KlayGE
 		{
 			if (in_cbuff_)
 			{
-				val = *(data_.cbuff_desc.cbuff->template VariableInBuff<T>(data_.cbuff_desc.offset));
+				auto const & cbuff_desc = this->RetriveCBufferDesc();
+				val = *(cbuff_desc.cbuff->template VariableInBuff<T>(cbuff_desc.offset));
 			}
 			else
 			{
@@ -297,13 +321,14 @@ namespace KlayGE
 		{
 			if (!in_cbuff_)
 			{
-				T val;
-				this->Value(val);
+				T val = this->RetriveT();
 				this->RetriveT().~T();
 				in_cbuff_ = true;
-				data_.cbuff_desc.cbuff = &cbuff;
-				data_.cbuff_desc.offset = offset;
-				data_.cbuff_desc.stride = stride;
+				CBufferDesc cbuff_desc;
+				cbuff_desc.cbuff = &cbuff;
+				cbuff_desc.offset = offset;
+				cbuff_desc.stride = stride;
+				this->RetriveCBufferDesc() = std::move(cbuff_desc);
 				this->operator=(val);
 			}
 		}
@@ -311,7 +336,7 @@ namespace KlayGE
 		virtual void RebindToCBuffer(RenderEffectConstantBuffer& cbuff) override
 		{
 			BOOST_ASSERT(in_cbuff_);
-			data_.cbuff_desc.cbuff = &cbuff;
+			this->RetriveCBufferDesc().cbuff = &cbuff;
 		}
 
 		virtual bool InCBuffer() const override
@@ -320,11 +345,11 @@ namespace KlayGE
 		}
 		virtual uint32_t CBufferOffset() const override
 		{
-			return data_.cbuff_desc.offset;
+			return this->RetriveCBufferDesc().offset;
 		}
 		virtual uint32_t Stride() const override
 		{
-			return data_.cbuff_desc.stride;
+			return this->RetriveCBufferDesc().stride;
 		}
 
 	protected:
@@ -349,17 +374,19 @@ namespace KlayGE
 			return *r2t.t;
 		}
 
+		CBufferDesc& RetriveCBufferDesc()
+		{
+			return data_.cbuff_desc;
+		}
+		CBufferDesc const & RetriveCBufferDesc() const
+		{
+			return data_.cbuff_desc;
+		}
+
 	protected:
 		bool in_cbuff_;
 		union VarData
 		{
-			struct CBufferDesc
-			{
-				RenderEffectConstantBuffer* cbuff;
-				uint32_t offset;
-				uint32_t stride;
-			};
-
 			CBufferDesc cbuff_desc;
 			uint8_t val[sizeof(T)];
 		};
@@ -369,6 +396,9 @@ namespace KlayGE
 	class RenderVariableFloat4x4 : public RenderVariableConcrete<float4x4>
 	{
 	public:
+		explicit RenderVariableFloat4x4(bool in_cbuff);
+		RenderVariableFloat4x4();
+
 		std::unique_ptr<RenderVariable> Clone() override;
 
 		virtual RenderVariable& operator=(float4x4 const & value) override;
@@ -379,21 +409,42 @@ namespace KlayGE
 	class RenderVariableArray : public RenderVariableConcrete<std::vector<T>>
 	{
 	public:
+		explicit RenderVariableArray(bool in_cbuff)
+			: RenderVariableConcrete<std::vector<T>>(in_cbuff)
+		{
+		}
+		RenderVariableArray()
+			: RenderVariableConcrete<std::vector<T>>()
+		{
+		}
+
 		std::unique_ptr<RenderVariable> Clone() override
 		{
-			auto ret = MakeUniquePtr<RenderVariableArray<T>>();
+			auto ret = MakeUniquePtr<RenderVariableArray<T>>(this->in_cbuff_);
 			if (this->in_cbuff_)
 			{
-				if (!ret->in_cbuff_)
-				{
-					ret->RetriveT().~vector();
-				}
 				ret->RenderVariableConcrete<std::vector<T>>::data_ = this->data_;
+				ret->size_ = this->size_;
+
+				auto const & src_cbuff_desc = this->RetriveCBufferDesc();
+				uint8_t const * src = src_cbuff_desc.cbuff->template VariableInBuff<uint8_t>(src_cbuff_desc.offset);
+
+				auto const & dst_cbuff_desc = ret->RetriveCBufferDesc();
+				uint8_t* dst = dst_cbuff_desc.cbuff->template VariableInBuff<uint8_t>(dst_cbuff_desc.offset);
+
+				for (size_t i = 0; i < size_; ++ i)
+				{
+					memcpy(dst, src, sizeof(T));
+					src += src_cbuff_desc.stride;
+					dst += dst_cbuff_desc.stride;
+				}
+
+				dst_cbuff_desc.cbuff->Dirty(true);
 			}
-			ret->RenderVariableConcrete<std::vector<T>>::in_cbuff_ = this->in_cbuff_;
-			std::vector<T> val;
-			this->Value(val);
-			*ret = val;
+			else
+			{
+				ret->RetriveT() = this->RetriveT();
+			}
 			return std::move(ret);
 		}
 
@@ -401,15 +452,20 @@ namespace KlayGE
 		{
 			if (this->in_cbuff_)
 			{
-				uint8_t* target = this->data_.cbuff_desc.cbuff->template VariableInBuff<uint8_t>(this->data_.cbuff_desc.offset);
+				uint8_t const * src = reinterpret_cast<uint8_t const *>(value.data());
+
+				auto& cbuff_desc = this->RetriveCBufferDesc();
+				uint8_t* dst = cbuff_desc.cbuff->template VariableInBuff<uint8_t>(cbuff_desc.offset);
 
 				size_ = static_cast<uint32_t>(value.size());
 				for (size_t i = 0; i < value.size(); ++ i)
 				{
-					memcpy(target + i * this->data_.cbuff_desc.stride, &value[i], sizeof(value[i]));
+					memcpy(dst, src, sizeof(T));
+					src += sizeof(T);
+					dst += cbuff_desc.stride;
 				}
 
-				this->data_.cbuff_desc.cbuff->Dirty(true);
+				cbuff_desc.cbuff->Dirty(true);
 			}
 			else
 			{
@@ -422,12 +478,17 @@ namespace KlayGE
 		{
 			if (this->in_cbuff_)
 			{
-				uint8_t const * src = this->data_.cbuff_desc.cbuff->template VariableInBuff<uint8_t>(this->data_.cbuff_desc.offset);
+				auto const & cbuff_desc = this->RetriveCBufferDesc();
+				uint8_t const * src = cbuff_desc.cbuff->template VariableInBuff<uint8_t>(cbuff_desc.offset);
 
 				val.resize(size_);
+				uint8_t* dst = reinterpret_cast<uint8_t*>(val.data());
+
 				for (size_t i = 0; i < size_; ++ i)
 				{
-					memcpy(&val[i], src + i * this->data_.cbuff_desc.stride, sizeof(val[i]));
+					memcpy(&val[i], src, sizeof(val[i]));
+					src += cbuff_desc.stride;
+					dst += sizeof(T);
 				}
 			}
 			else
@@ -443,6 +504,9 @@ namespace KlayGE
 	class RenderVariableFloat4x4Array : public RenderVariableConcrete<std::vector<float4x4>>
 	{
 	public:
+		explicit RenderVariableFloat4x4Array(bool in_cbuff);
+		RenderVariableFloat4x4Array();
+
 		std::unique_ptr<RenderVariable> Clone() override;
 
 		virtual RenderVariable& operator=(std::vector<float4x4> const & value) override;
@@ -597,6 +661,66 @@ namespace KlayGE
 		std::string str_;
 	};
 
+	class KLAYGE_CORE_API RenderShaderGraphNode
+	{
+	public:
+#if KLAYGE_IS_DEV_PLATFORM
+		void Load(XMLNodePtr const & node);
+#endif
+
+		void StreamIn(ResIdentifierPtr const & res);
+#if KLAYGE_IS_DEV_PLATFORM
+		void StreamOut(std::ostream& os) const;
+#endif
+
+		std::string const & Name() const
+		{
+			return name_;
+		}
+		size_t NameHash() const
+		{
+			return name_hash_;
+		}
+
+		std::string const & ReturnType() const
+		{
+			return return_type_;
+		}
+
+		uint32_t NumParameters() const
+		{
+			return static_cast<uint32_t>(params_.size());
+		}
+		std::pair<std::string, std::string> const & Parameter(uint32_t n) const
+		{
+			BOOST_ASSERT(n < this->NumParameters());
+			return params_[n];
+		}
+
+		std::string const & ImplName() const
+		{
+			return impl_;
+		}
+
+		void OverrideImpl(std::string_view impl)
+		{
+			impl_ = std::string(impl);
+		}
+
+#if KLAYGE_IS_DEV_PLATFORM
+		std::string GenDeclarationCode() const;
+		std::string GenDefinitionCode() const;
+#endif
+
+	private:
+		std::string name_;
+		size_t name_hash_;
+
+		std::string return_type_;
+		std::vector<std::pair<std::string, std::string>> params_;
+		std::string impl_;
+	};
+
 	// äÖÈ¾Ð§¹û
 	//////////////////////////////////////////////////////////////////////////////////
 	class KLAYGE_CORE_API RenderEffect : boost::noncopyable
@@ -604,7 +728,7 @@ namespace KlayGE
 		friend class RenderEffectTemplate;
 
 	public:
-		void Load(std::string const & name);
+		void Load(ArrayRef<std::string> names);
 
 		RenderEffectPtr Clone();
 
@@ -671,7 +795,7 @@ namespace KlayGE
 	class KLAYGE_CORE_API RenderEffectTemplate : boost::noncopyable
 	{
 	public:
-		void Load(std::string const & name, RenderEffect& effect);
+		void Load(ArrayRef<std::string> names, RenderEffect& effect);
 
 		bool StreamIn(ResIdentifierPtr const & source, RenderEffect& effect);
 #if KLAYGE_IS_DEV_PLATFORM
@@ -714,15 +838,23 @@ namespace KlayGE
 
 		uint32_t NumMacros() const
 		{
-			return macros_ ? static_cast<uint32_t>(macros_->size()) : 0;
+			return static_cast<uint32_t>(macros_.size());
 		}
 		std::pair<std::string, std::string> const & MacroByIndex(uint32_t n) const
 		{
 			BOOST_ASSERT(n < this->NumMacros());
-			return (*macros_)[n].first;
+			return macros_[n].first;
 		}
 
-		std::string const & TypeName(uint32_t code) const;
+		uint32_t NumShaderGraphNodes() const
+		{
+			return static_cast<uint32_t>(shader_graph_nodes_.size());
+		}
+		RenderShaderGraphNode const & ShaderGraphNodesByIndex(uint32_t n) const
+		{
+			BOOST_ASSERT(n < this->NumShaderGraphNodes());
+			return shader_graph_nodes_[n];
+		}
 
 #if KLAYGE_IS_DEV_PLATFORM
 		void GenHLSLShaderText(RenderEffect const & effect);
@@ -734,9 +866,15 @@ namespace KlayGE
 
 	private:
 #if KLAYGE_IS_DEV_PLATFORM
+		void PreprocessIncludes(XMLDocument& doc, XMLNode& root, std::vector<std::unique_ptr<XMLDocument>>& include_docs);
 		void RecursiveIncludeNode(XMLNode const & root, std::vector<std::string>& include_names) const;
 		void InsertIncludeNodes(XMLDocument& target_doc, XMLNode& target_root,
 			XMLNodePtr const & target_place, XMLNode const & include_root) const;
+
+		XMLNodePtr ResolveInheritTechNode(XMLDocument& doc, XMLNode& root, XMLNodePtr const & tech_node);
+		void ResolveOverrideTechs(XMLDocument& doc, XMLNode& root);
+
+		void Load(XMLNode const & root, RenderEffect& effect);
 #endif
 
 	private:
@@ -748,13 +886,15 @@ namespace KlayGE
 
 		std::vector<std::unique_ptr<RenderTechnique>> techniques_;
 
-		std::shared_ptr<std::vector<std::pair<std::pair<std::string, std::string>, bool>>> macros_;
+		std::vector<std::pair<std::pair<std::string, std::string>, bool>> macros_;
 		std::vector<RenderShaderFragment> shader_frags_;
 #if KLAYGE_IS_DEV_PLATFORM
 		std::string hlsl_shader_;
 #endif
 
 		std::vector<ShaderDesc> shader_descs_;
+
+		std::vector<RenderShaderGraphNode> shader_graph_nodes_;
 	};
 
 	class KLAYGE_CORE_API RenderTechnique : boost::noncopyable
@@ -1121,8 +1261,10 @@ namespace KlayGE
 		RenderEffectConstantBuffer* cbuff_;
 	};
 
-	KLAYGE_CORE_API RenderEffectPtr SyncLoadRenderEffect(std::string const & effect_name);
+	KLAYGE_CORE_API RenderEffectPtr SyncLoadRenderEffect(std::string const & effect_names);
+	KLAYGE_CORE_API RenderEffectPtr SyncLoadRenderEffects(ArrayRef<std::string> effect_names);
 	KLAYGE_CORE_API RenderEffectPtr ASyncLoadRenderEffect(std::string const & effect_name);
+	KLAYGE_CORE_API RenderEffectPtr ASyncLoadRenderEffects(ArrayRef<std::string> effect_names);
 }
 
 #endif		// _RENDEREFFECT_HPP

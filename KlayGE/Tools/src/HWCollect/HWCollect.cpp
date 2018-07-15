@@ -37,7 +37,14 @@
 #include <KlayGE/SALWrapper.hpp>
 #if defined KLAYGE_PLATFORM_WINDOWS
 	#include <windows.h>
+	#if defined(KLAYGE_COMPILER_CLANGC2)
+		#pragma clang diagnostic push
+		#pragma clang diagnostic ignored "-Wmicrosoft-enum-value" // Ignore int enum
+	#endif
 	#include <dxgi1_2.h>
+	#if defined(KLAYGE_COMPILER_CLANGC2)
+		#pragma clang diagnostic pop
+	#endif
 #endif
 
 #include <string>
@@ -372,7 +379,7 @@ void DetectMainboardInfo(std::ostream& os)
 
 int main()
 {
-	std::stringstream ss;
+	std::ostringstream ss;
 
 	ss << "=== OS information ===" << endl;
 	DetectOSInfo(ss);

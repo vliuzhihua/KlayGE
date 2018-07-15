@@ -206,14 +206,30 @@ void AtmosphericScatteringApp::OnCreate()
 	id_beta_button_ = dialog_param_->IDFromName("beta_button");
 	id_absorb_button_ = dialog_param_->IDFromName("absorb_button");
 
-	dialog_param_->Control<UISlider>(id_atmosphere_top_)->OnValueChangedEvent().connect(std::bind(&AtmosphericScatteringApp::AtmosphereTopHandler, this, std::placeholders::_1));
+	dialog_param_->Control<UISlider>(id_atmosphere_top_)->OnValueChangedEvent().connect(
+		[this](UISlider const & sender)
+		{
+			this->AtmosphereTopHandler(sender);
+		});
 	this->AtmosphereTopHandler(*(dialog_param_->Control<UISlider>(id_atmosphere_top_)));
 
-	dialog_param_->Control<UISlider>(id_density_)->OnValueChangedEvent().connect(std::bind(&AtmosphericScatteringApp::DensityHandler, this, std::placeholders::_1));
+	dialog_param_->Control<UISlider>(id_density_)->OnValueChangedEvent().connect(
+		[this](UISlider const & sender)
+		{
+			this->DensityHandler(sender);
+		});
 	this->DensityHandler(*(dialog_param_->Control<UISlider>(id_density_)));
 
-	dialog_param_->Control<UITexButton>(id_beta_button_)->OnClickedEvent().connect(std::bind(&AtmosphericScatteringApp::ChangeBetaHandler, this, std::placeholders::_1));
-	dialog_param_->Control<UITexButton>(id_absorb_button_)->OnClickedEvent().connect(std::bind(&AtmosphericScatteringApp::ChangeAbsorbHandler, this, std::placeholders::_1));
+	dialog_param_->Control<UITexButton>(id_beta_button_)->OnClickedEvent().connect(
+		[this](UITexButton const & sender)
+		{
+			this->ChangeBetaHandler(sender);
+		});
+	dialog_param_->Control<UITexButton>(id_absorb_button_)->OnClickedEvent().connect(
+		[this](UITexButton const & sender)
+		{
+			this->ChangeAbsorbHandler(sender);
+		});
 
 	this->LoadBeta(Color(38.05f, 82.36f, 214.65f, 1));
 	this->LoadAbsorb(Color(0.75f, 0.85f, 1, 1));
@@ -232,7 +248,11 @@ void AtmosphericScatteringApp::OnCreate()
 	actionMap.AddActions(actions, actions + std::size(actions));
 
 	action_handler_t input_handler = MakeSharedPtr<input_signal>();
-	input_handler->connect(std::bind(&AtmosphericScatteringApp::InputHandler, this, std::placeholders::_1, std::placeholders::_2));
+	input_handler->connect(
+		[this](InputEngine const & sender, InputAction const & action)
+		{
+			this->InputHandler(sender, action);
+		});
 	inputEngine.ActionMap(actionMap, input_handler);
 }
 
@@ -251,20 +271,10 @@ void AtmosphericScatteringApp::LoadBeta(Color const & clr)
 	checked_pointer_cast<AtmosphereMesh>(atmosphere_->GetRenderable())->Beta(clr);
 
 	Color f4_clr = clr / 250.0f;
-	ElementFormat fmt;
-	uint32_t data = 0xFF000000;
-	if (rf.RenderEngineInstance().DeviceCaps().texture_format_support(EF_ABGR8))
-	{
-		fmt = EF_ABGR8;
-		data |= f4_clr.ABGR();
-	}
-	else
-	{
-		BOOST_ASSERT(rf.RenderEngineInstance().DeviceCaps().texture_format_support(EF_ARGB8));
 
-		fmt = EF_ARGB8;
-		data |= f4_clr.ARGB();
-	}
+	auto const fmt = rf.RenderEngineInstance().DeviceCaps().BestMatchTextureFormat({ EF_ABGR8, EF_ARGB8 });
+	BOOST_ASSERT(fmt != EF_Unknown);
+	uint32_t data = 0xFF000000 | ((fmt == EF_ABGR8) ? f4_clr.ABGR() : f4_clr.ARGB());
 
 	ElementInitData init_data;
 	init_data.data = &data;
@@ -280,20 +290,9 @@ void AtmosphericScatteringApp::LoadAbsorb(Color const & clr)
 	checked_pointer_cast<PlanetMesh>(planet_->GetRenderable())->Absorb(clr);
 	checked_pointer_cast<AtmosphereMesh>(atmosphere_->GetRenderable())->Absorb(clr);
 
-	ElementFormat fmt;
-	uint32_t data = 0xFF000000;
-	if (rf.RenderEngineInstance().DeviceCaps().texture_format_support(EF_ABGR8))
-	{
-		fmt = EF_ABGR8;
-		data |= clr.ABGR();
-	}
-	else
-	{
-		BOOST_ASSERT(rf.RenderEngineInstance().DeviceCaps().texture_format_support(EF_ARGB8));
-
-		fmt = EF_ARGB8;
-		data |= clr.ARGB();
-	}
+	auto const fmt = rf.RenderEngineInstance().DeviceCaps().BestMatchTextureFormat({ EF_ABGR8, EF_ARGB8 });
+	BOOST_ASSERT(fmt != EF_Unknown);
+	uint32_t data = 0xFF000000 | ((fmt == EF_ABGR8) ? clr.ABGR() : clr.ARGB());
 
 	ElementInitData init_data;
 	init_data.data = &data;

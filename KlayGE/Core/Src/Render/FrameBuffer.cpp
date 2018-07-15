@@ -27,6 +27,10 @@ namespace KlayGE
 					: left_(0), top_(0), width_(0), height_(0),
 						viewport_(MakeSharedPtr<Viewport>())
 	{
+		viewport_->left = left_;
+		viewport_->top = top_;
+		viewport_->width = width_;
+		viewport_->height = height_;
 	}
 
 	FrameBuffer::~FrameBuffer()
@@ -86,12 +90,12 @@ namespace KlayGE
 		{
 		case ATT_DepthStencil:
 			{
-				if (rs_view_)
+				if (ds_view_)
 				{
 					this->Detach(att);
 				}
 
-				rs_view_ = view;
+				ds_view_ = view;
 			}
 			break;
 
@@ -152,9 +156,7 @@ namespace KlayGE
 		switch (att)
 		{
 		case ATT_DepthStencil:
-			{
-				rs_view_.reset();
-			}
+			ds_view_.reset();
 			break;
 
 		default:
@@ -178,23 +180,24 @@ namespace KlayGE
 		views_dirty_ = true;
 	}
 
-	RenderViewPtr FrameBuffer::Attached(uint32_t att) const
+	RenderViewPtr const & FrameBuffer::Attached(uint32_t att) const
 	{
 		switch (att)
 		{
 		case ATT_DepthStencil:
-			return rs_view_;
+			return ds_view_;
 
 		default:
 			{
-				uint32_t clr_id = att - ATT_Color0;
+				uint32_t const clr_id = att - ATT_Color0;
 				if (clr_id < clr_views_.size())
 				{
 					return clr_views_[clr_id];
 				}
 				else
 				{
-					return RenderViewPtr();
+					static RenderViewPtr null_view;
+					return null_view;
 				}
 			}
 		}
@@ -244,7 +247,7 @@ namespace KlayGE
 		views_dirty_ = true;
 	}
 
-	UnorderedAccessViewPtr FrameBuffer::AttachedUAV(uint32_t att) const
+	UnorderedAccessViewPtr const & FrameBuffer::AttachedUAV(uint32_t att) const
 	{
 		if (att < ua_views_.size())
 		{
@@ -252,52 +255,8 @@ namespace KlayGE
 		}
 		else
 		{
-			return UnorderedAccessViewPtr();
-		}
-	}
-
-	void FrameBuffer::OnBind()
-	{
-		for (uint32_t i = 0; i < clr_views_.size(); ++ i)
-		{
-			if (clr_views_[i])
-			{
-				clr_views_[i]->OnBind(*this, ATT_Color0 + i);
-			}
-		}
-		if (rs_view_)
-		{
-			rs_view_->OnBind(*this, ATT_DepthStencil);
-		}
-		for (uint32_t i = 0; i < ua_views_.size(); ++ i)
-		{
-			if (ua_views_[i])
-			{
-				ua_views_[i]->OnBind(*this, i);
-			}
-		}
-		views_dirty_ = false;
-	}
-
-	void FrameBuffer::OnUnbind()
-	{
-		for (uint32_t i = 0; i < clr_views_.size(); ++ i)
-		{
-			if (clr_views_[i])
-			{
-				clr_views_[i]->OnUnbind(*this, ATT_Color0 + i);
-			}
-		}
-		if (rs_view_)
-		{
-			rs_view_->OnUnbind(*this, ATT_DepthStencil);
-		}
-		for (uint32_t i = 0; i < ua_views_.size(); ++ i)
-		{
-			if (ua_views_[i])
-			{
-				ua_views_[i]->OnUnbind(*this, i);
-			}
+			static UnorderedAccessViewPtr null_view;
+			return null_view;
 		}
 	}
 }

@@ -36,6 +36,8 @@
 
 #include <cmath>
 #include <cstring>
+#include <functional>
+
 #include <boost/assert.hpp>
 
 #include <KlayGE/XAudio/XAAudio.hpp>
@@ -87,6 +89,7 @@ namespace KlayGE
 	XAAudioEngine::XAAudioEngine()
 		: listener_{}
 	{
+#ifdef KLAYGE_PLATFORM_WINDOWS_DESKTOP
 		mod_xaudio2_ = ::LoadLibraryEx(TEXT(XAUDIO2_DLL_A), nullptr, 0);
 		if (nullptr == mod_xaudio2_)
 		{
@@ -95,27 +98,48 @@ namespace KlayGE
 
 		if (mod_xaudio2_ != nullptr)
 		{
+#if (_WIN32_WINNT > _WIN32_WINNT_WIN7)
 			DynamicXAudio2Create_ = reinterpret_cast<XAudio2CreateFunc>(::GetProcAddress(mod_xaudio2_, "XAudio2Create"));
+#else
+			DynamicXAudio2Create_ = ::XAudio2Create;
+#endif
 			DynamicX3DAudioInitialize_ = reinterpret_cast<X3DAudioInitializeFunc>(::GetProcAddress(mod_xaudio2_, "X3DAudioInitialize"));
 			DynamicX3DAudioCalculate_ = reinterpret_cast<X3DAudioCalculateFunc>(::GetProcAddress(mod_xaudio2_, "X3DAudioCalculate"));
 		}
+#else
+		DynamicXAudio2Create_ = ::XAudio2Create;
+		DynamicX3DAudioInitialize_ = ::X3DAudioInitialize;
+		DynamicX3DAudioCalculate_ = ::X3DAudioCalculate;
+#endif
 
+		uint32_t flags = 0;
+#if (_WIN32_WINNT <= _WIN32_WINNT_WIN7) && defined(KLAYGE_DEBUG)
+		flags |= XAUDIO2_DEBUG_ENGINE;
+#endif
 		IXAudio2* xaudio = nullptr;
-		TIFHR(DynamicXAudio2Create_(&xaudio, 0, Processor1));
+		TIFHR(DynamicXAudio2Create_(&xaudio, flags, Processor1));
 		xaudio_ = MakeCOMPtr(xaudio);
 
 		IXAudio2MasteringVoice*	mastering_voice;
 		TIFHR(xaudio_->CreateMasteringVoice(&mastering_voice, XAUDIO2_DEFAULT_CHANNELS, XAUDIO2_DEFAULT_SAMPLERATE));
 		mastering_voice_ = std::shared_ptr<IXAudio2MasteringVoice>(mastering_voice, std::mem_fn(&IXAudio2MasteringVoice::DestroyVoice));
 
+#if (_WIN32_WINNT <= _WIN32_WINNT_WIN7)
+		XAUDIO2_DEVICE_DETAILS details;
+		TIFHR(xaudio_->GetDeviceDetails(0, &details));
+
+		DWORD channel_mask = details.OutputFormat.dwChannelMask;
+		mastering_channels_ = details.OutputFormat.Format.nChannels;
+#else
 		DWORD channel_mask;
 		TIFHR(mastering_voice_->GetChannelMask(&channel_mask));
-
-		TIFHR(DynamicX3DAudioInitialize_(channel_mask, X3DAUDIO_SPEED_OF_SOUND, x3d_instance_));
 
 		XAUDIO2_VOICE_DETAILS voice_details;
 		mastering_voice_->GetVoiceDetails(&voice_details);
 		mastering_channels_ = voice_details.InputChannels;
+#endif
+
+		TIFHR(DynamicX3DAudioInitialize_(channel_mask, X3DAUDIO_SPEED_OF_SOUND, x3d_instance_));
 
 		this->SetListenerPos(float3(0, 0, 0));
 		this->SetListenerVel(float3(0, 0, 0));
@@ -128,7 +152,9 @@ namespace KlayGE
 		mastering_voice_.reset();
 		xaudio_.reset();
 
+#ifdef KLAYGE_PLATFORM_WINDOWS_DESKTOP
 		::FreeLibrary(mod_xaudio2_);
+#endif
 	}
 
 	void XAAudioEngine::X3DAudioCalculate(X3DAUDIO_EMITTER const * emitter, uint32_t flags, X3DAUDIO_DSP_SETTINGS* dsp_settings) const

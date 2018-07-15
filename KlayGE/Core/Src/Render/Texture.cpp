@@ -1148,8 +1148,8 @@ namespace
 				array_size *= 6;
 			}
 
-			if (((EF_BC5 == tex_data.format) && !caps.texture_format_support(EF_BC5))
-				|| ((EF_BC5_SRGB == tex_data.format) && !caps.texture_format_support(EF_BC5_SRGB)))
+			if (((EF_BC5 == tex_data.format) && !caps.TextureFormatSupport(EF_BC5))
+				|| ((EF_BC5_SRGB == tex_data.format) && !caps.TextureFormatSupport(EF_BC5_SRGB)))
 			{
 				if (IsSRGB(tex_data.format))
 				{
@@ -1160,8 +1160,8 @@ namespace
 					tex_data.format = EF_BC3;
 				}
 			}
-			if (((EF_BC4 == tex_data.format) && !caps.texture_format_support(EF_BC4))
-				|| ((EF_BC4_SRGB == tex_data.format) && !caps.texture_format_support(EF_BC4_SRGB)))
+			if (((EF_BC4 == tex_data.format) && !caps.TextureFormatSupport(EF_BC4))
+				|| ((EF_BC4_SRGB == tex_data.format) && !caps.TextureFormatSupport(EF_BC4_SRGB)))
 			{
 				if (IsSRGB(tex_data.format))
 				{
@@ -1207,7 +1207,7 @@ namespace
 				{ EF_R16, EF_R16F },
 				{ EF_R16F, EF_R8 },
 			};
-			while (!caps.texture_format_support(tex_data.format))
+			while (!caps.TextureFormatSupport(tex_data.format))
 			{
 				bool found = false;
 				for (size_t i = 0; i < std::size(convert_fmts); ++ i)
@@ -1222,8 +1222,8 @@ namespace
 
 				if (!found)
 				{
-					LogError("%s's format (%ld) is not supported.",
-						tex_desc_.res_name.c_str(), tex_data.format);
+					LogError() << tex_desc_.res_name << "'s format (0x" << std::hex << static_cast<uint64_t>(tex_data.format)
+						<< ") is not supported." << std::endl;
 					break;
 				}
 			}
@@ -1315,8 +1315,8 @@ namespace
 				array_size *= 6;
 			}
 
-			if (((EF_BC5 == tex_data.format) && !caps.texture_format_support(EF_BC5))
-				|| ((EF_BC5_SRGB == tex_data.format) && !caps.texture_format_support(EF_BC5_SRGB)))
+			if (((EF_BC5 == tex_data.format) && !caps.TextureFormatSupport(EF_BC5))
+				|| ((EF_BC5_SRGB == tex_data.format) && !caps.TextureFormatSupport(EF_BC5_SRGB)))
 			{
 				BC1Block tmp;
 				for (size_t i = 0; i < tex_data.init_data.size(); ++ i)
@@ -1339,8 +1339,8 @@ namespace
 					tex_data.format = EF_BC3;
 				}
 			}
-			if (((EF_BC4 == tex_data.format) && !caps.texture_format_support(EF_BC4))
-				|| ((EF_BC4_SRGB == tex_data.format) && !caps.texture_format_support(EF_BC4_SRGB)))
+			if (((EF_BC4 == tex_data.format) && !caps.TextureFormatSupport(EF_BC4))
+				|| ((EF_BC4_SRGB == tex_data.format) && !caps.TextureFormatSupport(EF_BC4_SRGB)))
 			{
 				BC1Block tmp;
 				for (size_t i = 0; i < tex_data.init_data.size(); ++ i)
@@ -1398,7 +1398,7 @@ namespace
 				{ EF_R16, EF_R16F },
 				{ EF_R16F, EF_R8 },
 			};
-			while (!caps.texture_format_support(tex_data.format))
+			while (!caps.TextureFormatSupport(tex_data.format))
 			{
 				bool found = false;
 				for (size_t i = 0; i < std::size(convert_fmts); ++ i)
@@ -1556,7 +1556,7 @@ namespace
 			TexturePtr const & tex = *tex_desc_.tex;
 			if (!tex || !tex->HWResourceReady())
 			{
-				tex->CreateHWResource(tex_desc_.tex_data->init_data);
+				tex->CreateHWResource(tex_desc_.tex_data->init_data, nullptr);
 				tex_desc_.tex_data.reset();
 			}
 		}

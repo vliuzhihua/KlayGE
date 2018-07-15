@@ -52,7 +52,7 @@ namespace KlayGE
 
 		void ScissorRect(uint32_t x, uint32_t y, uint32_t width, uint32_t height);
 
-		void GetCustomAttrib(std::string_view name, void* value) override;
+		void GetCustomAttrib(std::string_view name, void* value) const override;
 
 		bool FullScreen() const;
 		void FullScreen(bool fs);
@@ -66,6 +66,8 @@ namespace KlayGE
 		void BindSamplers(GLuint first, GLsizei count, GLuint const * samplers, bool force = false);
 		void BindBuffer(GLenum target, GLuint buffer, bool force = false);
 		void BindBuffersBase(GLenum target, GLuint first, GLsizei count, GLuint const * buffers, bool force = false);
+		void DeleteTextures(GLsizei n, GLuint const * buffers);
+		void DeleteSamplers(GLsizei n, GLuint const * samplers);
 		void DeleteBuffers(GLsizei n, GLuint const * buffers);
 		void OverrideBindBufferCache(GLenum target, GLuint buffer);
 
@@ -152,11 +154,6 @@ namespace KlayGE
 		void FillRenderDeviceCaps();
 		void InitRenderStates();
 
-		bool VertexFormatSupport(ElementFormat elem_fmt);
-		bool TextureFormatSupport(ElementFormat elem_fmt);
-		bool RenderTargetFormatSupport(ElementFormat elem_fmt, uint32_t sample_count, uint32_t sample_quality);
-		bool UAVFormatSupport(ElementFormat elem_fmt);
-
 		virtual void CheckConfig(RenderSettings& settings) override;
 
 	private:
@@ -179,16 +176,10 @@ namespace KlayGE
 		std::vector<GLuint> so_buffs_;
 
 		GLenum active_tex_unit_;
-		std::vector<GLuint> binded_targets_;
-		std::vector<GLuint> binded_textures_;
+		std::vector<std::pair<GLuint, GLuint>> binded_textures_;
 		std::vector<GLuint> binded_samplers_;
 		std::map<GLenum, GLuint> binded_buffers_;
 		std::map<GLenum, std::vector<GLuint>> binded_buffers_with_binding_points_;
-
-		std::vector<ElementFormat> vertex_format_;
-		std::vector<ElementFormat> texture_format_;
-		std::vector<ElementFormat> rendertarget_format_;
-		uint32_t max_samples_;
 
 		std::map<GLuint, std::map<GLint, int4>> uniformi_cache_;
 		std::map<GLuint, std::map<GLint, float4>> uniformf_cache_;

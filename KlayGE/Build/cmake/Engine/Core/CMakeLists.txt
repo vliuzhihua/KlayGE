@@ -1,42 +1,36 @@
-DOWNLOAD_FILE("KlayGE/klayge_logo.png" "cbda47a1678ce70b6720856736100979d469e159" "bfdd6d15f5698d09f72306d1a54ec78c7d50c8dd")
-DOWNLOAD_FILE("KlayGE/media/Fonts/gkai00mp.kfont" "f8e11821e7cc671a2a71d98a5595867fe90e8f12" "25ed05b2f28159840523d44f98bbb4034999c1c1")
-DOWNLOAD_FILE("KlayGE/media/Models/ambient_light_proxy.meshml" "cbda47a1678ce70b6720856736100979d469e159" "29c94aaa6a3ee14b8408f783fbc51cf35294229e")
-DOWNLOAD_FILE("KlayGE/media/Models/camera_proxy.meshml" "cbda47a1678ce70b6720856736100979d469e159" "cf053ab1aa36fd097825fba638912b23494ddb28")
-DOWNLOAD_FILE("KlayGE/media/Models/directional_light_proxy.meshml" "cbda47a1678ce70b6720856736100979d469e159" "217a907389a5a885ce6e5a5a943d290acecd139c")
-DOWNLOAD_FILE("KlayGE/media/Models/indirect_light_proxy.meshml" "cbda47a1678ce70b6720856736100979d469e159" "2e15fa6d1db289b737dee35a2d30ee55896c1375")
-DOWNLOAD_FILE("KlayGE/media/Models/point_light_proxy.meshml" "cbda47a1678ce70b6720856736100979d469e159" "f29b7d9043bc15b1c2ae055242f8b95bcfd8e45d")
-DOWNLOAD_FILE("KlayGE/media/Models/spot_light_proxy.meshml" "cbda47a1678ce70b6720856736100979d469e159" "0b97f143c4ef37ce8e062243095120ff11a87314")
-DOWNLOAD_FILE("KlayGE/media/Models/tube_light_proxy.meshml" "cbda47a1678ce70b6720856736100979d469e159" "e6fd2f97ba40eb6cde9b3071b4974e3e34002124")
-DOWNLOAD_FILE("KlayGE/media/Textures/2D/fBm5_grad_tex.dds" "cbda47a1678ce70b6720856736100979d469e159" "d2e957bb56628345c9a8c3c119a9b21252dad736")
-DOWNLOAD_FILE("KlayGE/media/Textures/2D/fBm5_tex.dds" "cbda47a1678ce70b6720856736100979d469e159" "d3c1f21fc2d6bcdd4a445f8fcd7f8f59d12c395f")
-DOWNLOAD_FILE("KlayGE/media/Textures/2D/flare.dds" "cbda47a1678ce70b6720856736100979d469e159" "1438372d81bea4f721a6e664caf0c0a41f11f674")
-DOWNLOAD_FILE("KlayGE/media/Textures/2D/klayge_logo.dds" "cbda47a1678ce70b6720856736100979d469e159" "fc5795e65bb5e3ed34d56cb1ad7eb720588cb87a")
-DOWNLOAD_FILE("KlayGE/media/Textures/2D/klayge_logo_sm.dds" "cbda47a1678ce70b6720856736100979d469e159" "b3fbf21b5f5b51851b8c0fda68607fac550dff55")
-DOWNLOAD_FILE("KlayGE/media/Textures/2D/lens_effects_imag.dds" "cbda47a1678ce70b6720856736100979d469e159" "81ab87a46cb35c4b820e56b36cfd61028350e78b")
-DOWNLOAD_FILE("KlayGE/media/Textures/2D/lens_effects_real.dds" "cbda47a1678ce70b6720856736100979d469e159" "d335f9b72bfbfbc27420334d5d4ca74b6da7a4b9")
-DOWNLOAD_FILE("KlayGE/media/Textures/2D/noise_grad3_perm.dds" "cbda47a1678ce70b6720856736100979d469e159" "40918db9f36fb360ca30377afa1ddde059c4ce7e")
-DOWNLOAD_FILE("KlayGE/media/Textures/2D/noise_grad4_perm.dds" "cbda47a1678ce70b6720856736100979d469e159" "a2c879dd71f5b96eef5286bf20b3ba38937d4e0d")
-DOWNLOAD_FILE("KlayGE/media/Textures/2D/noise_simplex.dds" "cbda47a1678ce70b6720856736100979d469e159" "83b8b76f165a00e998ff13e39c40c27393d3e271")
-DOWNLOAD_FILE("KlayGE/media/Textures/2D/powered_by_klayge.dds" "cbda47a1678ce70b6720856736100979d469e159" "21346648b14a0366de7abd628393e6de0253317d")
-DOWNLOAD_FILE("KlayGE/media/Textures/2D/SMAAAreaTex.dds" "f05441b3b4ed5261cc525ad2985b28e5afd9c4fb" "6edf67ea2e127b5cab8a8b37d20ab05c54d0c757")
-DOWNLOAD_FILE("KlayGE/media/Textures/2D/SMAASearchTex.dds" "f05441b3b4ed5261cc525ad2985b28e5afd9c4fb" "49dece98e469fa2629412e6226ff75abe2b889b0")
-DOWNLOAD_FILE("KlayGE/media/Textures/2D/ui.dds" "cbda47a1678ce70b6720856736100979d469e159" "7bdafaf02f9f5f2fef748d38c12c84212004cda6")
-DOWNLOAD_FILE("KlayGE/media/Textures/2D/white_noise_tex.dds" "0cd916b426c9892dfe05743199f481a13489217c" "5739284048778c68fb862d957f0d956430b5c279")
-DOWNLOAD_FILE("KlayGE/media/Textures/3D/color_grading.dds" "cbda47a1678ce70b6720856736100979d469e159" "44bee46635485aef2068095a45cab5a9fbc6d838")
-DOWNLOAD_FILE("KlayGE/media/Textures/Cube/Lake_CraterLake03_filtered_c.dds" "cbda47a1678ce70b6720856736100979d469e159" "579143e79a6361d26926d967b6c4511127c0137b")
-DOWNLOAD_FILE("KlayGE/media/Textures/Cube/Lake_CraterLake03_filtered_y.dds" "cbda47a1678ce70b6720856736100979d469e159" "4978e7b023d80d42111afea10d3f10be37980e25")
-DOWNLOAD_FILE("KlayGE/media/Textures/Cube/rnl_cross_filtered_c.dds" "e6408c89187baeff44d56d0ad10bec8fe7311238" "34afb02245ebaa9a79f897bcac977ce3aee60db2")
-DOWNLOAD_FILE("KlayGE/media/Textures/Cube/rnl_cross_filtered_y.dds" "e6408c89187baeff44d56d0ad10bec8fe7311238" "dceb26325178a3701c264ffa558984f55229d610")
-DOWNLOAD_FILE("KlayGE/media/Textures/Cube/uffizi_cross_filtered_c.dds" "cbda47a1678ce70b6720856736100979d469e159" "0dbeab782f1e2989709c4a3df834397fa1749d92")
-DOWNLOAD_FILE("KlayGE/media/Textures/Cube/uffizi_cross_filtered_y.dds" "cbda47a1678ce70b6720856736100979d469e159" "c515b8aed52a6eafee96ea4d32b60eaf746ea985")
-DOWNLOAD_FILE("KlayGE/media/Textures/Juda/klayge_logo.jdt" "cbda47a1678ce70b6720856736100979d469e159" "4fed908fd641b6c536fee9f733dba37d4531079a")
+DOWNLOAD_DEPENDENCY("KlayGE/klayge_logo.png" "bfdd6d15f5698d09f72306d1a54ec78c7d50c8dd")
+DOWNLOAD_DEPENDENCY("KlayGE/media/Fonts/gkai00mp.kfont" "25ed05b2f28159840523d44f98bbb4034999c1c1")
+DOWNLOAD_DEPENDENCY("KlayGE/media/Models/ambient_light_proxy.meshml" "29c94aaa6a3ee14b8408f783fbc51cf35294229e")
+DOWNLOAD_DEPENDENCY("KlayGE/media/Models/camera_proxy.meshml" "cf053ab1aa36fd097825fba638912b23494ddb28")
+DOWNLOAD_DEPENDENCY("KlayGE/media/Models/directional_light_proxy.meshml" "217a907389a5a885ce6e5a5a943d290acecd139c")
+DOWNLOAD_DEPENDENCY("KlayGE/media/Models/indirect_light_proxy.meshml" "2e15fa6d1db289b737dee35a2d30ee55896c1375")
+DOWNLOAD_DEPENDENCY("KlayGE/media/Models/point_light_proxy.meshml" "f29b7d9043bc15b1c2ae055242f8b95bcfd8e45d")
+DOWNLOAD_DEPENDENCY("KlayGE/media/Models/spot_light_proxy.meshml" "0b97f143c4ef37ce8e062243095120ff11a87314")
+DOWNLOAD_DEPENDENCY("KlayGE/media/Models/tube_light_proxy.meshml" "e6fd2f97ba40eb6cde9b3071b4974e3e34002124")
+DOWNLOAD_DEPENDENCY("KlayGE/media/Textures/2D/fBm5_grad_tex.dds" "d2e957bb56628345c9a8c3c119a9b21252dad736")
+DOWNLOAD_DEPENDENCY("KlayGE/media/Textures/2D/fBm5_tex.dds" "d3c1f21fc2d6bcdd4a445f8fcd7f8f59d12c395f")
+DOWNLOAD_DEPENDENCY("KlayGE/media/Textures/2D/flare.dds" "1438372d81bea4f721a6e664caf0c0a41f11f674")
+DOWNLOAD_DEPENDENCY("KlayGE/media/Textures/2D/klayge_logo.dds" "fc5795e65bb5e3ed34d56cb1ad7eb720588cb87a")
+DOWNLOAD_DEPENDENCY("KlayGE/media/Textures/2D/klayge_logo_sm.dds" "b3fbf21b5f5b51851b8c0fda68607fac550dff55")
+DOWNLOAD_DEPENDENCY("KlayGE/media/Textures/2D/lens_effects_imag.dds" "81ab87a46cb35c4b820e56b36cfd61028350e78b")
+DOWNLOAD_DEPENDENCY("KlayGE/media/Textures/2D/lens_effects_real.dds" "d335f9b72bfbfbc27420334d5d4ca74b6da7a4b9")
+DOWNLOAD_DEPENDENCY("KlayGE/media/Textures/2D/noise_grad3_perm.dds" "40918db9f36fb360ca30377afa1ddde059c4ce7e")
+DOWNLOAD_DEPENDENCY("KlayGE/media/Textures/2D/noise_grad4_perm.dds" "a2c879dd71f5b96eef5286bf20b3ba38937d4e0d")
+DOWNLOAD_DEPENDENCY("KlayGE/media/Textures/2D/noise_simplex.dds" "83b8b76f165a00e998ff13e39c40c27393d3e271")
+DOWNLOAD_DEPENDENCY("KlayGE/media/Textures/2D/powered_by_klayge.dds" "21346648b14a0366de7abd628393e6de0253317d")
+DOWNLOAD_DEPENDENCY("KlayGE/media/Textures/2D/SMAAAreaTex.dds" "6edf67ea2e127b5cab8a8b37d20ab05c54d0c757")
+DOWNLOAD_DEPENDENCY("KlayGE/media/Textures/2D/SMAASearchTex.dds" "49dece98e469fa2629412e6226ff75abe2b889b0")
+DOWNLOAD_DEPENDENCY("KlayGE/media/Textures/2D/ui.dds" "7bdafaf02f9f5f2fef748d38c12c84212004cda6")
+DOWNLOAD_DEPENDENCY("KlayGE/media/Textures/2D/white_noise_tex.dds" "5739284048778c68fb862d957f0d956430b5c279")
+DOWNLOAD_DEPENDENCY("KlayGE/media/Textures/3D/color_grading.dds" "44bee46635485aef2068095a45cab5a9fbc6d838")
+DOWNLOAD_DEPENDENCY("KlayGE/media/Textures/Cube/Lake_CraterLake03_filtered_c.dds" "579143e79a6361d26926d967b6c4511127c0137b")
+DOWNLOAD_DEPENDENCY("KlayGE/media/Textures/Cube/Lake_CraterLake03_filtered_y.dds" "4978e7b023d80d42111afea10d3f10be37980e25")
+DOWNLOAD_DEPENDENCY("KlayGE/media/Textures/Cube/rnl_cross_filtered_c.dds" "34afb02245ebaa9a79f897bcac977ce3aee60db2")
+DOWNLOAD_DEPENDENCY("KlayGE/media/Textures/Cube/rnl_cross_filtered_y.dds" "dceb26325178a3701c264ffa558984f55229d610")
+DOWNLOAD_DEPENDENCY("KlayGE/media/Textures/Cube/uffizi_cross_filtered_c.dds" "0dbeab782f1e2989709c4a3df834397fa1749d92")
+DOWNLOAD_DEPENDENCY("KlayGE/media/Textures/Cube/uffizi_cross_filtered_y.dds" "c515b8aed52a6eafee96ea4d32b60eaf746ea985")
+DOWNLOAD_DEPENDENCY("KlayGE/media/Textures/Juda/klayge_logo.jdt" "4fed908fd641b6c536fee9f733dba37d4531079a")
 
-IF(NOT KLAYGE_COMPILER_MSVC)
-	SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-unused-variable")
-	IF(KLAYGE_COMPILER_CLANGC2)
-		SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-unknown-pragmas")
-	ENDIF()
-ENDIF()
 IF(KLAYGE_PLATFORM_WINDOWS_STORE)
 	STRING(REPLACE "/permissive-" "" CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS})
 ENDIF()
@@ -49,6 +43,7 @@ SET(BASE_SOURCE_FILES
 	${KLAYGE_PROJECT_DIR}/Core/Src/Base/KlayGE.cpp
 	${KLAYGE_PROJECT_DIR}/Core/Src/Base/PerfProfiler.cpp
 	${KLAYGE_PROJECT_DIR}/Core/Src/Base/ResLoader.cpp
+	${KLAYGE_PROJECT_DIR}/Core/Src/Base/TableGen/Tables.cpp
 	${KLAYGE_PROJECT_DIR}/Core/Src/Base/TableGen/TableGen.py
 )
 
@@ -66,6 +61,7 @@ SET(BASE_HEADER_FILES
 SOURCE_GROUP("Base\\Source Files" FILES ${BASE_SOURCE_FILES})
 SOURCE_GROUP("Base\\Header Files" FILES ${BASE_HEADER_FILES})
 
+SET_SOURCE_FILES_PROPERTIES(${KLAYGE_PROJECT_DIR}/Core/Src/Base/TableGen/Tables.cpp PROPERTIES GENERATED 1)
 SET_SOURCE_FILES_PROPERTIES(${KLAYGE_PROJECT_DIR}/Core/Src/Base/TableGen/Tables.hpp PROPERTIES GENERATED 1)
 
 SET(RENDERING_SOURCE_FILES
@@ -91,12 +87,14 @@ SET(RENDERING_SOURCE_FILES
 	${KLAYGE_PROJECT_DIR}/Core/Src/Render/Light.cpp
 	${KLAYGE_PROJECT_DIR}/Core/Src/Render/LightShaft.cpp
 	${KLAYGE_PROJECT_DIR}/Core/Src/Render/Mesh.cpp
+	${KLAYGE_PROJECT_DIR}/Core/Src/Render/MotionBlur.cpp
 	${KLAYGE_PROJECT_DIR}/Core/Src/Render/MultiResLayer.cpp
 	${KLAYGE_PROJECT_DIR}/Core/Src/Render/ParticleSystem.cpp
 	${KLAYGE_PROJECT_DIR}/Core/Src/Render/PostProcess.cpp
 	${KLAYGE_PROJECT_DIR}/Core/Src/Render/Query.cpp
 	${KLAYGE_PROJECT_DIR}/Core/Src/Render/Renderable.cpp
 	${KLAYGE_PROJECT_DIR}/Core/Src/Render/RenderableHelper.cpp
+	${KLAYGE_PROJECT_DIR}/Core/Src/Render/RenderDeviceCaps.cpp
 	${KLAYGE_PROJECT_DIR}/Core/Src/Render/RenderEffect.cpp
 	${KLAYGE_PROJECT_DIR}/Core/Src/Render/RenderEngine.cpp
 	${KLAYGE_PROJECT_DIR}/Core/Src/Render/RenderFactory.cpp
@@ -142,6 +140,7 @@ SET(RENDERING_HEADER_FILES
 	${KLAYGE_PROJECT_DIR}/Core/Include/KlayGE/Light.hpp
 	${KLAYGE_PROJECT_DIR}/Core/Include/KlayGE/LightShaft.hpp
 	${KLAYGE_PROJECT_DIR}/Core/Include/KlayGE/Mesh.hpp
+	${KLAYGE_PROJECT_DIR}/Core/Include/KlayGE/MotionBlur.hpp
 	${KLAYGE_PROJECT_DIR}/Core/Include/KlayGE/MultiResLayer.hpp
 	${KLAYGE_PROJECT_DIR}/Core/Include/KlayGE/ParticleSystem.hpp
 	${KLAYGE_PROJECT_DIR}/Core/Include/KlayGE/PostProcess.hpp
@@ -196,8 +195,12 @@ SET(RENDERING_EFFECT_FILES
 	${KLAYGE_PROJECT_DIR}/media/RenderFX/FXAA.fxml
 	${KLAYGE_PROJECT_DIR}/media/RenderFX/GammaCorrection.fxml
 	${KLAYGE_PROJECT_DIR}/media/RenderFX/GBuffer.fxml
-	${KLAYGE_PROJECT_DIR}/media/RenderFX/GBufferNoSkinning.fxml
-	${KLAYGE_PROJECT_DIR}/media/RenderFX/GBufferSkinning128.fxml
+	${KLAYGE_PROJECT_DIR}/media/RenderFX/GBufferFlatTess.fxml
+	${KLAYGE_PROJECT_DIR}/media/RenderFX/GBufferLine.fxml
+	${KLAYGE_PROJECT_DIR}/media/RenderFX/GBufferSkinning.fxml
+	${KLAYGE_PROJECT_DIR}/media/RenderFX/GBufferSmoothTess.fxml
+	${KLAYGE_PROJECT_DIR}/media/RenderFX/GBufferSSS.fxml
+	${KLAYGE_PROJECT_DIR}/media/RenderFX/GBufferTwoSided.fxml
 	${KLAYGE_PROJECT_DIR}/media/RenderFX/HDRDisplay.fxml
 	${KLAYGE_PROJECT_DIR}/media/RenderFX/InfTerrain.fxml
 	${KLAYGE_PROJECT_DIR}/media/RenderFX/Imposter.fxml
@@ -208,6 +211,7 @@ SET(RENDERING_EFFECT_FILES
 	${KLAYGE_PROJECT_DIR}/media/RenderFX/Lighting.fxml
 	${KLAYGE_PROJECT_DIR}/media/RenderFX/LightShaft.fxml
 	${KLAYGE_PROJECT_DIR}/media/RenderFX/LightSourceProxy.fxml
+	${KLAYGE_PROJECT_DIR}/media/RenderFX/MotionBlur.fxml
 	${KLAYGE_PROJECT_DIR}/media/RenderFX/MultiRes.fxml
 	${KLAYGE_PROJECT_DIR}/media/RenderFX/Noise.fxml
 	${KLAYGE_PROJECT_DIR}/media/RenderFX/Particle.fxml
@@ -250,6 +254,7 @@ SET(RENDERING_POSTPROCESSOR_FILES
 	${KLAYGE_PROJECT_DIR}/media/PostProcessors/HDRDisplay.ppml
 	${KLAYGE_PROJECT_DIR}/media/PostProcessors/LensEffects.ppml
 	${KLAYGE_PROJECT_DIR}/media/PostProcessors/LightShaft.ppml
+	${KLAYGE_PROJECT_DIR}/media/PostProcessors/MotionBlur.ppml
 	${KLAYGE_PROJECT_DIR}/media/PostProcessors/MultiRes.ppml
 	${KLAYGE_PROJECT_DIR}/media/PostProcessors/PostToneMapping.ppml
 	${KLAYGE_PROJECT_DIR}/media/PostProcessors/Resizer.ppml
@@ -375,16 +380,16 @@ SOURCE_GROUP("Scene Management\\Header Files" FILES ${SCENE_HEADER_FILES})
 SET(PACKING_SOURCE_FILES
 	${KLAYGE_PROJECT_DIR}/Core/Src/Pack/ArchiveExtractCallback.cpp
 	${KLAYGE_PROJECT_DIR}/Core/Src/Pack/ArchiveOpenCallback.cpp
-	${KLAYGE_PROJECT_DIR}/Core/Src/Pack/Extract7z.cpp
 	${KLAYGE_PROJECT_DIR}/Core/Src/Pack/LZMACodec.cpp
+	${KLAYGE_PROJECT_DIR}/Core/Src/Pack/Package.cpp
 	${KLAYGE_PROJECT_DIR}/Core/Src/Pack/Streams.cpp
 )
 
 SET(PACKING_HEADER_FILES
+	${KLAYGE_PROJECT_DIR}/Core/Include/KlayGE/LZMACodec.hpp
+	${KLAYGE_PROJECT_DIR}/Core/Include/KlayGE/Package.hpp
 	${KLAYGE_PROJECT_DIR}/Core/Src/Pack/ArchiveExtractCallback.hpp
 	${KLAYGE_PROJECT_DIR}/Core/Src/Pack/ArchiveOpenCallback.hpp
-	${KLAYGE_PROJECT_DIR}/Core/Include/KlayGE/Extract7z.hpp
-	${KLAYGE_PROJECT_DIR}/Core/Include/KlayGE/LZMACodec.hpp
 	${KLAYGE_PROJECT_DIR}/Core/Src/Pack/Streams.hpp
 )
 
@@ -423,6 +428,7 @@ SOURCE_GROUP("UI System\\Effect Files" FILES ${UI_EFFECT_FILES})
 
 SET(APP_SOURCE_FILES
 	${KLAYGE_PROJECT_DIR}/Core/Src/AppLayer/App3D.cpp
+	${KLAYGE_PROJECT_DIR}/Core/Src/AppLayer/Window.cpp
 )
 IF(KLAYGE_PLATFORM_WINDOWS_DESKTOP)
 	SET(APP_SOURCE_FILES ${APP_SOURCE_FILES}
@@ -459,7 +465,7 @@ SOURCE_GROUP("App Layer\\Source Files" FILES ${APP_SOURCE_FILES})
 SOURCE_GROUP("App Layer\\Header Files" FILES ${APP_HEADER_FILES})
 
 
-ADD_DEFINITIONS(-DKLAYGE_BUILD_DLL -DKLAYGE_CORE_SOURCE)
+ADD_DEFINITIONS(-DKLAYGE_CORE_SOURCE)
 IF(KLAYGE_PLATFORM_DARWIN OR KLAYGE_PLATFORM_LINUX)
 	FIND_PATH(WINE_PATH "winegcc" #searching for 'wine' may result in include path
 		PATHS /usr/local/bin opt/local/sbin /usr/bin /bin /usr/sbin /sbin /usr/local/bin)
@@ -482,18 +488,13 @@ IF(KLAYGE_PLATFORM_LINUX)
 ENDIF()
 IF(KLAYGE_PLATFORM_ANDROID)
 	INCLUDE_DIRECTORIES(${KLAYGE_PROJECT_DIR}/../External/android_native_app_glue)
-	INCLUDE_DIRECTORIES(${KLAYGE_PROJECT_DIR}/Plugins/Include)
 ENDIF()
-IF(KLAYGE_PLATFORM_IOS)
-	INCLUDE_DIRECTORIES(${KLAYGE_PROJECT_DIR}/Plugins/Include)
-ENDIF()
-LINK_DIRECTORIES(${Boost_LIBRARY_DIR})
-LINK_DIRECTORIES(${KLAYGE_PROJECT_DIR}/lib/${KLAYGE_PLATFORM_NAME})
 LINK_DIRECTORIES(${KLAYGE_PROJECT_DIR}/../KFL/lib/${KLAYGE_PLATFORM_NAME})
 LINK_DIRECTORIES(${KLAYGE_PROJECT_DIR}/../kfont/lib/${KLAYGE_PLATFORM_NAME})
 LINK_DIRECTORIES(${KLAYGE_PROJECT_DIR}/../MeshMLLib/lib/${KLAYGE_PLATFORM_NAME})
 IF(KLAYGE_PLATFORM_LINUX)
 	LINK_DIRECTORIES(${KLAYGE_PROJECT_DIR}/../glloader/lib/${KLAYGE_PLATFORM_NAME})
+	LINK_DIRECTORIES(${KLAYGE_BIN_DIR})
 ENDIF()
 
 ADD_LIBRARY(${LIB_NAME} ${KLAYGE_PREFERRED_LIB_TYPE}
@@ -511,28 +512,18 @@ ADD_LIBRARY(${LIB_NAME} ${KLAYGE_PREFERRED_LIB_TYPE}
 )
 
 IF(KLAYGE_PLATFORM_WINDOWS_DESKTOP)
-	SET(EXTRA_LINKED_LIBRARIES ${EXTRA_LINKED_LIBRARIES} wsock32)
+	SET(EXTRA_LINKED_LIBRARIES ${EXTRA_LINKED_LIBRARIES}
+		wsock32)
 ELSEIF(KLAYGE_PLATFORM_DARWIN)
 	FIND_LIBRARY(APPKIT AppKit "/")
 	FIND_LIBRARY(OPENGL OpenGL "/")
 	FIND_LIBRARY(COREVIDEO CoreVideo "/")
-	SET(EXTRA_LINKED_LIBRARIES ${EXTRA_LINKED_LIBRARIES} ${APPKIT} ${OPENGL} ${COREVIDEO})
-ELSEIF(KLAYGE_PLATFORM_LINUX)
-	SET(EXTRA_LINKED_LIBRARIES ${EXTRA_LINKED_LIBRARIES} X11 GL GLU
-		debug glloader${KLAYGE_OUTPUT_SUFFIX}_d optimized glloader${KLAYGE_OUTPUT_SUFFIX})
-ENDIF()
-
-IF(NOT KLAYGE_COMPILER_MSVC)
-	SET(FS_LIB ${Boost_FILESYSTEM_LIBRARY})
-	IF(KLAYGE_COMPILER_GCC AND (KLAYGE_COMPILER_VERSION STRGREATER "60"))
-		SET(FS_LIB "stdc++fs")
-	ENDIF()
-
 	SET(EXTRA_LINKED_LIBRARIES ${EXTRA_LINKED_LIBRARIES}
-		debug MeshMLLib${KLAYGE_OUTPUT_SUFFIX}_d optimized MeshMLLib${KLAYGE_OUTPUT_SUFFIX}
-		debug kfont${KLAYGE_OUTPUT_SUFFIX}_d optimized kfont${KLAYGE_OUTPUT_SUFFIX}
-		debug KFL${KLAYGE_OUTPUT_SUFFIX}_d optimized KFL${KLAYGE_OUTPUT_SUFFIX}
-		${FS_LIB})
+		${APPKIT} ${OPENGL} ${COREVIDEO})
+ELSEIF(KLAYGE_PLATFORM_LINUX)
+	SET(EXTRA_LINKED_LIBRARIES ${EXTRA_LINKED_LIBRARIES}
+		X11 GL GLU
+		debug glloader${KLAYGE_OUTPUT_SUFFIX}_d optimized glloader${KLAYGE_OUTPUT_SUFFIX})
 ENDIF()
 
 SET_TARGET_PROPERTIES(${LIB_NAME} PROPERTIES
@@ -558,6 +549,10 @@ ADD_PRECOMPILED_HEADER(${LIB_NAME} "KlayGE/KlayGE.hpp" "${KLAYGE_PROJECT_DIR}/Co
 
 TARGET_LINK_LIBRARIES(${LIB_NAME}
 	${EXTRA_LINKED_LIBRARIES}
+	debug MeshMLLib${KLAYGE_OUTPUT_SUFFIX}_d optimized MeshMLLib${KLAYGE_OUTPUT_SUFFIX}
+	debug kfont${KLAYGE_OUTPUT_SUFFIX}_d optimized kfont${KLAYGE_OUTPUT_SUFFIX}
+	debug KFL${KLAYGE_OUTPUT_SUFFIX}_d optimized KFL${KLAYGE_OUTPUT_SUFFIX}
+	${KLAYGE_FILESYSTEM_LIBRARY}
 )
 
 ADD_DEPENDENCIES(${LIB_NAME} TableGen)

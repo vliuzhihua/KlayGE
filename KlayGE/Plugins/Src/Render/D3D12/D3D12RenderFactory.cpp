@@ -44,7 +44,6 @@
 #include <KlayGE/D3D12/D3D12Fence.hpp>
 
 #include <KlayGE/D3D12/D3D12RenderFactory.hpp>
-#include <KlayGE/D3D12/D3D12RenderFactoryInternal.hpp>
 
 namespace KlayGE
 {
@@ -107,7 +106,7 @@ namespace KlayGE
 			uint32_t size_in_byte, ElementFormat fmt)
 	{
 		return MakeSharedPtr<D3D12GraphicsBuffer>(usage, access_hint,
-			(size_in_byte + 255) & ~255, fmt);
+			size_in_byte, fmt);
 	}
 
 	QueryPtr D3D12RenderFactory::MakeOcclusionQuery()
@@ -277,7 +276,10 @@ namespace KlayGE
 	}
 }
 
-void MakeRenderFactory(std::unique_ptr<KlayGE::RenderFactory>& ptr)
+extern "C"
 {
-	ptr = KlayGE::MakeUniquePtr<KlayGE::D3D12RenderFactory>();
+	KLAYGE_SYMBOL_EXPORT void MakeRenderFactory(std::unique_ptr<KlayGE::RenderFactory>& ptr)
+	{
+		ptr = KlayGE::MakeUniquePtr<KlayGE::D3D12RenderFactory>();
+	}
 }

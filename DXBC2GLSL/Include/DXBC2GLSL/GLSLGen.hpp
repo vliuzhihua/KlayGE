@@ -50,11 +50,14 @@ enum GLSLVersion
 	GSV_430,			// GL 4.3
 	GSV_440,			// GL 4.4
 	GSV_450,			// GL 4.5
+	GSV_460,			// GL 4.6
 
 	GSV_100_ES,			// GL ES 2.0
 	GSV_300_ES,			// GL ES 3.0
 	GSV_310_ES,			// GL ES 3.1
-	GSV_320_ES			// GL ES 3.2
+	GSV_320_ES,			// GL ES 3.2
+
+	GSV_NumVersions
 };
 
 enum GLSLRules : uint32_t
@@ -83,7 +86,8 @@ enum GLSLRules : uint32_t
 	GSR_OESStandardDerivatives = 1UL << 21,
 	GSR_EXTFragDepth = 1UL << 22,
 	GSR_EXTTessellationShader = 1UL << 23,
-	GSR_PrecisionOnSampler = 1UL << 24
+	GSR_PrecisionOnSampler = 1UL << 24,
+	GSR_ExplicitMultiSample = 1UL << 25
 };
 
 struct RegisterDesc

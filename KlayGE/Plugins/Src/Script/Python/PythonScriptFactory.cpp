@@ -1,5 +1,5 @@
 /**
- * @file PythonFactory.cpp
+ * @file PythonScriptFactory.cpp
  * @author Minmin Gong
  *
  * @section DESCRIPTION
@@ -30,39 +30,41 @@
 
 #include <KlayGE/KlayGE.hpp>
 #include <KFL/Util.hpp>
-#include <KFL/Math.hpp>
 #include <KlayGE/Script.hpp>
+#include <KlayGE/ScriptFactory.hpp>
 
-#include <KlayGE/Python/PythonScriptEngine.hpp>
-#include <KlayGE/Python/PythonScriptFactory.hpp>
+#include <KlayGE/Python/PythonScript.hpp>
 
 namespace KlayGE
 {
 	class PythonScriptFactory : public ScriptFactory
 	{
 	public:
-		std::wstring const & Name() const
+		std::wstring const & Name() const override
 		{
 			static std::wstring const name(L"Python Script Factory");
 			return name;
 		}
 
 	private:
-		virtual std::unique_ptr<ScriptEngine> MakeScriptEngine() override
+		std::unique_ptr<ScriptEngine> MakeScriptEngine() override
 		{
 			return MakeUniquePtr<PythonEngine>();
 		}
 
-		virtual void DoSuspend() override
+		void DoSuspend() override
 		{
 		}
-		virtual void DoResume() override
+		void DoResume() override
 		{
 		}
 	};
 }
 
-void MakeScriptFactory(std::unique_ptr<KlayGE::ScriptFactory>& ptr)
+extern "C"
 {
-	ptr = KlayGE::MakeUniquePtr<KlayGE::PythonScriptFactory>();
+	KLAYGE_SYMBOL_EXPORT void MakeScriptFactory(std::unique_ptr<KlayGE::ScriptFactory>& ptr)
+	{
+		ptr = KlayGE::MakeUniquePtr<KlayGE::PythonScriptFactory>();
+	}
 }

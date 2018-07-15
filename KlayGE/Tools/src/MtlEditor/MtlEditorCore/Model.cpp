@@ -14,6 +14,7 @@
 #include <KlayGE/ResLoader.hpp>
 #include <KlayGE/Camera.hpp>
 #include <KlayGE/FrameBuffer.hpp>
+#include <KlayGE/DeferredRenderingLayer.hpp>
 
 #include "Model.hpp"
 
@@ -37,7 +38,7 @@ void DetailedSkinnedMesh::OnRenderBegin()
 	SkinnedMesh::OnRenderBegin();
 	
 	RenderModelPtr model = model_.lock();
-	if (model)
+	if (model && model->IsSkinned())
 	{
 		*(deferred_effect_->ParameterByName("joint_reals")) = checked_pointer_cast<DetailedSkinnedModel>(model)->GetBindRealParts();
 		*(deferred_effect_->ParameterByName("joint_duals")) = checked_pointer_cast<DetailedSkinnedModel>(model)->GetBindDualParts();
@@ -93,7 +94,12 @@ void DetailedSkinnedMesh::UpdateEffectAttrib()
 		effect_attrs_ |= EA_SpecialShading;
 	}
 
-	this->UpdateTechniques();
+	auto drl = Context::Instance().DeferredRenderingLayerInstance();
+	if (drl)
+	{
+		RenderModelPtr model = model_.lock();
+		this->BindDeferredEffect(drl->GBufferEffect(mtl_.get(), false, model->IsSkinned()));
+	}
 }
 
 void DetailedSkinnedMesh::UpdateMaterial()
@@ -165,8 +171,11 @@ void DetailedSkinnedModel::DoBuildModelInfo()
 	for (auto const & renderable : subrenderables_)
 	{
 		StaticMeshPtr mesh = checked_pointer_cast<StaticMesh>(renderable);
-		total_num_vertices += mesh->NumVertices();
-		total_num_indices += mesh->NumIndices();
+		for (uint32_t lod = 0; lod < mesh->NumLods(); ++ lod)
+		{
+			total_num_vertices += mesh->NumVertices(lod);
+			total_num_indices += mesh->NumIndices(lod);
+		}
 	}
 
 	RenderFactory& rf = Context::Instance().RenderFactoryInstance();
@@ -257,7 +266,6 @@ void DetailedSkinnedModel::DoBuildModelInfo()
 			}
 			break;
 
-		
 		case VEU_Tangent:
 			{
 				GraphicsBufferPtr vb_cpu = rf.MakeVertexBuffer(BU_Static, EAH_CPU_Read, vb->Size(), nullptr);
@@ -329,8 +337,11 @@ void DetailedSkinnedModel::DoBuildModelInfo()
 		for (auto const & renderable : subrenderables_)
 		{
 			StaticMeshPtr mesh = checked_pointer_cast<StaticMesh>(renderable);
-			mesh->AddVertexStream(&texcoords[0], static_cast<uint32_t>(sizeof(tcs16[0]) * tcs16.size()),
-				VertexElement(VEU_TextureCoord, 0, EF_GR16), EAH_GPU_Read);
+			for (uint32_t lod = 0; lod < mesh->NumLods(); ++ lod)
+			{
+				mesh->AddVertexStream(lod, &texcoords[0], static_cast<uint32_t>(sizeof(tcs16[0]) * tcs16.size()),
+					VertexElement(VEU_TextureCoord, 0, EF_GR16), EAH_GPU_Read);
+			}
 		}
 	}
 
@@ -341,9 +352,12 @@ void DetailedSkinnedModel::DoBuildModelInfo()
 			for (auto const & renderable : subrenderables_)
 			{
 				StaticMeshPtr mesh = checked_pointer_cast<StaticMesh>(renderable);
-				MathLib::compute_normal(normals.begin() + mesh->StartVertexLocation(),
-					indices.begin() + mesh->StartIndexLocation(), indices.begin() + mesh->StartIndexLocation() + mesh->NumIndices(),
-					positions.begin() + mesh->StartVertexLocation(), positions.begin() + mesh->StartVertexLocation() + mesh->NumVertices());
+				for (uint32_t lod = 0; lod < mesh->NumLods(); ++ lod)
+				{
+					MathLib::compute_normal(normals.begin() + mesh->StartVertexLocation(lod),
+						indices.begin() + mesh->StartIndexLocation(lod), indices.begin() + mesh->StartIndexLocation(lod) + mesh->NumIndices(lod),
+						positions.begin() + mesh->StartVertexLocation(lod), positions.begin() + mesh->StartVertexLocation(lod) + mesh->NumVertices(lod));
+				}
 			}
 		}
 
@@ -354,10 +368,13 @@ void DetailedSkinnedModel::DoBuildModelInfo()
 		for (auto const & renderable : subrenderables_)
 		{
 			StaticMeshPtr mesh = checked_pointer_cast<StaticMesh>(renderable);
-			MathLib::compute_tangent(tangents.begin() + mesh->StartVertexLocation(), binormals.begin() + mesh->StartVertexLocation(),
-				indices.begin() + mesh->StartIndexLocation(), indices.begin() + mesh->StartIndexLocation() + mesh->NumIndices(),
-				positions.begin() + mesh->StartVertexLocation(), positions.begin() + mesh->StartVertexLocation() + mesh->NumVertices(),
-				texcoords.begin() + mesh->StartVertexLocation(), normals.begin() + mesh->StartVertexLocation());
+			for (uint32_t lod = 0; lod < mesh->NumLods(); ++ lod)
+			{
+				MathLib::compute_tangent(tangents.begin() + mesh->StartVertexLocation(lod), binormals.begin() + mesh->StartVertexLocation(lod),
+					indices.begin() + mesh->StartIndexLocation(lod), indices.begin() + mesh->StartIndexLocation(lod) + mesh->NumIndices(lod),
+					positions.begin() + mesh->StartVertexLocation(lod), positions.begin() + mesh->StartVertexLocation(lod) + mesh->NumVertices(lod),
+					texcoords.begin() + mesh->StartVertexLocation(lod), normals.begin() + mesh->StartVertexLocation(lod));
+			}
 		}
 
 		for (size_t j = 0; j < total_num_vertices; ++ j)
@@ -367,7 +384,7 @@ void DetailedSkinnedModel::DoBuildModelInfo()
 
 		std::vector<uint32_t> compacted(total_num_vertices);
 		ElementFormat fmt;
-		if (rf.RenderEngineInstance().DeviceCaps().vertex_format_support(EF_ABGR8))
+		if (rf.RenderEngineInstance().DeviceCaps().VertexFormatSupport(EF_ABGR8))
 		{	
 			fmt = EF_ABGR8;
 			for (size_t j = 0; j < compacted.size(); ++ j)
@@ -380,7 +397,7 @@ void DetailedSkinnedModel::DoBuildModelInfo()
 		}
 		else
 		{
-			BOOST_ASSERT(rf.RenderEngineInstance().DeviceCaps().vertex_format_support(EF_ARGB8));
+			BOOST_ASSERT(rf.RenderEngineInstance().DeviceCaps().VertexFormatSupport(EF_ARGB8));
 
 			fmt = EF_ARGB8;
 			for (size_t j = 0; j < compacted.size(); ++ j)
@@ -395,22 +412,21 @@ void DetailedSkinnedModel::DoBuildModelInfo()
 		for (auto const & renderable : subrenderables_)
 		{
 			StaticMeshPtr mesh = checked_pointer_cast<StaticMesh>(renderable);
-			mesh->AddVertexStream(&compacted[0], static_cast<uint32_t>(sizeof(compacted[0]) * compacted.size()),
-				VertexElement(VEU_Tangent, 0, fmt), EAH_GPU_Read);
+			for (uint32_t lod = 0; lod < mesh->NumLods(); ++ lod)
+			{
+				mesh->AddVertexStream(lod, &compacted[0], static_cast<uint32_t>(sizeof(compacted[0]) * compacted.size()),
+					VertexElement(VEU_Tangent, 0, fmt), EAH_GPU_Read);
+			}
 		}
 	}
 
 	if (has_skinned)
 	{
-		effect_ = SyncLoadRenderEffect("MtlEditorSkinning128.fxml");
-		if (!effect_->TechniqueByName("GBufferMRTTech")->Validate())
-		{
-			effect_ = SyncLoadRenderEffect("MtlEditorSkinning64.fxml");
-		}
+		effect_ = SyncLoadRenderEffects({ "MtlEditor.fxml", "GBufferSkinning.fxml" });
 	}
 	else
 	{
-		effect_ = SyncLoadRenderEffect("MtlEditorNoSkinning.fxml");
+		effect_ = SyncLoadRenderEffect("MtlEditor.fxml");
 	}
 
 	std::string g_buffer_mrt_tech_str;
@@ -615,11 +631,11 @@ SkeletonMesh::SkeletonMesh(RenderModelPtr const & model)
 	GraphicsBufferPtr ib = rf.MakeIndexBuffer(BU_Static, EAH_GPU_Read | EAH_Immutable,
 		static_cast<uint32_t>(indices.size() * sizeof(indices[0])), &indices[0]);
 
-	rl_ = rf.MakeRenderLayout();
-	rl_->TopologyType(RenderLayout::TT_TriangleList);
-	rl_->BindVertexStream(pos_vb, VertexElement(VEU_Position, 0, EF_ABGR32F));
-	rl_->BindVertexStream(bone_index_vb, VertexElement(VEU_BlendIndex, 0, EF_ABGR8UI));
-	rl_->BindIndexStream(ib, EF_R16UI);
+	this->NumLods(1);
+	rls_[0]->TopologyType(RenderLayout::TT_TriangleList);
+	rls_[0]->BindVertexStream(pos_vb, VertexElement(VEU_Position, 0, EF_ABGR32F));
+	rls_[0]->BindVertexStream(bone_index_vb, VertexElement(VEU_BlendIndex, 0, EF_ABGR8UI));
+	rls_[0]->BindIndexStream(ib, EF_R16UI);
 
 	effect_attrs_ |= EA_SimpleForward;
 

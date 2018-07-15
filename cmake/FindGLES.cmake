@@ -5,11 +5,7 @@
 #  KLAYGE_GLES_INCLUDE_DIR - Directory to the OpenGL ES SDK's include
 #   
 
-IF(COMMAND CMAKE_POLICY)
-	IF(NOT (CMAKE_VERSION VERSION_LESS 3.1))
-		CMAKE_POLICY(SET CMP0053 OLD)
-	ENDIF()
-ENDIF()
+SET(ProgramFilesX86 "ProgramFiles(x86)")
 
 IF(NOT KLAYGE_GLES_INCLUDE_DIR)
 	IF(WIN32)
@@ -18,17 +14,18 @@ IF(NOT KLAYGE_GLES_INCLUDE_DIR)
 				"$ENV{SystemDrive}/AdrenoSDK/Development/Inc"
 				"$ENV{NV_WINGL_X86_PLAT}/include"
 				"$ENV{ProgramFiles}/NVIDIA Corporation/win_x86_es2emu/include"
-				"$ENV{ProgramFiles(x86)}/NVIDIA Corporation/win_x86_es2emu/include"
+				"$ENV{${ProgramFilesX86}}/NVIDIA Corporation/win_x86_es2emu/include"
 				"$ENV{SystemDrive}/Imagination/PowerVR/GraphicsSDK/SDK_*/Builds/include"
 				"$ENV{SystemDrive}/Imagination/PowerVR_Graphics/PowerVR_SDK/SDK_*/Builds/include"
 				"$ENV{KHRONOS_HEADERS}"
 				"$ENV{ProgramFiles}/ARM/Mali Developer Tools/Mali OpenGL ES Emulator*/include"
-				"$ENV{ProgramFiles(x86)}/ARM/Mali Developer Tools/Mali OpenGL ES Emulator*/include"
+				"$ENV{${ProgramFilesX86}}/ARM/Mali Developer Tools/Mali OpenGL ES Emulator*/include"
 			)
 	ELSEIF(ANDROID)
 		FIND_PATH(KLAYGE_GLES_INCLUDE_DIR KHR/khrplatform.h
 			PATHS
 				"$ENV{ANDROID_NDK}/platforms/android-${ANDROID_NATIVE_API_LEVEL}/arch-${ANDROID_ARCH_NAME}/usr/include"
+				"$ENV{ANDROID_NDK}/sysroot/usr/include"
 		)
 	ELSEIF(IOS)
 		FIND_PATH(KLAYGE_GLES_INCLUDE_DIR EAGL.h

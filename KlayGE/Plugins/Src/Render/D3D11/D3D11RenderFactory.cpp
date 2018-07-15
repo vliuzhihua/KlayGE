@@ -26,7 +26,6 @@
 #include <KlayGE/D3D11/D3D11Fence.hpp>
 
 #include <KlayGE/D3D11/D3D11RenderFactory.hpp>
-#include <KlayGE/D3D11/D3D11RenderFactoryInternal.hpp>
 
 namespace KlayGE
 {
@@ -111,7 +110,19 @@ namespace KlayGE
 
 	FencePtr D3D11RenderFactory::MakeFence()
 	{
-		return MakeSharedPtr<D3D11Fence>();
+		FencePtr ret;
+
+		auto* d3d_device_5 = checked_cast<D3D11RenderEngine*>(re_.get())->D3DDevice5();
+		if (d3d_device_5 != nullptr)
+		{
+			ret = MakeSharedPtr<D3D11_4Fence>();
+		}
+		else
+		{
+			ret = MakeSharedPtr<D3D11Fence>();
+		}
+
+		return ret;
 	}
 
 	RenderViewPtr D3D11RenderFactory::Make1DRenderView(Texture& texture, int first_array_index, int array_size, int level)
@@ -256,7 +267,10 @@ namespace KlayGE
 	}
 }
 
-void MakeRenderFactory(std::unique_ptr<KlayGE::RenderFactory>& ptr)
+extern "C"
 {
-	ptr = KlayGE::MakeUniquePtr<KlayGE::D3D11RenderFactory>();
+	KLAYGE_SYMBOL_EXPORT void MakeRenderFactory(std::unique_ptr<KlayGE::RenderFactory>& ptr)
+	{
+		ptr = KlayGE::MakeUniquePtr<KlayGE::D3D11RenderFactory>();
+	}
 }

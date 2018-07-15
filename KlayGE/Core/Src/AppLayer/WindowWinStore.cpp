@@ -61,22 +61,9 @@ using namespace Microsoft::WRL::Wrappers;
 
 namespace KlayGE
 {
-	Window::Window(std::string const & name, RenderSettings const & settings)
-		: active_(false), ready_(false), closed_(false), keep_screen_on_(settings.keep_screen_on),
-			dpi_scale_(1), win_rotation_(WR_Identity)
-	{
-		Convert(wname_, name);
-
-		pointer_id_map_.fill(0);
-
-		width_ = settings.width;
-		height_ = settings.height;
-		full_screen_ = settings.full_screen;
-	}
-
 	Window::Window(std::string const & name, RenderSettings const & settings, void* native_wnd)
 		: active_(false), ready_(false), closed_(false), keep_screen_on_(settings.keep_screen_on),
-			dpi_scale_(1), win_rotation_(WR_Identity)
+			dpi_scale_(1), effective_dpi_scale_(1), win_rotation_(WR_Identity)
 	{
 		KFL_UNUSED(native_wnd);
 
@@ -107,14 +94,11 @@ namespace KlayGE
 		left_ = 0;
 		top_ = 0;
 		
-		this->DetectsDPI();
+		this->DetectsDpi();
 		this->DetectsOrientation();
 
-		ComPtr<IApplicationViewStatics> app_view_stat;
-		GetActivationFactory(HStringReference(RuntimeClass_Windows_UI_ViewManagement_ApplicationView).Get(), &app_view_stat);
-
 		ComPtr<IApplicationViewStatics2> app_view_stat2;
-		app_view_stat.As(&app_view_stat2);
+		GetActivationFactory(HStringReference(RuntimeClass_Windows_UI_ViewManagement_ApplicationView).Get(), &app_view_stat2);
 
 		ComPtr<IApplicationView> app_view;
 		app_view_stat2->GetForCurrentView(&app_view);
@@ -122,7 +106,7 @@ namespace KlayGE
 		app_view->put_Title(HStringReference(wname_.c_str()).Get());
 
 		ComPtr<IApplicationViewStatics3> app_view_stat3;
-		app_view_stat.As(&app_view_stat3);
+		app_view_stat2.As(&app_view_stat3);
 
 		ABI::Windows::Foundation::Size size;
 		size.Width = static_cast<float>(width_);
@@ -138,7 +122,7 @@ namespace KlayGE
 		ready_ = true;
 	}
 
-	void Window::DetectsDPI()
+	void Window::DetectsDpi()
 	{
 		ComPtr<IDisplayInformationStatics> disp_info_stat;
 		TIFHR(GetActivationFactory(HStringReference(RuntimeClass_Windows_Graphics_Display_DisplayInformation).Get(),
@@ -150,7 +134,7 @@ namespace KlayGE
 		float dpi;
 		TIFHR(disp_info->get_LogicalDpi(&dpi));
 
-		dpi_scale_ = dpi / 96;
+		this->UpdateDpiScale(dpi / 96);
 	}
 
 	void Window::DetectsOrientation()
@@ -230,17 +214,14 @@ namespace KlayGE
 
 	bool Window::FullScreen(bool fs)
 	{
-		ComPtr<IApplicationViewStatics> app_view_stat;
-		GetActivationFactory(HStringReference(RuntimeClass_Windows_UI_ViewManagement_ApplicationView).Get(), &app_view_stat);
-
 		ComPtr<IApplicationViewStatics2> app_view_stat2;
-		app_view_stat.As(&app_view_stat2);
+		GetActivationFactory(HStringReference(RuntimeClass_Windows_UI_ViewManagement_ApplicationView).Get(), &app_view_stat2);
 
 		ComPtr<IApplicationView> app_view;
 		app_view_stat2->GetForCurrentView(&app_view);
 
 		ComPtr<IApplicationViewStatics3> app_view_stat3;
-		app_view_stat.As(&app_view_stat3);
+		app_view_stat2.As(&app_view_stat3);
 
 		ComPtr<IApplicationView3> app_view3;
 		app_view.As(&app_view3);
@@ -450,13 +431,10 @@ namespace KlayGE
 		size.Width = static_cast<float>(width_ / dpi_scale_);
 		size.Height = static_cast<float>(height_ / dpi_scale_);
 
-		this->DetectsDPI();
-
-		ComPtr<IApplicationViewStatics> app_view_stat;
-		GetActivationFactory(HStringReference(RuntimeClass_Windows_UI_ViewManagement_ApplicationView).Get(), &app_view_stat);
+		this->DetectsDpi();
 
 		ComPtr<IApplicationViewStatics2> app_view_stat2;
-		app_view_stat.As(&app_view_stat2);
+		GetActivationFactory(HStringReference(RuntimeClass_Windows_UI_ViewManagement_ApplicationView).Get(), &app_view_stat2);
 
 		ComPtr<IApplicationView> app_view;
 		app_view_stat2->GetForCurrentView(&app_view);

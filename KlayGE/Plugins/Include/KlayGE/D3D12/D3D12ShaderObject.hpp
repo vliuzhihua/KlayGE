@@ -37,7 +37,6 @@
 #include <KlayGE/ShaderObject.hpp>
 
 #include <KlayGE/D3D12/D3D12Typedefs.hpp>
-#include <KlayGE/D3D12/D3D12RenderView.hpp>
 
 namespace KlayGE
 {
@@ -64,11 +63,6 @@ namespace KlayGE
 		void Bind();
 		void Unbind();
 
-		std::shared_ptr<std::vector<uint8_t>> const & ShaderBlob(ShaderType type) const
-		{
-			return so_template_->shader_code_[type].first;
-		}
-
 		uint32_t VSSignature() const
 		{
 			return so_template_->vs_signature_;
@@ -80,19 +74,9 @@ namespace KlayGE
 			return samplers_[type];
 		}
 
-		std::vector<std::tuple<D3D12Resource*, uint32_t, uint32_t>> const & SRVSrcs(ShaderType type) const
-		{
-			return srvsrcs_[type];
-		}
-
 		std::vector<D3D12ShaderResourceViewSimulation*> const & SRVs(ShaderType type) const
 		{
 			return srvs_[type];
-		}
-
-		std::vector<std::pair<D3D12Resource*, ID3D12Resource*>> const & UAVSrcs(ShaderType type) const
-		{
-			return uavsrcs_[type];
 		}
 
 		std::vector<D3D12UnorderedAccessViewSimulation*> const & UAVs(ShaderType type) const
@@ -115,18 +99,30 @@ namespace KlayGE
 			return so_template_->rasterized_stream_;
 		}
 
-		ID3D12RootSignaturePtr const & RootSignature() const
+		ID3D12RootSignature* RootSignature() const
 		{
-			return so_template_->root_signature_;
+			return so_template_->root_signature_.get();
 		}
-		ID3D12DescriptorHeapPtr const & SamplerHeap() const
+		ID3D12DescriptorHeap* SamplerHeap() const
 		{
-			return so_template_->sampler_heap_;
+			return so_template_->sampler_heap_.get();
 		}
 
 		void* ShaderObjectTemplate()
 		{
 			return so_template_.get();
+		}
+		void const * ShaderObjectTemplate() const
+		{
+			return so_template_.get();
+		}
+
+		void UpdatePsoDesc(D3D12_GRAPHICS_PIPELINE_STATE_DESC& pso_desc);
+		void UpdatePsoDesc(D3D12_COMPUTE_PIPELINE_STATE_DESC& pso_desc);
+
+		uint32_t NumHandles() const
+		{
+			return num_handles_;
 		}
 
 	private:
@@ -231,6 +227,8 @@ namespace KlayGE
 		std::array<std::vector<GraphicsBuffer*>, ST_NumShaderTypes> d3d_cbuffs_;
 
 		std::vector<RenderEffectConstantBuffer*> all_cbuffs_;
+
+		uint32_t num_handles_;
 	};
 
 	typedef std::shared_ptr<D3D12ShaderObject> D3D12ShaderObjectPtr;

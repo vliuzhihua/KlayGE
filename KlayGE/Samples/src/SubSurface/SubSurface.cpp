@@ -135,7 +135,11 @@ void SubSurfaceApp::OnCreate()
 	actionMap.AddActions(actions, actions + std::size(actions));
 
 	action_handler_t input_handler = MakeSharedPtr<input_signal>();
-	input_handler->connect(std::bind(&SubSurfaceApp::InputHandler, this, std::placeholders::_1, std::placeholders::_2));
+	input_handler->connect(
+		[this](InputEngine const & sender, InputAction const & action)
+		{
+			this->InputHandler(sender, action);
+		});
 	inputEngine.ActionMap(actionMap, input_handler);
 
 	UIManager::Instance().Load(ResLoader::Instance().Open("SubSurface.uiml"));
@@ -145,10 +149,18 @@ void SubSurfaceApp::OnCreate()
 	id_mtl_thickness_static_ = dialog_params_->IDFromName("MtlThicknessStatic");
 	id_mtl_thickness_slider_ = dialog_params_->IDFromName("MtlThicknessSlider");
 
-	dialog_params_->Control<UISlider>(id_sigma_slider_)->OnValueChangedEvent().connect(std::bind(&SubSurfaceApp::SigmaChangedHandler, this, std::placeholders::_1));
+	dialog_params_->Control<UISlider>(id_sigma_slider_)->OnValueChangedEvent().connect(
+		[this](UISlider const & sender)
+		{
+			this->SigmaChangedHandler(sender);
+		});
 	this->SigmaChangedHandler(*dialog_params_->Control<UISlider>(id_sigma_slider_));
 
-	dialog_params_->Control<UISlider>(id_mtl_thickness_slider_)->OnValueChangedEvent().connect(std::bind(&SubSurfaceApp::MtlThicknessChangedHandler, this, std::placeholders::_1));
+	dialog_params_->Control<UISlider>(id_mtl_thickness_slider_)->OnValueChangedEvent().connect(
+		[this](UISlider const & sender)
+		{
+			this->MtlThicknessChangedHandler(sender);
+		});
 	this->MtlThicknessChangedHandler(*dialog_params_->Control<UISlider>(id_mtl_thickness_slider_));
 
 	RenderFactory& rf = Context::Instance().RenderFactoryInstance();
@@ -175,30 +187,17 @@ void SubSurfaceApp::OnResize(uint32_t width, uint32_t height)
 	ElementFormat fmt;
 	if (depth_texture_support_)
 	{
-		if (caps.texture_format_support(EF_ABGR8) && caps.rendertarget_format_support(EF_ABGR8, 1, 0))
-		{
-			fmt = EF_ABGR8;
-		}
-		else
-		{
-			BOOST_ASSERT(caps.texture_format_support(EF_ARGB8) && caps.rendertarget_format_support(EF_ARGB8, 1, 0));
+		fmt = caps.BestMatchTextureRenderTargetFormat({ EF_ABGR8, EF_ARGB8 }, 1, 0);
+		BOOST_ASSERT(fmt != EF_Unknown);
 
-			fmt = EF_ARGB8;
-		}
 		// Just dummy
 		back_face_depth_tex = rf.MakeTexture2D(width, height, 1, 1, fmt, 1, 0, EAH_GPU_Read | EAH_GPU_Write);
 
-		if (caps.rendertarget_format_support(EF_D24S8, 1, 0))
-		{
-			fmt = EF_D24S8;
-		}
-		else
-		{
-			BOOST_ASSERT(caps.rendertarget_format_support(EF_D16, 1, 0));
+		fmt = caps.BestMatchTextureRenderTargetFormat({ EF_D24S8, EF_D16 }, 1, 0);
+		BOOST_ASSERT(fmt != EF_Unknown);
 
-			fmt = EF_D16;
-		}
-		back_face_ds_tex = rf.MakeTexture2D(width, height, 1, 1, fmt, 1, 0, EAH_GPU_Read | EAH_GPU_Write);
+		float4 constexpr back_face_ds_clear_value(0, 0, 0, 0);
+		back_face_ds_tex = rf.MakeTexture2D(width, height, 1, 1, fmt, 1, 0, EAH_GPU_Read | EAH_GPU_Write, {}, &back_face_ds_clear_value);
 		back_face_ds_view = rf.Make2DDepthStencilRenderView(*back_face_ds_tex, 0, 1, 0);
 
 		checked_pointer_cast<ModelObject>(model_)->BackFaceDepthTex(back_face_ds_tex);
@@ -207,15 +206,8 @@ void SubSurfaceApp::OnResize(uint32_t width, uint32_t height)
 	{
 		if (caps.pack_to_rgba_required)
 		{
-			if (caps.texture_format_support(EF_ABGR8) && caps.rendertarget_format_support(EF_ABGR8, 1, 0))
-			{
-				fmt = EF_ABGR8;
-			}
-			else
-			{
-				BOOST_ASSERT(caps.texture_format_support(EF_ARGB8) && caps.rendertarget_format_support(EF_ARGB8, 1, 0));
-				fmt = EF_ARGB8;
-			}
+			fmt = caps.BestMatchTextureRenderTargetFormat({ EF_ABGR8, EF_ARGB8 }, 1, 0);
+			BOOST_ASSERT(fmt != EF_Unknown);
 		}
 		else
 		{

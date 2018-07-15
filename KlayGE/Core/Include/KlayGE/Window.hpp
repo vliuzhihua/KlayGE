@@ -25,23 +25,13 @@
 
 #include <KlayGE/RenderSettings.hpp>
 
-#if defined(KLAYGE_COMPILER_MSVC)
-#pragma warning(push)
-#pragma warning(disable: 4512) // boost::iterators::function_output_iterator<T>::output_proxy doesn't have assignment operator
-#pragma warning(disable: 4913) // User defined binary operator ',' exists but no overload could convert all operands
-#elif defined(KLAYGE_COMPILER_GCC)
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations" // Ignore auto_ptr declaration
-#elif defined(KLAYGE_COMPILER_CLANG)
+#if defined(KLAYGE_COMPILER_CLANGC2)
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wunused-parameter" // Ignore unused parameter 'sp'
+#pragma clang diagnostic ignored "-Wunused-variable" // Ignore unused variable (mpl_assertion_in_line_xxx) in boost
 #endif
 #include <boost/signals2.hpp>
-#if defined(KLAYGE_COMPILER_MSVC)
-#pragma warning(pop)
-#elif defined(KLAYGE_COMPILER_GCC)
-#pragma GCC diagnostic pop
-#elif defined(KLAYGE_COMPILER_CLANG)
+#if defined(KLAYGE_COMPILER_CLANGC2)
 #pragma clang diagnostic pop
 #endif
 
@@ -94,7 +84,6 @@ namespace KlayGE
 		};
 
 	public:
-		Window(std::string const & name, RenderSettings const & settings);
 		Window(std::string const & name, RenderSettings const & settings, void* native_wnd);
 		~Window();
 
@@ -210,6 +199,10 @@ namespace KlayGE
 		float DPIScale() const
 		{
 			return dpi_scale_;
+		}
+		float EffectiveDPIScale() const
+		{
+			return effective_dpi_scale_;
 		}
 
 		WindowRotation Rotation() const
@@ -367,6 +360,9 @@ namespace KlayGE
 		PointerWheelEvent pointer_wheel_event_;
 		CloseEvent close_event_;
 
+	private:
+		void UpdateDpiScale(float scale);
+
 #if defined KLAYGE_PLATFORM_WINDOWS
 #if defined KLAYGE_PLATFORM_WINDOWS_DESKTOP
 	private:
@@ -381,7 +377,7 @@ namespace KlayGE
 		void DetectsOrientation();
 #endif
 
-		void DetectsDPI();
+		void DetectsDpi();
 #elif defined KLAYGE_PLATFORM_LINUX
 	public:
 		void MsgProc(XEvent const & event);
@@ -403,6 +399,7 @@ namespace KlayGE
 		bool keep_screen_on_;
 
 		float dpi_scale_;
+		float effective_dpi_scale_;
 		WindowRotation win_rotation_;
 
 #if defined KLAYGE_PLATFORM_WINDOWS

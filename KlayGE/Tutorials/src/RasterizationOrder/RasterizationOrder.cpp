@@ -141,6 +141,11 @@ namespace
 			technique_ = ras_order_tech_[on];
 		}
 
+		void BindRasOrderBuffer(GraphicsBufferPtr const & ras_order_buff)
+		{
+			*(effect_->ParameterByName("ras_order_buff")) = ras_order_buff;
+		}
+
 	private:
 		RenderTechnique* ras_order_tech_[2];
 	};
@@ -200,14 +205,18 @@ void RasterizationOrderApp::OnCreate()
 
 	ras_order_fb_ = rf.MakeFrameBuffer();
 
-	copy_pp_ = SyncLoadPostProcess("Copy.ppml", "bilinear_copy");
+	copy_pp_ = SyncLoadPostProcess("Copy.ppml", "BilinearCopy");
 
 	InputEngine& inputEngine(Context::Instance().InputFactoryInstance().InputEngineInstance());
 	InputActionMap actionMap;
 	actionMap.AddActions(actions, actions + std::size(actions));
 
 	action_handler_t input_handler = MakeSharedPtr<input_signal>();
-	input_handler->connect(std::bind(&RasterizationOrderApp::InputHandler, this, std::placeholders::_1, std::placeholders::_2));
+	input_handler->connect(
+		[this](InputEngine const & sender, InputAction const & action)
+		{
+			this->InputHandler(sender, action);
+		});
 	inputEngine.ActionMap(actionMap, input_handler);
 
 	UIManager::Instance().Load(ResLoader::Instance().Open("RasterizationOrder.uiml"));
@@ -216,10 +225,16 @@ void RasterizationOrderApp::OnCreate()
 	id_capture_ = dialog_params_->IDFromName("Capture");
 
 	dialog_params_->Control<UICheckBox>(id_color_map_)->OnChangedEvent().connect(
-		std::bind(&RasterizationOrderApp::ColorMapHandler, this, std::placeholders::_1));
+		[this](UICheckBox const & sender)
+		{
+			this->ColorMapHandler(sender);
+		});
 	this->ColorMapHandler(*dialog_params_->Control<UICheckBox>(id_color_map_));
 	dialog_params_->Control<UIButton>(id_capture_)->OnClickedEvent().connect(
-		std::bind(&RasterizationOrderApp::CaptureHandler, this, std::placeholders::_1));
+		[this](UIButton const & sender)
+		{
+			this->CaptureHandler(sender);
+		});
 }
 
 void RasterizationOrderApp::OnResize(uint32_t width, uint32_t height)
@@ -230,6 +245,8 @@ void RasterizationOrderApp::OnResize(uint32_t width, uint32_t height)
 		width * height * sizeof(uint32_t), nullptr, EF_R32UI);
 	ras_order_uav_ = rf.MakeGraphicsBufferUnorderedAccessView(*ras_order_buff_, EF_R32UI);
 	ras_order_fb_->AttachUAV(0, ras_order_uav_);
+
+	checked_pointer_cast<RenderQuad>(render_quad_)->BindRasOrderBuffer(ras_order_buff_);
 
 	ras_order_tex_ = rf.MakeTexture2D(width, height, 1, 1, EF_ABGR8, 1, 0, EAH_GPU_Read | EAH_GPU_Write);
 	ras_order_fb_->Attach(FrameBuffer::ATT_Color0, rf.Make2DRenderView(*ras_order_tex_, 0, 1, 0));

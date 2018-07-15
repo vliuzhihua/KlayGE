@@ -11,6 +11,7 @@
 //////////////////////////////////////////////////////////////////////////////////
 
 #include <KlayGE/KlayGE.hpp>
+#include <KFL/CustomizedStreamBuf.hpp>
 #include <KFL/ErrorHandling.hpp>
 #include <KFL/Util.hpp>
 #include <KlayGE/RenderEffect.hpp>
@@ -18,14 +19,13 @@
 #include <KlayGE/RenderFactory.hpp>
 #include <KlayGE/RenderEngine.hpp>
 #include <KlayGE/ResLoader.hpp>
+#include <KFL/CustomizedStreamBuf.hpp>
 
 #include <string>
 #include <vector>
 #include <map>
 #include <sstream>
 #include <fstream>
-
-#include <boost/lexical_cast.hpp>
 
 #include <KlayGE/ShaderObject.hpp>
 
@@ -125,7 +125,7 @@ namespace
 			}
 			return hr;
 #else
-			std::string mark = boost::lexical_cast<std::string>(static_cast<void const *>(src_data.c_str()));
+			std::string mark = std::to_string(reinterpret_cast<uint64_t>(src_data.c_str()));
 			std::string compile_input_file = entry_point + mark + "Input.tmp";
 			std::string compile_output_file = entry_point + mark + "Output.tmp";
 
@@ -167,7 +167,8 @@ namespace
 			if (first)
 			{
 				ss << WINE_PATH << "wineserver -p";
-				system(ss.str().c_str());
+				int err = system(ss.str().c_str());
+				KFL_UNUSED(err);
 				// We should hold on a persistant wineserver, or XCode will lost connection after wineserver instance close and wine may not be able to find '.exe.so' file
 				first = false;
 				ss.str(std::string());
@@ -307,12 +308,12 @@ namespace KlayGE
 
 		std::string const & hlsl_shader_text = effect.HLSLShaderText();
 
-		std::string max_sm_str = boost::lexical_cast<std::string>(caps.max_shader_model.FullVersion());
-		std::string max_tex_array_str = boost::lexical_cast<std::string>(caps.max_texture_array_length);
-		std::string max_tex_depth_str = boost::lexical_cast<std::string>(caps.max_texture_depth);
-		std::string max_tex_units_str = boost::lexical_cast<std::string>(static_cast<int>(caps.max_pixel_texture_units));
-		std::string flipping_str = boost::lexical_cast<std::string>(re.RequiresFlipping() ? -1 : +1);
-		std::string render_to_tex_array_str = boost::lexical_cast<std::string>(caps.render_to_texture_array_support ? 1 : 0);
+		std::string max_sm_str = std::to_string(caps.max_shader_model.FullVersion());
+		std::string max_tex_array_str = std::to_string(caps.max_texture_array_length);
+		std::string max_tex_depth_str = std::to_string(caps.max_texture_depth);
+		std::string max_tex_units_str = std::to_string(static_cast<int>(caps.max_pixel_texture_units));
+		std::string flipping_str = std::to_string(re.RequiresFlipping() ? -1 : +1);
+		std::string render_to_tex_array_str = std::to_string(caps.render_to_texture_array_support ? 1 : 0);
 
 		std::string err_msg;
 		std::vector<D3D_SHADER_MACRO> macros;
@@ -355,6 +356,21 @@ namespace KlayGE
 		if (caps.pack_to_rgba_required)
 		{
 			D3D_SHADER_MACRO macro = { "KLAYGE_PACK_TO_RGBA", "1" };
+			macros.push_back(macro);
+		}
+		if (caps.UavFormatSupport(EF_ABGR16F))
+		{
+			D3D_SHADER_MACRO macro = { "KLAYGE_TYPED_UAV_SUPPORT", "1" };
+			macros.push_back(macro);
+		}
+		if (caps.uavs_at_every_stage_support)
+		{
+			D3D_SHADER_MACRO macro = { "KLAYGE_UAVS_AT_EVERY_STAGE_SUPPORT", "1" };
+			macros.push_back(macro);
+		}
+		if (caps.explicit_multi_sample_support)
+		{
+			D3D_SHADER_MACRO macro = { "KLAYGE_EXPLICIT_MULTI_SAMPLE_SUPPORT", "1" };
 			macros.push_back(macro);
 		}
 		{
@@ -415,11 +431,13 @@ namespace KlayGE
 			flags, 0, code, err_msg);
 		if (!err_msg.empty())
 		{
-			LogError("Error when compiling %s:", func_name);
+			LogError() << "Error when compiling " << func_name << ":" << std::endl;
 
 			std::map<int, std::vector<std::string>> err_lines;
 			{
-				std::istringstream err_iss(err_msg);
+				MemInputStreamBuf err_msg_buff(err_msg.data(), err_msg.size());
+				std::istream err_iss(&err_msg_buff);
+
 				std::string err_str;
 				while (err_iss)
 				{
@@ -436,7 +454,8 @@ namespace KlayGE
 						std::string part_err_str = err_str.substr(0, pos);
 						pos = part_err_str.rfind("(");
 						part_err_str = part_err_str.substr(pos + 1);
-						std::istringstream(part_err_str) >> err_line;
+						MemInputStreamBuf stream_buff(part_err_str.data(), part_err_str.size());
+						std::istream(&stream_buff) >> err_line;
 					}
 
 					std::vector<std::string>& msgs = err_lines[err_line];
@@ -467,11 +486,13 @@ namespace KlayGE
 			{
 				if (iter->first >= 0)
 				{
-					std::istringstream iss(hlsl_shader_text);
+					MemInputStreamBuf hlsl_buff(hlsl_shader_text.data(), hlsl_shader_text.size());
+					std::istream iss(&hlsl_buff);
+
 					std::string s;
 					int line = 1;
 
-					LogInfo("...");
+					LogInfo() << "..." << std::endl;
 					while (iss && ((iter->first - line) >= 3))
 					{
 						std::getline(iss, s);
@@ -486,16 +507,16 @@ namespace KlayGE
 							s.resize(s.size() - 1);
 						}
 
-						LogInfo("%d %s", line, s.c_str());
+						LogInfo() << line << ' ' << s << std::endl;
 
 						++ line;
 					}
-					LogInfo("...");
+					LogInfo() << "..." << std::endl;
 				}
 
 				for (auto const & msg : iter->second)
 				{
-					LogError(msg.c_str());
+					LogError() << msg << std::endl;
 				}
 			}
 		}

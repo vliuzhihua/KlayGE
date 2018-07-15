@@ -25,12 +25,11 @@
 #include <KlayGE/RenderEngine.hpp>
 #include <KlayGE/RenderFactory.hpp>
 #include <KlayGE/RenderEffect.hpp>
+#include <KFL/CustomizedStreamBuf.hpp>
 #include <KFL/Hash.hpp>
 
 #include <string>
-#include <map>
 #include <algorithm>
-#include <sstream>
 #include <cstring>
 #include <boost/assert.hpp>
 
@@ -267,128 +266,113 @@ namespace KlayGE
 		std::string_view shader_profile = this->GetShaderProfile(type, effect, shader_desc_ids[type]);
 		if (native_shader_block.size() >= 25 + shader_profile.size())
 		{
-			uint8_t const * nsbp = &native_shader_block[0];
+			MemInputStreamBuf native_shader_buff(native_shader_block.data(), native_shader_block.size());
+			std::istream native_shader_stream(&native_shader_buff);
 
-			uint8_t len = *nsbp;
-			++ nsbp;
+			uint8_t len;
+			native_shader_stream.read(reinterpret_cast<char*>(&len), sizeof(len));
 			std::string& profile = so_template_->shader_code_[type].second;
 			profile.resize(len);
-			std::memcpy(&profile[0], nsbp, len);
-			nsbp += len;
+			native_shader_stream.read(&profile[0], len);
 			if (profile == shader_profile)
 			{
 				is_shader_validate_[type] = true;
 
 				uint32_t blob_size;
-				std::memcpy(&blob_size, nsbp, sizeof(blob_size));
-				nsbp += sizeof(blob_size);
+				native_shader_stream.read(reinterpret_cast<char*>(&blob_size), sizeof(blob_size));
 				std::shared_ptr<std::vector<uint8_t>> code_blob = MakeSharedPtr<std::vector<uint8_t>>(blob_size);
 
-				std::memcpy(&((*code_blob)[0]), nsbp, blob_size);
-				nsbp += blob_size;
+				native_shader_stream.read(reinterpret_cast<char*>(&((*code_blob)[0])), blob_size);
 
 				so_template_->shader_desc_[type] = MakeSharedPtr<D3D11ShaderObjectTemplate::D3D11ShaderDesc>();
 				auto& sd = *so_template_->shader_desc_[type];
 
 				uint16_t cb_desc_size;
-				std::memcpy(&cb_desc_size, nsbp, sizeof(cb_desc_size));
-				nsbp += sizeof(cb_desc_size);
+				native_shader_stream.read(reinterpret_cast<char*>(&cb_desc_size), sizeof(cb_desc_size));
 				cb_desc_size = LE2Native(cb_desc_size);
 				sd.cb_desc.resize(cb_desc_size);
 				for (size_t i = 0; i < sd.cb_desc.size(); ++ i)
 				{
-					len = *nsbp;
-					++ nsbp;
+					native_shader_stream.read(reinterpret_cast<char*>(&len), sizeof(len));
 					sd.cb_desc[i].name.resize(len);
-					std::memcpy(&sd.cb_desc[i].name[0], nsbp, len);
-					nsbp += len;
+					native_shader_stream.read(&sd.cb_desc[i].name[0], len);
 
 					sd.cb_desc[i].name_hash = RT_HASH(sd.cb_desc[i].name.c_str());
 
-					std::memcpy(&sd.cb_desc[i].size, nsbp, sizeof(sd.cb_desc[i].size));
-					nsbp += sizeof(sd.cb_desc[i].size);
+					native_shader_stream.read(reinterpret_cast<char*>(&sd.cb_desc[i].size), sizeof(sd.cb_desc[i].size));
 					sd.cb_desc[i].size = LE2Native(sd.cb_desc[i].size);
 
 					uint16_t var_desc_size;
-					std::memcpy(&var_desc_size, nsbp, sizeof(var_desc_size));
-					nsbp += sizeof(var_desc_size);
+					native_shader_stream.read(reinterpret_cast<char*>(&var_desc_size), sizeof(var_desc_size));
 					var_desc_size = LE2Native(var_desc_size);
 					sd.cb_desc[i].var_desc.resize(var_desc_size);
 					for (size_t j = 0; j < sd.cb_desc[i].var_desc.size(); ++ j)
 					{
-						len = *nsbp;
-						++ nsbp;
+						native_shader_stream.read(reinterpret_cast<char*>(&len), sizeof(len));
 						sd.cb_desc[i].var_desc[j].name.resize(len);
-						std::memcpy(&sd.cb_desc[i].var_desc[j].name[0], nsbp, len);
-						nsbp += len;
+						native_shader_stream.read(&sd.cb_desc[i].var_desc[j].name[0], len);
 
-						std::memcpy(&sd.cb_desc[i].var_desc[j].start_offset, nsbp, sizeof(sd.cb_desc[i].var_desc[j].start_offset));
-						nsbp += sizeof(sd.cb_desc[i].var_desc[j].start_offset);
+						native_shader_stream.read(reinterpret_cast<char*>(&sd.cb_desc[i].var_desc[j].start_offset),
+							sizeof(sd.cb_desc[i].var_desc[j].start_offset));
 						sd.cb_desc[i].var_desc[j].start_offset = LE2Native(sd.cb_desc[i].var_desc[j].start_offset);
-						std::memcpy(&sd.cb_desc[i].var_desc[j].type, nsbp, sizeof(sd.cb_desc[i].var_desc[j].type));
-						nsbp += sizeof(sd.cb_desc[i].var_desc[j].type);
-						std::memcpy(&sd.cb_desc[i].var_desc[j].rows, nsbp, sizeof(sd.cb_desc[i].var_desc[j].rows));
-						nsbp += sizeof(sd.cb_desc[i].var_desc[j].rows);
-						std::memcpy(&sd.cb_desc[i].var_desc[j].columns, nsbp, sizeof(sd.cb_desc[i].var_desc[j].columns));
-						nsbp += sizeof(sd.cb_desc[i].var_desc[j].columns);
-						std::memcpy(&sd.cb_desc[i].var_desc[j].elements, nsbp, sizeof(sd.cb_desc[i].var_desc[j].elements));
-						nsbp += sizeof(sd.cb_desc[i].var_desc[j].elements);
+						native_shader_stream.read(reinterpret_cast<char*>(&sd.cb_desc[i].var_desc[j].type),
+							sizeof(sd.cb_desc[i].var_desc[j].type));
+						native_shader_stream.read(reinterpret_cast<char*>(&sd.cb_desc[i].var_desc[j].rows),
+							sizeof(sd.cb_desc[i].var_desc[j].rows));
+						native_shader_stream.read(reinterpret_cast<char*>(&sd.cb_desc[i].var_desc[j].columns),
+							sizeof(sd.cb_desc[i].var_desc[j].columns));
+						native_shader_stream.read(reinterpret_cast<char*>(&sd.cb_desc[i].var_desc[j].elements),
+							sizeof(sd.cb_desc[i].var_desc[j].elements));
 						sd.cb_desc[i].var_desc[j].elements = LE2Native(sd.cb_desc[i].var_desc[j].elements);
 					}
 				}
 
-				std::memcpy(&sd.num_samplers, nsbp, sizeof(sd.num_samplers));
-				nsbp += sizeof(sd.num_samplers);
+				native_shader_stream.read(reinterpret_cast<char*>(&sd.num_samplers), sizeof(sd.num_samplers));
 				sd.num_samplers = LE2Native(sd.num_samplers);
-				std::memcpy(&sd.num_srvs, nsbp, sizeof(sd.num_srvs));
-				nsbp += sizeof(sd.num_srvs);
+				native_shader_stream.read(reinterpret_cast<char*>(&sd.num_srvs), sizeof(sd.num_srvs));
 				sd.num_srvs = LE2Native(sd.num_srvs);
-				std::memcpy(&sd.num_uavs, nsbp, sizeof(sd.num_uavs));
-				nsbp += sizeof(sd.num_uavs);
+				native_shader_stream.read(reinterpret_cast<char*>(&sd.num_uavs), sizeof(sd.num_uavs));
 				sd.num_uavs = LE2Native(sd.num_uavs);
 
 				uint16_t res_desc_size;
-				std::memcpy(&res_desc_size, nsbp, sizeof(res_desc_size));
-				nsbp += sizeof(res_desc_size);
+				native_shader_stream.read(reinterpret_cast<char*>(&res_desc_size), sizeof(res_desc_size));
 				res_desc_size = LE2Native(res_desc_size);
 				sd.res_desc.resize(res_desc_size);
 				for (size_t i = 0; i < sd.res_desc.size(); ++ i)
 				{
-					len = *nsbp;
-					++ nsbp;
+					native_shader_stream.read(reinterpret_cast<char*>(&len), sizeof(len));
 					sd.res_desc[i].name.resize(len);
-					std::memcpy(&sd.res_desc[i].name[0], nsbp, len);
-					nsbp += len;
+					native_shader_stream.read(&sd.res_desc[i].name[0], len);
 
-					std::memcpy(&sd.res_desc[i].type, nsbp, sizeof(sd.res_desc[i].type));
-					nsbp += sizeof(sd.res_desc[i].type);
+					native_shader_stream.read(reinterpret_cast<char*>(&sd.res_desc[i].type),
+						sizeof(sd.res_desc[i].type));
 
-					std::memcpy(&sd.res_desc[i].dimension, nsbp, sizeof(sd.res_desc[i].dimension));
-					nsbp += sizeof(sd.res_desc[i].dimension);
+					native_shader_stream.read(reinterpret_cast<char*>(&sd.res_desc[i].dimension),
+						sizeof(sd.res_desc[i].dimension));
 
-					std::memcpy(&sd.res_desc[i].bind_point, nsbp, sizeof(sd.res_desc[i].bind_point));
-					nsbp += sizeof(sd.res_desc[i].bind_point);
+					native_shader_stream.read(reinterpret_cast<char*>(&sd.res_desc[i].bind_point),
+						sizeof(sd.res_desc[i].bind_point));
 					sd.res_desc[i].bind_point = LE2Native(sd.res_desc[i].bind_point);
 				}
 
 				if (ST_VertexShader == type)
 				{
-					std::memcpy(&so_template_->vs_signature_, nsbp, sizeof(so_template_->vs_signature_));
-					nsbp += sizeof(so_template_->vs_signature_);
+					native_shader_stream.read(reinterpret_cast<char*>(&so_template_->vs_signature_),
+						sizeof(so_template_->vs_signature_));
 					so_template_->vs_signature_ = LE2Native(so_template_->vs_signature_);
 				}
 				else if (ST_ComputeShader == type)
 				{
-					std::memcpy(&cs_block_size_x_, nsbp, sizeof(cs_block_size_x_));
-					nsbp += sizeof(cs_block_size_x_);
+					native_shader_stream.read(reinterpret_cast<char*>(&cs_block_size_x_),
+						sizeof(cs_block_size_x_));
 					cs_block_size_x_ = LE2Native(cs_block_size_x_);
 
-					std::memcpy(&cs_block_size_y_, nsbp, sizeof(cs_block_size_y_));
-					nsbp += sizeof(cs_block_size_y_);
+					native_shader_stream.read(reinterpret_cast<char*>(&cs_block_size_y_),
+						sizeof(cs_block_size_y_));
 					cs_block_size_y_ = LE2Native(cs_block_size_y_);
 
-					std::memcpy(&cs_block_size_z_, nsbp, sizeof(cs_block_size_z_));
-					nsbp += sizeof(cs_block_size_z_);
+					native_shader_stream.read(reinterpret_cast<char*>(&cs_block_size_z_),
+						sizeof(cs_block_size_z_));
 					cs_block_size_z_ = LE2Native(cs_block_size_z_);
 				}
 
@@ -418,7 +402,9 @@ namespace KlayGE
 
 	void D3D11ShaderObject::StreamOut(std::ostream& os, ShaderType type)
 	{
-		std::ostringstream oss(std::ios_base::binary | std::ios_base::out);
+		std::vector<char> native_shader_block;
+		VectorOutputStreamBuf native_shader_buff(native_shader_block);
+		std::ostream oss(&native_shader_buff);
 
 		{
 			uint8_t len = static_cast<uint8_t>(so_template_->shader_code_[type].second.size());
@@ -506,7 +492,6 @@ namespace KlayGE
 			}
 		}
 
-		std::string native_shader_block = oss.str();
 		uint32_t len = static_cast<uint32_t>(native_shader_block.size());
 		{
 			uint32_t tmp = Native2LE(len);
@@ -786,6 +771,7 @@ namespace KlayGE
 
 		if (code->empty())
 		{
+			so_template_->shader_code_[type].second.clear();
 			code.reset();
 		}
 
@@ -799,6 +785,41 @@ namespace KlayGE
 
 		return std::shared_ptr<std::vector<uint8_t>>();
 #endif
+	}
+
+	void D3D11ShaderObject::CreateGeometryShaderWithStreamOutput(ShaderType type, RenderEffect const & effect,
+		std::array<uint32_t, ST_NumShaderTypes> const & shader_desc_ids, std::shared_ptr<std::vector<uint8_t>> const & code_blob,
+		std::vector<ShaderDesc::StreamOutputDecl> const & so_decl)
+	{
+		auto& rf = Context::Instance().RenderFactoryInstance();
+		auto const & d3d11_re = *checked_cast<D3D11RenderEngine const *>(&rf.RenderEngineInstance());
+		auto d3d_device = d3d11_re.D3DDevice();
+		auto const & caps = d3d11_re.DeviceCaps();
+
+		std::vector<D3D11_SO_DECLARATION_ENTRY> d3d11_decl(so_decl.size());
+		for (size_t i = 0; i < so_decl.size(); ++ i)
+		{
+			d3d11_decl[i] = D3D11Mapping::Mapping(so_decl[i]);
+		}
+
+		UINT rasterized_stream = 0;
+		if ((caps.max_shader_model >= ShaderModel(5, 0))
+			&& (effect.GetShaderDesc(shader_desc_ids[ShaderObject::ST_PixelShader]).func_name.empty()))
+		{
+			rasterized_stream = D3D11_SO_NO_RASTERIZED_STREAM;
+		}
+
+		ID3D11GeometryShader* gs;
+		if (FAILED(d3d_device->CreateGeometryShaderWithStreamOutput(&((*code_blob)[0]), code_blob->size(),
+			&d3d11_decl[0], static_cast<UINT>(d3d11_decl.size()), nullptr, 0, rasterized_stream, nullptr,
+			&gs)))
+		{
+			is_shader_validate_[type] = false;
+		}
+		else
+		{
+			so_template_->geometry_shader_ = MakeCOMPtr(gs);
+		}
 	}
 
 	void D3D11ShaderObject::AttachShaderBytecode(ShaderType type, RenderEffect const & effect,
@@ -838,30 +859,8 @@ namespace KlayGE
 							{
 								if (caps.gs_support)
 								{
-									std::vector<D3D11_SO_DECLARATION_ENTRY> d3d11_decl(sd.so_decl.size());
-									for (size_t i = 0; i < sd.so_decl.size(); ++ i)
-									{
-										d3d11_decl[i] = D3D11Mapping::Mapping(sd.so_decl[i]);
-									}
-
-									UINT rasterized_stream = 0;
-									if ((caps.max_shader_model >= ShaderModel(5, 0))
-										&& (effect.GetShaderDesc(shader_desc_ids[ShaderObject::ST_PixelShader]).func_name.empty()))
-									{
-										rasterized_stream = D3D11_SO_NO_RASTERIZED_STREAM;
-									}
-
-									ID3D11GeometryShader* gs;
-									if (FAILED(d3d_device->CreateGeometryShaderWithStreamOutput(&((*code_blob)[0]), code_blob->size(),
-										&d3d11_decl[0], static_cast<UINT>(d3d11_decl.size()), nullptr, 0, rasterized_stream, nullptr,
-										&gs)))
-									{
-										is_shader_validate_[type] = false;
-									}
-									else
-									{
-										so_template_->geometry_shader_ = MakeCOMPtr(gs);
-									}
+									this->CreateGeometryShaderWithStreamOutput(type, effect, shader_desc_ids, code_blob,
+										sd.so_decl);
 								}
 								else
 								{
@@ -907,29 +906,11 @@ namespace KlayGE
 						}
 						else
 						{
-							std::vector<D3D11_SO_DECLARATION_ENTRY> d3d11_decl(sd.so_decl.size());
-							for (size_t i = 0; i < sd.so_decl.size(); ++ i)
-							{
-								d3d11_decl[i] = D3D11Mapping::Mapping(sd.so_decl[i]);
-							}
+							this->CreateGeometryShaderWithStreamOutput(type, effect, shader_desc_ids, code_blob,
+								sd.so_decl);
 
-							UINT rasterized_stream = 0;
-							if ((caps.max_shader_model >= ShaderModel(5, 0))
-								&& (effect.GetShaderDesc(shader_desc_ids[ShaderObject::ST_PixelShader]).func_name.empty()))
+							if (is_shader_validate_[type])
 							{
-								rasterized_stream = D3D11_SO_NO_RASTERIZED_STREAM;
-							}
-
-							ID3D11GeometryShader* gs;
-							if (FAILED(d3d_device->CreateGeometryShaderWithStreamOutput(&((*code_blob)[0]), code_blob->size(),
-								&d3d11_decl[0], static_cast<UINT>(d3d11_decl.size()), nullptr, 0, rasterized_stream, nullptr,
-								&gs)))
-							{
-								is_shader_validate_[type] = false;
-							}
-							else
-							{
-								so_template_->geometry_shader_ = MakeCOMPtr(gs);
 								so_template_->shader_code_[type].first = code_blob;
 							}
 						}
@@ -997,30 +978,8 @@ namespace KlayGE
 							{
 								if (caps.gs_support)
 								{
-									std::vector<D3D11_SO_DECLARATION_ENTRY> d3d11_decl(sd.so_decl.size());
-									for (size_t i = 0; i < sd.so_decl.size(); ++ i)
-									{
-										d3d11_decl[i] = D3D11Mapping::Mapping(sd.so_decl[i]);
-									}
-
-									UINT rasterized_stream = 0;
-									if ((caps.max_shader_model >= ShaderModel(5, 0))
-										&& (effect.GetShaderDesc(shader_desc_ids[ShaderObject::ST_PixelShader]).func_name.empty()))
-									{
-										rasterized_stream = D3D11_SO_NO_RASTERIZED_STREAM;
-									}
-
-									ID3D11GeometryShader* gs;
-									if (FAILED(d3d_device->CreateGeometryShaderWithStreamOutput(&((*code_blob)[0]), code_blob->size(),
-										&d3d11_decl[0], static_cast<UINT>(d3d11_decl.size()), nullptr, 0, rasterized_stream, nullptr,
-										&gs)))
-									{
-										is_shader_validate_[type] = false;
-									}
-									else
-									{
-										so_template_->geometry_shader_ = MakeCOMPtr(gs);
-									}
+									this->CreateGeometryShaderWithStreamOutput(type, effect, shader_desc_ids, code_blob,
+										sd.so_decl);
 								}
 								else
 								{
@@ -1094,6 +1053,35 @@ namespace KlayGE
 		else
 		{
 			is_shader_validate_[type] = false;
+			switch (type)
+			{
+			case ST_VertexShader:
+				so_template_->vertex_shader_.reset();
+				break;
+
+			case ST_PixelShader:
+				so_template_->pixel_shader_.reset();
+				break;
+
+			case ST_GeometryShader:
+				so_template_->geometry_shader_.reset();
+				break;
+
+			case ST_ComputeShader:
+				so_template_->compute_shader_.reset();
+				break;
+
+			case ST_HullShader:
+				so_template_->hull_shader_.reset();
+				break;
+
+			case ST_DomainShader:
+				so_template_->domain_shader_.reset();
+				break;
+
+			default:
+				KFL_UNREACHABLE("Invalid shader type");
+			}
 		}
 	}
 
@@ -1112,69 +1100,72 @@ namespace KlayGE
 			D3D11ShaderObject const & so = *checked_cast<D3D11ShaderObject*>(shared_so.get());
 
 			is_shader_validate_[type] = so.is_shader_validate_[type];
-			so_template_->shader_code_[type] = so.so_template_->shader_code_[type];
-			so_template_->shader_desc_[type] = so.so_template_->shader_desc_[type];
-			switch (type)
+			if (is_shader_validate_[type])
 			{
-			case ST_VertexShader:
-				so_template_->vertex_shader_ = so.so_template_->vertex_shader_;
-				so_template_->vs_signature_ = so.so_template_->vs_signature_;
-				so_template_->geometry_shader_ = so.so_template_->geometry_shader_;
-				break;
-
-			case ST_PixelShader:
-				so_template_->pixel_shader_ = so.so_template_->pixel_shader_;
-				break;
-
-			case ST_GeometryShader:
-				so_template_->geometry_shader_ = so.so_template_->geometry_shader_;
-				break;
-
-			case ST_ComputeShader:
-				so_template_->compute_shader_ = so.so_template_->compute_shader_;
-				cs_block_size_x_ = so.cs_block_size_x_;
-				cs_block_size_y_ = so.cs_block_size_y_;
-				cs_block_size_z_ = so.cs_block_size_z_;
-				break;
-
-			case ST_HullShader:
-				so_template_->hull_shader_ = so.so_template_->hull_shader_;
-				if (so_template_->hull_shader_)
+				so_template_->shader_code_[type] = so.so_template_->shader_code_[type];
+				so_template_->shader_desc_[type] = so.so_template_->shader_desc_[type];
+				switch (type)
 				{
-					has_tessellation_ = true;
-				}
-				break;
+				case ST_VertexShader:
+					so_template_->vertex_shader_ = so.so_template_->vertex_shader_;
+					so_template_->vs_signature_ = so.so_template_->vs_signature_;
+					so_template_->geometry_shader_ = so.so_template_->geometry_shader_;
+					break;
 
-			case ST_DomainShader:
-				so_template_->domain_shader_ = so.so_template_->domain_shader_;
-				so_template_->geometry_shader_ = so.so_template_->geometry_shader_;
-				if (so_template_->domain_shader_)
+				case ST_PixelShader:
+					so_template_->pixel_shader_ = so.so_template_->pixel_shader_;
+					break;
+
+				case ST_GeometryShader:
+					so_template_->geometry_shader_ = so.so_template_->geometry_shader_;
+					break;
+
+				case ST_ComputeShader:
+					so_template_->compute_shader_ = so.so_template_->compute_shader_;
+					cs_block_size_x_ = so.cs_block_size_x_;
+					cs_block_size_y_ = so.cs_block_size_y_;
+					cs_block_size_z_ = so.cs_block_size_z_;
+					break;
+
+				case ST_HullShader:
+					so_template_->hull_shader_ = so.so_template_->hull_shader_;
+					if (so_template_->hull_shader_)
+					{
+						has_tessellation_ = true;
+					}
+					break;
+
+				case ST_DomainShader:
+					so_template_->domain_shader_ = so.so_template_->domain_shader_;
+					so_template_->geometry_shader_ = so.so_template_->geometry_shader_;
+					if (so_template_->domain_shader_)
+					{
+						has_tessellation_ = true;
+					}
+					break;
+
+				default:
+					is_shader_validate_[type] = false;
+					break;
+				}
+
+				samplers_[type] = so.samplers_[type];
+				srvsrcs_[type].resize(so.srvs_[type].size(), std::make_tuple(static_cast<void*>(nullptr), 0, 0));
+				srvs_[type].resize(so.srvs_[type].size());
+				if (so.so_template_->shader_desc_[type]->num_uavs > 0)
 				{
-					has_tessellation_ = true;
+					uavsrcs_.resize(so.uavs_.size(), nullptr);
+					uavs_.resize(so.uavs_.size());
 				}
-				break;
 
-			default:
-				is_shader_validate_[type] = false;
-				break;
-			}
+				so_template_->cbuff_indices_[type] = so.so_template_->cbuff_indices_[type];
+				d3d11_cbuffs_[type].resize(so.d3d11_cbuffs_[type].size());
 
-			samplers_[type] = so.samplers_[type];
-			srvsrcs_[type].resize(so.srvs_[type].size(), std::make_tuple(static_cast<void*>(nullptr), 0, 0));
-			srvs_[type].resize(so.srvs_[type].size());
-			if (so.so_template_->shader_desc_[type]->num_uavs > 0)
-			{
-				uavsrcs_.resize(so.uavs_.size(), nullptr);
-				uavs_.resize(so.uavs_.size());
-			}
-
-			so_template_->cbuff_indices_[type] = so.so_template_->cbuff_indices_[type];
-			d3d11_cbuffs_[type].resize(so.d3d11_cbuffs_[type].size());
-
-			param_binds_[type].reserve(so.param_binds_[type].size());
-			for (auto const & pb : so.param_binds_[type])
-			{
-				param_binds_[type].push_back(this->GetBindFunc(type, pb.offset, pb.param));
+				param_binds_[type].reserve(so.param_binds_[type].size());
+				for (auto const & pb : so.param_binds_[type])
+				{
+					param_binds_[type].push_back(this->GetBindFunc(type, pb.offset, pb.param));
+				}
 			}
 		}
 	}
@@ -1320,10 +1311,12 @@ namespace KlayGE
 
 		case REDT_texture1D:
 		case REDT_texture2D:
+		case REDT_texture2DMS:
 		case REDT_texture3D:
 		case REDT_textureCUBE:
 		case REDT_texture1DArray:
 		case REDT_texture2DArray:
+		case REDT_texture2DMSArray:
 		case REDT_texture3DArray:
 		case REDT_textureCUBEArray:
 			ret.func = SetD3D11ShaderParameterTextureSRV(srvsrcs_[type][offset], srvs_[type][offset], param);
@@ -1342,12 +1335,20 @@ namespace KlayGE
 		case REDT_rw_texture3D:
 		case REDT_rw_texture1DArray:
 		case REDT_rw_texture2DArray:
+		case REDT_rasterizer_ordered_texture1D:
+		case REDT_rasterizer_ordered_texture1DArray:
+		case REDT_rasterizer_ordered_texture2D:
+		case REDT_rasterizer_ordered_texture2DArray:
+		case REDT_rasterizer_ordered_texture3D:
 			ret.func = SetD3D11ShaderParameterTextureUAV(uavsrcs_[offset], uavs_[offset], param);
 			break;
 
 		case REDT_rw_buffer:
 		case REDT_rw_structured_buffer:
 		case REDT_rw_byte_address_buffer:
+		case REDT_rasterizer_ordered_buffer:
+		case REDT_rasterizer_ordered_structured_buffer:
+		case REDT_rasterizer_ordered_byte_address_buffer:
 			ret.func = SetD3D11ShaderParameterGraphicsBufferUAV(uavsrcs_[offset], uavs_[offset], param);
 			break;
 
@@ -1400,7 +1401,7 @@ namespace KlayGE
 			}
 		}
 
-		if (!uavs_.empty())
+		if (so_template_->compute_shader_ && !uavs_.empty())
 		{
 			for (uint32_t i = 0; i < uavs_.size(); ++ i)
 			{
@@ -1419,7 +1420,7 @@ namespace KlayGE
 	{
 		D3D11RenderEngine& re = *checked_cast<D3D11RenderEngine*>(&Context::Instance().RenderFactoryInstance().RenderEngineInstance());
 
-		if (!uavs_.empty())
+		if (so_template_->compute_shader_ && !uavs_.empty())
 		{
 			std::vector<ID3D11UnorderedAccessView*> uavs(uavs_.size(), nullptr);
 			std::vector<UINT> uav_init_counts(uavs_.size(), 0);

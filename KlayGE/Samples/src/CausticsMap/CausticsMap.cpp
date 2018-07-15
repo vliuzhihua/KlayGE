@@ -635,7 +635,11 @@ void CausticsMapApp::OnCreate()
 	InputActionMap action_map;
 	action_map.AddActions(actions, actions + std::size(actions));
 	action_handler_t input_handler = MakeSharedPtr<input_signal>();
-	input_handler->connect(std::bind(&CausticsMapApp::InputHandler, this, std::placeholders::_1, std::placeholders::_2));
+	input_handler->connect(
+		[this](InputEngine const & sender, InputAction const & action)
+		{
+			this->InputHandler(sender, action);
+		});
 	ie.ActionMap(action_map, input_handler);
 
 	//Model
@@ -667,7 +671,7 @@ void CausticsMapApp::OnCreate()
 	checked_pointer_cast<SceneObjectSkyBox>(sky_box_)->CompressedCubeMap(y_cube_map_, c_cube_map_);
 	sky_box_->AddToSceneManager();
 
-	copy_pp_ = SyncLoadPostProcess("Copy.ppml", "copy");
+	copy_pp_ = SyncLoadPostProcess("Copy.ppml", "Copy");
 	if (depth_texture_support_)
 	{
 		depth_to_linear_pp_ = SyncLoadPostProcess("Depth.ppml", "DepthToLinear");
@@ -692,66 +696,21 @@ void CausticsMapApp::InitBuffer()
 	RenderEngine& re = rf.RenderEngineInstance();
 	RenderDeviceCaps const & caps = re.DeviceCaps();
 	
-	ElementFormat normal_fmt;
-	if (caps.rendertarget_format_support(EF_A2BGR10, 1, 0))
-	{
-		normal_fmt = EF_A2BGR10;
-	}
-	else
-	{
-		if (caps.rendertarget_format_support(EF_ABGR8, 1, 0))
-		{
-			normal_fmt = EF_ABGR8;
-		}
-		else
-		{
-			BOOST_ASSERT(caps.rendertarget_format_support(EF_ARGB8, 1, 0));
+	auto const normal_fmt = caps.BestMatchTextureRenderTargetFormat({ EF_A2BGR10, EF_ABGR8, EF_ARGB8 }, 1, 0);
+	BOOST_ASSERT(normal_fmt != EF_Unknown);
 
-			normal_fmt = EF_ARGB8;
-		}
-	}
-	ElementFormat depth_fmt;
-	if (caps.pack_to_rgba_required)
-	{
-		if (caps.rendertarget_format_support(EF_ABGR8, 1, 0))
-		{
-			depth_fmt = EF_ABGR8;
-		}
-		else
-		{
-			BOOST_ASSERT(caps.rendertarget_format_support(EF_ARGB8, 1, 0));
-			depth_fmt = EF_ARGB8;
-		}
-	}
-	else
-	{
-		if (caps.rendertarget_format_support(EF_R16F, 1, 0))
-		{
-			depth_fmt = EF_R16F;
-		}
-		else
-		{
-			BOOST_ASSERT(caps.rendertarget_format_support(EF_R32F, 1, 0));
-			depth_fmt = EF_R32F;
-		}
-	}
-	ElementFormat ds_fmt;
-	if (caps.rendertarget_format_support(EF_D24S8, 1, 0))
-	{
-		ds_fmt = EF_D24S8;
-	}
-	else
-	{
-		BOOST_ASSERT(caps.rendertarget_format_support(EF_D16, 1, 0));
-
-		ds_fmt = EF_D16;
-	}
+	auto const depth_fmt = caps.BestMatchTextureRenderTargetFormat(
+		caps.pack_to_rgba_required ? MakeArrayRef({ EF_ABGR8, EF_ARGB8 }) : MakeArrayRef({ EF_R16F, EF_R32F }), 1, 0);
+	BOOST_ASSERT(depth_fmt != EF_Unknown);
 
 	RenderViewPtr refract_obj_ds_view_f;
 	RenderViewPtr refract_obj_ds_view_b;
 	RenderViewPtr background_ds_view;
 	if (depth_texture_support_)
 	{
+		auto const ds_fmt = caps.BestMatchRenderTargetFormat({ EF_D24S8, EF_D16 }, 1, 0);
+		BOOST_ASSERT(ds_fmt != EF_Unknown);
+
 		refract_obj_ds_tex_f_ = rf.MakeTexture2D(CAUSTICS_GRID_SIZE, CAUSTICS_GRID_SIZE, 1, 1, ds_fmt, 1, 0, EAH_GPU_Read | EAH_GPU_Write);
 		refract_obj_ds_tex_b_ = rf.MakeTexture2D(CAUSTICS_GRID_SIZE, CAUSTICS_GRID_SIZE, 1, 1, ds_fmt, 1, 0, EAH_GPU_Read | EAH_GPU_Write);
 		background_ds_tex_ = rf.MakeTexture2D(CAUSTICS_GRID_SIZE, CAUSTICS_GRID_SIZE, 1, 1, ds_fmt, 1, 0, EAH_GPU_Read | EAH_GPU_Write);
@@ -793,31 +752,9 @@ void CausticsMapApp::InitBuffer()
 	refract_obj_fb_b_->Attach(FrameBuffer::ATT_Color0, rf.Make2DRenderView(*refract_obj_N_texture_b_, 0, 1, 0));
 	refract_obj_fb_b_->Attach(FrameBuffer::ATT_DepthStencil, refract_obj_ds_view_b);
 
-	ElementFormat fmt;
-	if (caps.fp_color_support)
-	{
-		if (caps.rendertarget_format_support(EF_B10G11R11F, 1, 0))
-		{
-			fmt = EF_B10G11R11F;
-		}
-		else
-		{
-			BOOST_ASSERT(caps.rendertarget_format_support(EF_ABGR16F, 1, 0));
-			fmt = EF_ABGR16F;
-		}
-	}
-	else
-	{
-		if (caps.rendertarget_format_support(EF_ABGR8, 1, 0))
-		{
-			fmt = EF_ABGR8;
-		}
-		else
-		{
-			BOOST_ASSERT(caps.rendertarget_format_support(EF_ARGB8, 1, 0));
-			fmt = EF_ARGB8;
-		}
-	}
+	auto const fmt = caps.BestMatchTextureRenderTargetFormat(
+		caps.fp_color_support ? MakeArrayRef({ EF_B10G11R11F, EF_ABGR16F }) : MakeArrayRef({ EF_ABGR8, EF_ARGB8 }), 1, 0);
+	BOOST_ASSERT(fmt != EF_Unknown);
 	caustics_texture_ = rf.MakeTexture2D(CAUSTICS_GRID_SIZE, CAUSTICS_GRID_SIZE, 1, 1, fmt, 1, 0, EAH_GPU_Read | EAH_GPU_Write);
 	caustics_texture_filtered_ = rf.MakeTexture2D(CAUSTICS_GRID_SIZE, CAUSTICS_GRID_SIZE, 1, 1, caustics_texture_->Format(), 1, 0, EAH_GPU_Read | EAH_GPU_Write);
 	caustics_fb_ = rf.MakeFrameBuffer();
@@ -833,44 +770,12 @@ void CausticsMapApp::InitEnvCube()
 	RenderEngine& re = rf.RenderEngineInstance();
 	RenderDeviceCaps const & caps = re.DeviceCaps();
 
-	ElementFormat ds_fmt;
-	if (caps.rendertarget_format_support(EF_D24S8, 1, 0))
-	{
-		ds_fmt = EF_D24S8;
-	}
-	else
-	{
-		BOOST_ASSERT(caps.rendertarget_format_support(EF_D16, 1, 0));
-
-		ds_fmt = EF_D16;
-	}
+	auto const ds_fmt = caps.BestMatchRenderTargetFormat({ EF_D24S8, EF_D16 }, 1, 0);
 	RenderViewPtr depth_view = rf.Make2DDepthStencilRenderView(ENV_CUBE_MAP_SIZE, ENV_CUBE_MAP_SIZE, ds_fmt, 1, 0);
 	env_cube_buffer_ = rf.MakeFrameBuffer();
-	ElementFormat fmt;
-	if (caps.fp_color_support)
-	{
-		if (caps.rendertarget_format_support(EF_B10G11R11F, 1, 0))
-		{
-			fmt = EF_B10G11R11F;
-		}
-		else
-		{
-			BOOST_ASSERT(caps.rendertarget_format_support(EF_ABGR16F, 1, 0));
-			fmt = EF_ABGR16F;
-		}
-	}
-	else
-	{
-		if (caps.rendertarget_format_support(EF_ABGR8, 1, 0))
-		{
-			fmt = EF_ABGR8;
-		}
-		else
-		{
-			BOOST_ASSERT(caps.rendertarget_format_support(EF_ARGB8, 1, 0));
-			fmt = EF_ARGB8;
-		}
-	}
+	auto const fmt = caps.BestMatchTextureRenderTargetFormat(
+		caps.fp_color_support ? MakeArrayRef({ EF_B10G11R11F, EF_ABGR16F }) : MakeArrayRef({ EF_ABGR8, EF_ARGB8 }), 1, 0);
+	BOOST_ASSERT(fmt != EF_Unknown);
 	env_tex_ = rf.MakeTexture2D(ENV_CUBE_MAP_SIZE, ENV_CUBE_MAP_SIZE, 1, 1, fmt, 1, 0, EAH_GPU_Read | EAH_GPU_Write);
 	env_cube_buffer_->Attach(FrameBuffer::ATT_Color0, rf.Make2DRenderView(*env_tex_, 0, 1, 0));
 	env_cube_buffer_->Attach(FrameBuffer::ATT_DepthStencil, depth_view);
@@ -879,7 +784,7 @@ void CausticsMapApp::InitEnvCube()
 
 	for (int i = 0; i < 6; ++ i)
 	{
-		env_filter_pps_[i] = SyncLoadPostProcess("Copy.ppml", "copy");
+		env_filter_pps_[i] = SyncLoadPostProcess("Copy.ppml", "Copy");
 
 		env_filter_pps_[i]->InputPin(0, env_tex_);
 		env_filter_pps_[i]->OutputPin(0, env_cube_tex_, 0, 0, i);
@@ -892,44 +797,13 @@ void CausticsMapApp::InitCubeSM()
 	RenderEngine& re = rf.RenderEngineInstance();
 	RenderDeviceCaps const & caps = re.DeviceCaps();
 
-	ElementFormat ds_fmt;
-	if (caps.rendertarget_format_support(EF_D24S8, 1, 0))
-	{
-		ds_fmt = EF_D24S8;
-	}
-	else
-	{
-		BOOST_ASSERT(caps.rendertarget_format_support(EF_D16, 1, 0));
-
-		ds_fmt = EF_D16;
-	}
+	auto const ds_fmt = caps.BestMatchRenderTargetFormat({ EF_D24S8, EF_D16 }, 1, 0);
+	BOOST_ASSERT(ds_fmt != EF_Unknown);
 	RenderViewPtr depth_view = rf.Make2DDepthStencilRenderView(SHADOW_MAP_SIZE, SHADOW_MAP_SIZE, ds_fmt, 1, 0);
 	shadow_cube_buffer_ = rf.MakeFrameBuffer();
-	ElementFormat fmt;
-	if (caps.pack_to_rgba_required)
-	{
-		if (caps.rendertarget_format_support(EF_ABGR8, 1, 0))
-		{
-			fmt = EF_ABGR8;
-		}
-		else
-		{
-			BOOST_ASSERT(caps.rendertarget_format_support(EF_ARGB8, 1, 0));
-			fmt = EF_ARGB8;
-		}
-	}
-	else
-	{
-		if (caps.rendertarget_format_support(EF_R16F, 1, 0))
-		{
-			fmt = EF_R16F;
-		}
-		else
-		{
-			BOOST_ASSERT(caps.rendertarget_format_support(EF_R32F, 1, 0));
-			fmt = EF_R32F;
-		}
-	}
+	auto const fmt = caps.BestMatchTextureRenderTargetFormat(
+		caps.pack_to_rgba_required ? MakeArrayRef({ EF_ABGR8, EF_ARGB8 }) : MakeArrayRef({ EF_R16F, EF_R32F }), 1, 0);
+	BOOST_ASSERT(fmt != EF_Unknown);
 	shadow_tex_ = rf.MakeTexture2D(SHADOW_MAP_SIZE, SHADOW_MAP_SIZE, 1, 1, fmt, 1, 0, EAH_GPU_Read | EAH_GPU_Write);
 	shadow_cube_buffer_->Attach(FrameBuffer::ATT_Color0, rf.Make2DRenderView(*shadow_tex_, 0, 1, 0));
 	shadow_cube_buffer_->Attach(FrameBuffer::ATT_DepthStencil, depth_view);
@@ -952,23 +826,43 @@ void CausticsMapApp::InitUI()
 
 	int ui_id = 0;
 	ui_id = dialog_->IDFromName("Light_Density_Slider");
-	dialog_->Control<UISlider>(ui_id)->OnValueChangedEvent().connect(std::bind(&CausticsMapApp::LightDensityHandler, this, std::placeholders::_1));
+	dialog_->Control<UISlider>(ui_id)->OnValueChangedEvent().connect(
+		[this](UISlider const & sender)
+		{
+			this->LightDensityHandler(sender);
+		});
 	LightDensityHandler(*(dialog_->Control<UISlider>(ui_id)));
 
 	ui_id = dialog_->IDFromName("Refraction_Index_Slider");
-	dialog_->Control<UISlider>(ui_id)->OnValueChangedEvent().connect(std::bind(&CausticsMapApp::RefractIndexHandler, this, std::placeholders::_1));
+	dialog_->Control<UISlider>(ui_id)->OnValueChangedEvent().connect(
+		[this](UISlider const & sender)
+		{
+			this->RefractIndexHandler(sender);
+		});
 	RefractIndexHandler(*(dialog_->Control<UISlider>(ui_id)));
 
 	ui_id = dialog_->IDFromName("Point_Size_Slider");
-	dialog_->Control<UISlider>(ui_id)->OnValueChangedEvent().connect(std::bind(&CausticsMapApp::PointSizeHandler, this, std::placeholders::_1));
+	dialog_->Control<UISlider>(ui_id)->OnValueChangedEvent().connect(
+		[this](UISlider const & sender)
+		{
+			this->PointSizeHandler(sender);
+		});
 	PointSizeHandler(*(dialog_->Control<UISlider>(ui_id)));
 
 	ui_id = dialog_->IDFromName("Dual_Caustics_Checkbox");
-	dialog_->Control<UICheckBox>(ui_id)->OnChangedEvent().connect(std::bind(&CausticsMapApp::DualFaceCausticsCheckBoxHandler, this, std::placeholders::_1));
+	dialog_->Control<UICheckBox>(ui_id)->OnChangedEvent().connect(
+		[this](UICheckBox const & sender)
+		{
+			this->DualFaceCausticsCheckBoxHandler(sender);
+		});
 	DualFaceCausticsCheckBoxHandler(*(dialog_->Control<UICheckBox>(ui_id)));
 
 	ui_id = dialog_->IDFromName("Model_Combobox");
-	dialog_->Control<UIComboBox>(ui_id)->OnSelectionChangedEvent().connect(std::bind(&CausticsMapApp::ModelSelectionComboBox, this, std::placeholders::_1));
+	dialog_->Control<UIComboBox>(ui_id)->OnSelectionChangedEvent().connect(
+		[this](UIComboBox const & sender)
+		{
+			this->ModelSelectionComboBox(sender);
+		});
 	ModelSelectionComboBox(*(dialog_->Control<UIComboBox>(ui_id)));
 }
 
@@ -982,36 +876,12 @@ void CausticsMapApp::OnResize(uint32_t width, uint32_t height)
 	RenderEngine& re = rf.RenderEngineInstance();
 	RenderDeviceCaps const & caps = re.DeviceCaps();
 
-	ElementFormat fmt;
-	if (caps.rendertarget_format_support(EF_B10G11R11F, 1, 0))
-	{
-		fmt = EF_B10G11R11F;
-	}
-	else
-	{
-		if (caps.rendertarget_format_support(EF_ABGR8, 1, 0))
-		{
-			fmt = EF_ABGR8;
-		}
-		else
-		{
-			BOOST_ASSERT(re.DeviceCaps().rendertarget_format_support(EF_ARGB8, 1, 0));
-
-			fmt = EF_ARGB8;
-		}
-	}
+	auto fmt = caps.BestMatchTextureRenderTargetFormat({ EF_B10G11R11F, EF_ABGR8, EF_ARGB8 }, 1, 0);
+	BOOST_ASSERT(fmt != EF_Unknown);
 	scene_texture_ = rf.MakeTexture2D(width, height, 1, 1, fmt, 1, 0, EAH_GPU_Read | EAH_GPU_Write);
 	scene_fb_->Attach(FrameBuffer::ATT_Color0, rf.Make2DRenderView(*scene_texture_, 0, 1, 0));
-	if (caps.rendertarget_format_support(EF_D24S8, 1, 0))
-	{
-		fmt = EF_D24S8;
-	}
-	else
-	{
-		BOOST_ASSERT(caps.rendertarget_format_support(EF_D16, 1, 0));
-
-		fmt = EF_D16;
-	}
+	fmt = caps.BestMatchRenderTargetFormat({ EF_D24S8, EF_D16 }, 1, 0);
+	BOOST_ASSERT(fmt != EF_Unknown);
 	scene_fb_->Attach(FrameBuffer::ATT_DepthStencil, rf.Make2DDepthStencilRenderView(width, height, fmt, 1, 0));
 
 	copy_pp_->InputPin(0, scene_texture_);

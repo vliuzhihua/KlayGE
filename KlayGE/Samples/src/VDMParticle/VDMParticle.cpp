@@ -188,8 +188,8 @@ void VDMParticleApp::OnCreate()
 	scene_fb_ = rf.MakeFrameBuffer();
 	scene_fb_->GetViewport()->camera = re.CurFrameBuffer()->GetViewport()->camera;
 	depth_to_linear_pp_ = SyncLoadPostProcess("Depth.ppml", "DepthToLinear");
-	copy_pp_ = SyncLoadPostProcess("Copy.ppml", "copy");
-	add_copy_pp_ = SyncLoadPostProcess("Copy.ppml", "add_bilinear_copy");
+	copy_pp_ = SyncLoadPostProcess("Copy.ppml", "Copy");
+	add_copy_pp_ = SyncLoadPostProcess("Copy.ppml", "AddBilinearCopy");
 	vdm_composition_pp_ = SyncLoadPostProcess("VarianceDepthMap.ppml", "VDMComposition");
 
 	fpc_controller_.Scalers(0.05f, 0.1f);
@@ -199,7 +199,11 @@ void VDMParticleApp::OnCreate()
 	actionMap.AddActions(actions, actions + std::size(actions));
 
 	action_handler_t input_handler = MakeSharedPtr<input_signal>();
-	input_handler->connect(std::bind(&VDMParticleApp::InputHandler, this, std::placeholders::_1, std::placeholders::_2));
+	input_handler->connect(
+		[this](InputEngine const & sender, InputAction const & action)
+		{
+			this->InputHandler(sender, action);
+		});
 	inputEngine.ActionMap(actionMap, input_handler);
 
 	UIManager::Instance().Load(ResLoader::Instance().Open("VDMParticle.uiml"));
@@ -210,9 +214,15 @@ void VDMParticleApp::OnCreate()
 	id_ctrl_camera_ = dialog_->IDFromName("CtrlCamera");
 
 	dialog_->Control<UIComboBox>(id_particle_rendering_type_combo_)->OnSelectionChangedEvent().connect(
-		std::bind(&VDMParticleApp::ParticleRenderingTypeChangedHandler, this, std::placeholders::_1));
+		[this](UIComboBox const & sender)
+		{
+			this->ParticleRenderingTypeChangedHandler(sender);
+		});
 	dialog_->Control<UICheckBox>(id_ctrl_camera_)->OnChangedEvent().connect(
-		std::bind(&VDMParticleApp::CtrlCameraHandler, this, std::placeholders::_1));
+		[this](UICheckBox const & sender)
+		{
+			this->CtrlCameraHandler(sender);
+		});
 
 	this->ParticleRenderingTypeChangedHandler(*dialog_->Control<UIComboBox>(id_particle_rendering_type_combo_));
 	this->CtrlCameraHandler(*dialog_->Control<UICheckBox>(id_ctrl_camera_));
@@ -239,31 +249,18 @@ void VDMParticleApp::OnResize(uint32_t width, uint32_t height)
 	RenderEngine& re = rf.RenderEngineInstance();
 	RenderDeviceCaps const & caps = re.DeviceCaps();
 
-	ElementFormat fmt;
-	if (caps.fp_color_support && caps.rendertarget_format_support(EF_B10G11R11F, 1, 0))
+	static ElementFormat constexpr backup_fmts[] = { EF_B10G11R11F, EF_ABGR8, EF_ARGB8 };
+	ArrayRef<ElementFormat> fmt_options = backup_fmts;
+	if (!caps.fp_color_support)
 	{
-		fmt = EF_B10G11R11F;
+		fmt_options = fmt_options.Slice(1);
 	}
-	else if (caps.rendertarget_format_support(EF_ABGR8, 1, 0))
-	{
-		fmt = EF_ABGR8;
-	}
-	else
-	{
-		BOOST_ASSERT(caps.rendertarget_format_support(EF_ARGB8, 1, 0));
-		fmt = EF_ARGB8;
-	}
+	auto fmt = caps.BestMatchRenderTargetFormat(fmt_options, 1, 0);
+	BOOST_ASSERT(fmt != EF_Unknown);
 	scene_tex_ = rf.MakeTexture2D(width, height, 1, 1, fmt, 1, 0, EAH_GPU_Read | EAH_GPU_Write);
 
-	if (caps.rendertarget_format_support(EF_R16F, 1, 0))
-	{
-		fmt = EF_R16F;
-	}
-	else if (caps.rendertarget_format_support(EF_R32F, 1, 0))
-	{
-		BOOST_ASSERT(caps.rendertarget_format_support(EF_R32F, 1, 0));
-		fmt = EF_R32F;
-	}
+	fmt = caps.BestMatchRenderTargetFormat({ EF_R16F, EF_R32F }, 1, 0);
+	BOOST_ASSERT(fmt != EF_Unknown);
 	scene_depth_tex_ = rf.MakeTexture2D(width, height, 1, 1, fmt, 1, 0, EAH_GPU_Read | EAH_GPU_Write);
 
 	scene_ds_tex_ = rf.MakeTexture2D(width, height, 1, 1, EF_D24S8, 1, 0, EAH_GPU_Read | EAH_GPU_Write);

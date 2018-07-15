@@ -439,60 +439,114 @@ namespace KlayGE
 		}
 	}
 
-	void D3D12Texture::Map1D(uint32_t /*array_index*/, uint32_t /*level*/, TextureMapAccess /*tma*/,
-			uint32_t /*x_offset*/, uint32_t /*width*/,
-			void*& /*data*/)
+	void D3D12Texture::Map1D(uint32_t array_index, uint32_t level, TextureMapAccess tma,
+		uint32_t x_offset, uint32_t width,
+		void*& data)
 	{
+		KFL_UNUSED(array_index);
+		KFL_UNUSED(level);
+		KFL_UNUSED(tma);
+		KFL_UNUSED(x_offset);
+		KFL_UNUSED(width);
+		KFL_UNUSED(data);
+
 		KFL_UNREACHABLE("Can't be called");
 	}
 
-	void D3D12Texture::Map2D(uint32_t /*array_index*/, uint32_t /*level*/, TextureMapAccess /*tma*/,
-			uint32_t /*x_offset*/, uint32_t /*y_offset*/, uint32_t /*width*/, uint32_t /*height*/,
-			void*& /*data*/, uint32_t& /*row_pitch*/)
+	void D3D12Texture::Map2D(uint32_t array_index, uint32_t level, TextureMapAccess tma,
+		uint32_t x_offset, uint32_t y_offset, uint32_t width, uint32_t height,
+		void*& data, uint32_t& row_pitch)
 	{
+		KFL_UNUSED(array_index);
+		KFL_UNUSED(level);
+		KFL_UNUSED(tma);
+		KFL_UNUSED(x_offset);
+		KFL_UNUSED(y_offset);
+		KFL_UNUSED(width);
+		KFL_UNUSED(height);
+		KFL_UNUSED(data);
+		KFL_UNUSED(row_pitch);
+
 		KFL_UNREACHABLE("Can't be called");
 	}
 
-	void D3D12Texture::Map3D(uint32_t /*array_index*/, uint32_t /*level*/, TextureMapAccess /*tma*/,
-			uint32_t /*x_offset*/, uint32_t /*y_offset*/, uint32_t /*z_offset*/,
-			uint32_t /*width*/, uint32_t /*height*/, uint32_t /*depth*/,
-			void*& /*data*/, uint32_t& /*row_pitch*/, uint32_t& /*slice_pitch*/)
+	void D3D12Texture::Map3D(uint32_t array_index, uint32_t level, TextureMapAccess tma,
+		uint32_t x_offset, uint32_t y_offset, uint32_t z_offset,
+		uint32_t width, uint32_t height, uint32_t depth,
+		void*& data, uint32_t& row_pitch, uint32_t& slice_pitch)
 	{
+		KFL_UNUSED(array_index);
+		KFL_UNUSED(level);
+		KFL_UNUSED(tma);
+		KFL_UNUSED(x_offset);
+		KFL_UNUSED(y_offset);
+		KFL_UNUSED(z_offset);
+		KFL_UNUSED(width);
+		KFL_UNUSED(height);
+		KFL_UNUSED(depth);
+		KFL_UNUSED(data);
+		KFL_UNUSED(row_pitch);
+		KFL_UNUSED(slice_pitch);
+
 		KFL_UNREACHABLE("Can't be called");
 	}
 
-	void D3D12Texture::MapCube(uint32_t /*array_index*/, CubeFaces /*face*/, uint32_t /*level*/, TextureMapAccess /*tma*/,
-			uint32_t /*x_offset*/, uint32_t /*y_offset*/, uint32_t /*width*/, uint32_t /*height*/,
-			void*& /*data*/, uint32_t& /*row_pitch*/)
+	void D3D12Texture::MapCube(uint32_t array_index, CubeFaces face, uint32_t level, TextureMapAccess tma,
+		uint32_t x_offset, uint32_t y_offset, uint32_t width, uint32_t height,
+		void*& data, uint32_t& row_pitch)
 	{
+		KFL_UNUSED(array_index);
+		KFL_UNUSED(face);
+		KFL_UNUSED(level);
+		KFL_UNUSED(tma);
+		KFL_UNUSED(x_offset);
+		KFL_UNUSED(y_offset);
+		KFL_UNUSED(width);
+		KFL_UNUSED(height);
+		KFL_UNUSED(data);
+		KFL_UNUSED(row_pitch);
+
 		KFL_UNREACHABLE("Can't be called");
 	}
 
-	void D3D12Texture::Unmap1D(uint32_t /*array_index*/, uint32_t /*level*/)
+	void D3D12Texture::Unmap1D(uint32_t array_index, uint32_t level)
 	{
+		KFL_UNUSED(array_index);
+		KFL_UNUSED(level);
+
 		KFL_UNREACHABLE("Can't be called");
 	}
 
-	void D3D12Texture::Unmap2D(uint32_t /*array_index*/, uint32_t /*level*/)
+	void D3D12Texture::Unmap2D(uint32_t array_index, uint32_t level)
 	{
+		KFL_UNUSED(array_index);
+		KFL_UNUSED(level);
+
 		KFL_UNREACHABLE("Can't be called");
 	}
 
-	void D3D12Texture::Unmap3D(uint32_t /*array_index*/, uint32_t /*level*/)
+	void D3D12Texture::Unmap3D(uint32_t array_index, uint32_t level)
 	{
+		KFL_UNUSED(array_index);
+		KFL_UNUSED(level);
+
 		KFL_UNREACHABLE("Can't be called");
 	}
 
-	void D3D12Texture::UnmapCube(uint32_t /*array_index*/, CubeFaces /*face*/, uint32_t /*level*/)
+	void D3D12Texture::UnmapCube(uint32_t array_index, CubeFaces face, uint32_t level)
 	{
+		KFL_UNUSED(array_index);
+		KFL_UNUSED(face);
+		KFL_UNUSED(level);
+
 		KFL_UNREACHABLE("Can't be called");
 	}
 
 	void D3D12Texture::DeleteHWResource()
 	{
 		d3d_resource_.reset();
-		d3d_texture_upload_heaps_.reset();
-		d3d_texture_readback_heaps_.reset();
+		d3d_texture_upload_buff_.reset();
+		d3d_texture_readback_buff_.reset();
 	}
 
 	bool D3D12Texture::HWResourceReady() const
@@ -505,36 +559,18 @@ namespace KlayGE
 		D3D12RenderEngine& re = *checked_cast<D3D12RenderEngine*>(&Context::Instance().RenderFactoryInstance().RenderEngineInstance());
 		ID3D12GraphicsCommandList* cmd_list = re.D3DRenderCmdList();
 
-		if ((access_hint_ & EAH_CPU_Write) && (target.AccessHint() & EAH_GPU_Read))
-		{
-			re.ForceCPUGPUSync();
-		}
-
 		D3D12Texture& other = *checked_cast<D3D12Texture*>(&target);
 
 		uint32_t const num_subres = array_size_ * num_mip_maps_;
+		bool const need_resolve = (this->SampleCount() > 1) && (1 == target.SampleCount());
 
-		UINT n = 0;
-		D3D12_RESOURCE_BARRIER barriers[2];
-		D3D12_RESOURCE_BARRIER barrier;
-		barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-		barrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
-		if (this->UpdateResourceBarrier(D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES, barrier, D3D12_RESOURCE_STATE_COPY_SOURCE))
-		{
-			barriers[n] = barrier;
-			++ n;
-		}
-		if (other.UpdateResourceBarrier(D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES, barrier, D3D12_RESOURCE_STATE_COPY_DEST))
-		{
-			barriers[n] = barrier;
-			++ n;
-		}
-		if (n > 0)
-		{
-			cmd_list->ResourceBarrier(n, barriers);
-		}
+		this->UpdateResourceBarrier(cmd_list, D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES,
+			need_resolve ? D3D12_RESOURCE_STATE_RESOLVE_SOURCE : D3D12_RESOURCE_STATE_COPY_SOURCE);
+		other.UpdateResourceBarrier(cmd_list, D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES,
+			need_resolve ? D3D12_RESOURCE_STATE_RESOLVE_DEST : D3D12_RESOURCE_STATE_COPY_DEST);
+		re.FlushResourceBarriers(cmd_list);
 
-		if ((this->SampleCount() > 1) && (1 == target.SampleCount()))
+		if (need_resolve)
 		{
 			for (uint32_t i = 0; i < num_subres; ++ i)
 			{
@@ -555,32 +591,11 @@ namespace KlayGE
 		D3D12RenderEngine& re = *checked_cast<D3D12RenderEngine*>(&Context::Instance().RenderFactoryInstance().RenderEngineInstance());
 		ID3D12GraphicsCommandList* cmd_list = re.D3DRenderCmdList();
 
-		if ((access_hint_ & EAH_CPU_Write) && (target.AccessHint() & EAH_GPU_Read))
-		{
-			re.ForceCPUGPUSync();
-		}
-
 		D3D12Texture& other = *checked_cast<D3D12Texture2D*>(&target);
 
-		UINT n = 0;
-		D3D12_RESOURCE_BARRIER barriers[2];
-		D3D12_RESOURCE_BARRIER barrier;
-		barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-		barrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
-		if (this->UpdateResourceBarrier(src_subres, barrier, D3D12_RESOURCE_STATE_COPY_SOURCE))
-		{
-			barriers[n] = barrier;
-			++ n;
-		}
-		if (other.UpdateResourceBarrier(dst_subres, barrier, D3D12_RESOURCE_STATE_COPY_DEST))
-		{
-			barriers[n] = barrier;
-			++ n;
-		}
-		if (n > 0)
-		{
-			cmd_list->ResourceBarrier(n, barriers);
-		}
+		this->UpdateResourceBarrier(cmd_list, src_subres, D3D12_RESOURCE_STATE_COPY_SOURCE);
+		other.UpdateResourceBarrier(cmd_list, dst_subres, D3D12_RESOURCE_STATE_COPY_DEST);
+		re.FlushResourceBarriers(cmd_list);
 
 		D3D12_TEXTURE_COPY_LOCATION src;
 		src.pResource = d3d_resource_.get();
@@ -605,7 +620,7 @@ namespace KlayGE
 
 	void D3D12Texture::DoCreateHWResource(D3D12_RESOURCE_DIMENSION dim,
 			uint32_t width, uint32_t height, uint32_t depth, uint32_t array_size,
-			ArrayRef<ElementInitData> init_data)
+			ArrayRef<ElementInitData> init_data, float4 const * clear_value_hint)
 	{
 		D3D12RenderEngine& re = *checked_cast<D3D12RenderEngine*>(&Context::Instance().RenderFactoryInstance().RenderEngineInstance());
 		ID3D12Device* device = re.D3DDevice();
@@ -633,8 +648,8 @@ namespace KlayGE
 		}
 		tex_desc.MipLevels = static_cast<UINT16>(num_mip_maps_);
 		tex_desc.Format = dxgi_fmt_;
-		tex_desc.SampleDesc.Count = 1;
-		tex_desc.SampleDesc.Quality = 0;
+		tex_desc.SampleDesc.Count = sample_count_;
+		tex_desc.SampleDesc.Quality = sample_quality_;
 		tex_desc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
 		tex_desc.Flags = D3D12_RESOURCE_FLAG_NONE;
 		if (access_hint_ & EAH_GPU_Write)
@@ -660,15 +675,33 @@ namespace KlayGE
 				default:
 					KFL_UNREACHABLE("Invalid depth format");
 				}
-				clear_value.DepthStencil.Depth = 1.0f;
-				clear_value.DepthStencil.Stencil = 0;
+				if (clear_value_hint != nullptr)
+				{
+					clear_value.DepthStencil.Depth = (*clear_value_hint)[0];
+					clear_value.DepthStencil.Stencil = static_cast<UINT8>((*clear_value_hint)[1] + 0.5f);
+				}
+				else
+				{
+					clear_value.DepthStencil.Depth = 1.0f;
+					clear_value.DepthStencil.Stencil = 0;
+				}
 			}
 			else
 			{
 				tex_desc.Flags |= D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
 
 				clear_value.Format = dxgi_fmt_;
-				clear_value.Color[0] = clear_value.Color[1] = clear_value.Color[2] = clear_value.Color[3] = 0;
+				if (clear_value_hint != nullptr)
+				{
+					clear_value.Color[0] = (*clear_value_hint)[0];
+					clear_value.Color[1] = (*clear_value_hint)[1];
+					clear_value.Color[2] = (*clear_value_hint)[2];
+					clear_value.Color[3] = (*clear_value_hint)[3];
+				}
+				else
+				{
+					clear_value.Color[0] = clear_value.Color[1] = clear_value.Color[2] = clear_value.Color[3] = 0;
+				}
 			}
 		}
 		if (access_hint_ & EAH_GPU_Unordered)
@@ -696,62 +729,15 @@ namespace KlayGE
 			IID_ID3D12Resource, reinterpret_cast<void**>(&d3d_texture)));
 		d3d_resource_ = MakeCOMPtr(d3d_texture);
 
-		uint32_t const num_subres = array_size * num_mip_maps_;
-		uint64_t upload_buffer_size = 0;
-		device->GetCopyableFootprints(&tex_desc, 0, num_subres, 0, nullptr, nullptr, nullptr, &upload_buffer_size);
-
-		D3D12_HEAP_PROPERTIES upload_heap_prop;
-		upload_heap_prop.Type = D3D12_HEAP_TYPE_UPLOAD;
-		upload_heap_prop.CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_UNKNOWN;
-		upload_heap_prop.MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN;
-		upload_heap_prop.CreationNodeMask = 0;
-		upload_heap_prop.VisibleNodeMask = 0;
-
-		D3D12_RESOURCE_DESC buff_desc;
-		buff_desc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
-		buff_desc.Alignment = 0;
-		buff_desc.Width = upload_buffer_size;
-		buff_desc.Height = 1;
-		buff_desc.DepthOrArraySize = 1;
-		buff_desc.MipLevels = 1;
-		buff_desc.Format = DXGI_FORMAT_UNKNOWN;
-		buff_desc.SampleDesc.Count = 1;
-		buff_desc.SampleDesc.Quality = 0;
-		buff_desc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
-		buff_desc.Flags = D3D12_RESOURCE_FLAG_NONE;
-
-		ID3D12Resource* d3d_texture_upload_heaps;
-		TIFHR(device->CreateCommittedResource(&upload_heap_prop, D3D12_HEAP_FLAG_NONE, &buff_desc,
-			D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
-			IID_ID3D12Resource, reinterpret_cast<void**>(&d3d_texture_upload_heaps)));
-		d3d_texture_upload_heaps_ = MakeCOMPtr(d3d_texture_upload_heaps);
-
-		D3D12_HEAP_PROPERTIES readback_heap_prop;
-		readback_heap_prop.Type = D3D12_HEAP_TYPE_READBACK;
-		readback_heap_prop.CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_UNKNOWN;
-		readback_heap_prop.MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN;
-		readback_heap_prop.CreationNodeMask = 0;
-		readback_heap_prop.VisibleNodeMask = 0;
-
-		ID3D12Resource* d3d_texture_readback_heaps;
-		TIFHR(device->CreateCommittedResource(&readback_heap_prop, D3D12_HEAP_FLAG_NONE, &buff_desc,
-			D3D12_RESOURCE_STATE_COPY_DEST, nullptr,
-			IID_ID3D12Resource, reinterpret_cast<void**>(&d3d_texture_readback_heaps)));
-		d3d_texture_readback_heaps_ = MakeCOMPtr(d3d_texture_readback_heaps);
-
 		if (!init_data.empty())
 		{
 			ID3D12GraphicsCommandList* cmd_list = re.D3DResCmdList();
 			std::lock_guard<std::mutex> lock(re.D3DResCmdListMutex());
 
-			D3D12_RESOURCE_BARRIER barrier;
-			barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-			barrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
-			if (this->UpdateResourceBarrier(D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES, barrier, D3D12_RESOURCE_STATE_COPY_DEST))
-			{
-				cmd_list->ResourceBarrier(1, &barrier);
-			}
+			this->UpdateResourceBarrier(cmd_list, D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES, D3D12_RESOURCE_STATE_COPY_DEST);
+			re.FlushResourceBarriers(cmd_list);
 
+			uint32_t const num_subres = array_size * num_mip_maps_;
 			std::vector<D3D12_PLACED_SUBRESOURCE_FOOTPRINT> layouts(num_subres);
 			std::vector<uint64_t> row_sizes_in_bytes(num_subres);
 			std::vector<uint32_t> num_rows(num_subres);
@@ -759,8 +745,14 @@ namespace KlayGE
 			uint64_t required_size = 0;
 			device->GetCopyableFootprints(&tex_desc, 0, num_subres, 0, &layouts[0], &num_rows[0], &row_sizes_in_bytes[0], &required_size);
 
+			d3d_texture_upload_buff_ = re.AllocTempBuffer(true, static_cast<uint32_t>(required_size));
+
+			D3D12_RANGE read_range;
+			read_range.Begin = 0;
+			read_range.End = 0;
+
 			uint8_t* p;
-			d3d_texture_upload_heaps_->Map(0, nullptr, reinterpret_cast<void**>(&p));
+			d3d_texture_upload_buff_->Map(0, &read_range, reinterpret_cast<void**>(&p));
 			for (uint32_t i = 0; i < num_subres; ++ i)
 			{
 				D3D12_SUBRESOURCE_DATA src_data;
@@ -775,22 +767,23 @@ namespace KlayGE
 
 				for (UINT z = 0; z < layouts[i].Footprint.Depth; ++ z)
 				{
-					uint8_t const * src_slice
-						= reinterpret_cast<uint8_t const *>(src_data.pData) + src_data.SlicePitch * z;
-					uint8_t* dest_slice = reinterpret_cast<uint8_t*>(dest_data.pData) + dest_data.SlicePitch * z;
+					uint8_t const * src_slice = static_cast<uint8_t const *>(src_data.pData) + src_data.SlicePitch * z;
+					uint8_t* dest_slice = static_cast<uint8_t*>(dest_data.pData) + dest_data.SlicePitch * z;
 					for (UINT y = 0; y < num_rows[i]; ++ y)
 					{
-						memcpy(dest_slice + dest_data.RowPitch * y, src_slice + src_data.RowPitch * y,
-							static_cast<size_t>(row_sizes_in_bytes[i]));
+						memcpy(dest_slice, src_slice, static_cast<size_t>(row_sizes_in_bytes[i]));
+
+						src_slice += src_data.RowPitch;
+						dest_slice += dest_data.RowPitch;
 					}
 				}
 			}
-			d3d_texture_upload_heaps_->Unmap(0, nullptr);
+			d3d_texture_upload_buff_->Unmap(0, nullptr);
 
 			for (uint32_t i = 0; i < num_subres; ++ i)
 			{
 				D3D12_TEXTURE_COPY_LOCATION src;
-				src.pResource = d3d_texture_upload_heaps_.get();
+				src.pResource = d3d_texture_upload_buff_.get();
 				src.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
 				src.PlacedFootprint = layouts[i];
 
@@ -803,6 +796,9 @@ namespace KlayGE
 			}
 
 			re.CommitResCmd();
+
+			re.RecycleTempBuffer(d3d_texture_upload_buff_, true, static_cast<uint32_t>(required_size));
+			d3d_texture_upload_buff_.reset();
 		}
 	}
 
@@ -812,30 +808,29 @@ namespace KlayGE
 			void*& data, uint32_t& row_pitch, uint32_t& slice_pitch)
 	{
 		D3D12RenderEngine& re = *checked_cast<D3D12RenderEngine*>(&Context::Instance().RenderFactoryInstance().RenderEngineInstance());
-		ID3D12Device* device = re.D3DDevice();
 
-		KFL_UNUSED(width);
-		KFL_UNUSED(height);
-		KFL_UNUSED(depth);
-
-		last_tma_ = tma;
+		mapped_tma_ = tma;
+		mapped_x_offset_ = x_offset;
+		mapped_y_offset_ = y_offset;
+		mapped_z_offset_ = z_offset;
+		mapped_width_ = width;
+		mapped_height_ = height;
+		mapped_depth_ = depth;
 
 		D3D12_PLACED_SUBRESOURCE_FOOTPRINT layout;
-		D3D12_RESOURCE_DESC const tex_desc = d3d_resource_->GetDesc();
-		uint64_t required_size = 0;
-		device->GetCopyableFootprints(&tex_desc, subres, 1, 0, &layout, nullptr, nullptr, &required_size);
+		uint32_t row_size_in_bytes = 0;
+		uint32_t num_row = 0;
+		uint32_t required_size = 0;
+		this->GetCopyableFootprints(width, height, depth, layout, num_row, row_size_in_bytes, required_size);
 
 		if ((TMA_Read_Only == tma) || (TMA_Read_Write == tma))
 		{
+			d3d_texture_readback_buff_ = re.AllocTempBuffer(false, static_cast<uint32_t>(required_size));
+
 			ID3D12GraphicsCommandList* cmd_list = re.D3DRenderCmdList();
 
-			D3D12_RESOURCE_BARRIER barrier;
-			barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-			barrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
-			if (this->UpdateResourceBarrier(subres, barrier, D3D12_RESOURCE_STATE_COPY_SOURCE))
-			{
-				cmd_list->ResourceBarrier(1, &barrier);
-			}
+			this->UpdateResourceBarrier(cmd_list, subres, D3D12_RESOURCE_STATE_COPY_SOURCE);
+			re.FlushResourceBarriers(cmd_list);
 
 			D3D12_TEXTURE_COPY_LOCATION src;
 			src.pResource = d3d_resource_.get();
@@ -843,65 +838,106 @@ namespace KlayGE
 			src.SubresourceIndex = subres;
 
 			D3D12_TEXTURE_COPY_LOCATION dst;
-			dst.pResource = d3d_texture_readback_heaps_.get();
+			dst.pResource = d3d_texture_readback_buff_.get();
 			dst.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
 			dst.PlacedFootprint = layout;
 
-			cmd_list->CopyTextureRegion(&dst, 0, 0, 0, &src, nullptr);
+			D3D12_BOX src_box;
+			src_box.left = x_offset;
+			src_box.top = y_offset;
+			src_box.front = z_offset;
+			src_box.right = x_offset + width;
+			src_box.bottom = y_offset + height;
+			src_box.back = z_offset + depth;
 
-			re.ForceCPUGPUSync();
+			cmd_list->CopyTextureRegion(&dst, 0, 0, 0, &src, &src_box);
+
+			re.ForceFinish();
 		}
 
-		uint8_t* p;
-		d3d_texture_upload_heaps_->Map(0, nullptr, reinterpret_cast<void**>(&p));
+		ID3D12ResourcePtr d3d_texture_map_buff;
+		switch (tma)
+		{
+		case TMA_Read_Only:
+			d3d_texture_map_buff = d3d_texture_readback_buff_;
+			break;
 
-		data = p + layout.Offset + (z_offset * layout.Footprint.Height + y_offset) * layout.Footprint.RowPitch
-			+ x_offset * NumFormatBytes(format_);
+		case TMA_Read_Write:
+		case TMA_Write_Only:
+			d3d_texture_upload_buff_ = re.AllocTempBuffer(true, static_cast<uint32_t>(required_size));
+			d3d_texture_map_buff = d3d_texture_upload_buff_;
+			break;
+
+		default:
+			KFL_UNREACHABLE("Invalid buffer access mode");
+		}
+
+		D3D12_RANGE read_range;
+		read_range.Begin = 0;
+		read_range.End = (tma == TMA_Write_Only) ? 0 : required_size;
+
+		void* p;
+		d3d_texture_map_buff->Map(0, &read_range, &p);
+
+		data = p;
 		row_pitch = layout.Footprint.RowPitch;
 		slice_pitch = layout.Footprint.RowPitch * layout.Footprint.Height;
 
-		if ((TMA_Read_Only == tma) || (TMA_Read_Write == tma))
+		if (TMA_Read_Write == tma)
 		{
-			d3d_texture_readback_heaps_->Map(0, nullptr, reinterpret_cast<void**>(&p));
-			uint8_t* src_p = p + layout.Offset + (z_offset * layout.Footprint.Height + y_offset) * layout.Footprint.RowPitch
-				+ x_offset * NumFormatBytes(format_);
-			uint8_t* dst_p = static_cast<uint8_t*>(data);
-			for (uint32_t z = 0; z < depth; ++ z)
-			{
-				memcpy(dst_p + z * slice_pitch, src_p + z * slice_pitch, row_pitch * height);
-			}
-			d3d_texture_readback_heaps_->Unmap(0, nullptr);
+			read_range.End = required_size;
+
+			D3D12_RANGE write_range;
+			write_range.Begin = 0;
+			write_range.End = 0;
+
+			d3d_texture_readback_buff_->Map(0, &read_range, &p);
+			memcpy(data, p, required_size);
+			d3d_texture_readback_buff_->Unmap(0, &write_range);
 		}
 	}
 
 	void D3D12Texture::DoUnmap(uint32_t subres)
 	{
 		D3D12RenderEngine& re = *checked_cast<D3D12RenderEngine*>(&Context::Instance().RenderFactoryInstance().RenderEngineInstance());
-		ID3D12Device* device = re.D3DDevice();
 
-		d3d_texture_upload_heaps_->Unmap(0, nullptr);
-
-		if ((TMA_Write_Only == last_tma_) || (TMA_Read_Write == last_tma_))
+		ID3D12ResourcePtr d3d_texture_map_buff;
+		switch (mapped_tma_)
 		{
-			D3D12_PLACED_SUBRESOURCE_FOOTPRINT layout;
-			D3D12_RESOURCE_DESC const tex_desc = d3d_resource_->GetDesc();
-			uint64_t required_size = 0;
-			device->GetCopyableFootprints(&tex_desc, subres, 1, 0, &layout, nullptr, nullptr, &required_size);
+		case TMA_Read_Only:
+			d3d_texture_map_buff = d3d_texture_readback_buff_;
+			break;
 
+		case TMA_Read_Write:
+		case TMA_Write_Only:
+			d3d_texture_map_buff = d3d_texture_upload_buff_;
+			break;
+
+		default:
+			KFL_UNREACHABLE("Invalid buffer access mode");
+		}
+
+		D3D12_PLACED_SUBRESOURCE_FOOTPRINT layout;
+		uint32_t row_size_in_bytes = 0;
+		uint32_t num_row = 0;
+		uint32_t required_size = 0;
+		this->GetCopyableFootprints(mapped_width_, mapped_height_, mapped_depth_, layout, num_row, row_size_in_bytes, required_size);
+
+		D3D12_RANGE write_range;
+		write_range.Begin = 0;
+		write_range.End = (mapped_tma_ == TMA_Read_Only) ? 0 : required_size;
+
+		d3d_texture_map_buff->Unmap(0, &write_range);
+
+		if ((TMA_Write_Only == mapped_tma_) || (TMA_Read_Write == mapped_tma_))
+		{
 			ID3D12GraphicsCommandList* cmd_list = re.D3DRenderCmdList();
 
-			re.ForceCPUGPUSync();
-
-			D3D12_RESOURCE_BARRIER barrier;
-			barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-			barrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
-			if (this->UpdateResourceBarrier(subres, barrier, D3D12_RESOURCE_STATE_COPY_DEST))
-			{
-				cmd_list->ResourceBarrier(1, &barrier);
-			}
+			this->UpdateResourceBarrier(cmd_list, subres, D3D12_RESOURCE_STATE_COPY_DEST);
+			re.FlushResourceBarriers(cmd_list);
 
 			D3D12_TEXTURE_COPY_LOCATION src;
-			src.pResource = d3d_texture_upload_heaps_.get();
+			src.pResource = d3d_texture_upload_buff_.get();
 			src.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
 			src.PlacedFootprint = layout;
 
@@ -910,8 +946,21 @@ namespace KlayGE
 			dst.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
 			dst.SubresourceIndex = subres;
 
-			cmd_list->CopyTextureRegion(&dst, 0, 0, 0, &src, nullptr);
+			D3D12_BOX src_box;
+			src_box.left = 0;
+			src_box.top = 0;
+			src_box.front = 0;
+			src_box.right = mapped_width_;
+			src_box.bottom = mapped_height_;
+			src_box.back = mapped_depth_;
+
+			cmd_list->CopyTextureRegion(&dst, mapped_x_offset_, mapped_y_offset_, mapped_z_offset_, &src, &src_box);
 		}
+
+		re.RecycleTempBuffer(d3d_texture_upload_buff_, true, static_cast<uint32_t>(required_size));
+		re.RecycleTempBuffer(d3d_texture_readback_buff_, false, static_cast<uint32_t>(required_size));
+		d3d_texture_upload_buff_.reset();
+		d3d_texture_readback_buff_.reset();
 	}
 
 	D3D12_UNORDERED_ACCESS_VIEW_DESC D3D12Texture::FillUAVDesc(uint32_t first_array_index, uint32_t num_items, uint32_t level) const
@@ -1003,195 +1052,52 @@ namespace KlayGE
 
 		KFL_UNREACHABLE("Can't be called");
 	}
-
-	// TODO: Figure out how to reuse Map/Unmap for UpdateSubresource
 	
 	void D3D12Texture::UpdateSubresource1D(uint32_t array_index, uint32_t level,
 		uint32_t x_offset, uint32_t width,
 		void const * data)
 	{
-		D3D12RenderEngine& re = *checked_cast<D3D12RenderEngine*>(&Context::Instance().RenderFactoryInstance().RenderEngineInstance());
-		ID3D12Device* device = re.D3DDevice();
-
-		D3D12_RESOURCE_DESC tex_desc;
-		tex_desc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
-		tex_desc.Alignment = 0;
-		tex_desc.Width = width;
-		tex_desc.Height = 1;
-		tex_desc.DepthOrArraySize = 1;
-		tex_desc.MipLevels = 1;
-		tex_desc.Format = dxgi_fmt_;
-		tex_desc.SampleDesc.Count = 1;
-		tex_desc.SampleDesc.Quality = 0;
-		tex_desc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
-		tex_desc.Flags = D3D12_RESOURCE_FLAG_NONE;
-
 		D3D12_PLACED_SUBRESOURCE_FOOTPRINT layout;
-		uint64_t row_sizes_in_byte;
-		uint32_t num_row;
-		uint64_t upload_buffer_size = 0;
-		device->GetCopyableFootprints(&tex_desc, 0, 1, 0, &layout, &num_row, &row_sizes_in_byte, &upload_buffer_size);
+		uint32_t row_size_in_bytes = 0;
+		uint32_t num_row = 0;
+		uint32_t total_bytes = 0;
+		this->GetCopyableFootprints(width, 1, 1, layout, num_row, row_size_in_bytes, total_bytes);
 
-		{
-			uint8_t* p;
-			d3d_texture_upload_heaps_->Map(0, nullptr, reinterpret_cast<void**>(&p));
+		void* mapped_data;
+		this->Map1D(array_index, level, TMA_Write_Only, x_offset, width, mapped_data);
 
-			D3D12_SUBRESOURCE_DATA src_data;
-			src_data.pData = data;
-			src_data.RowPitch = width * NumFormatBytes(format_);
-			src_data.SlicePitch = src_data.RowPitch;
+		uint8_t const * src_data = static_cast<uint8_t const *>(data);
+		uint8_t* dst_data = static_cast<uint8_t*>(mapped_data);
+		memcpy(dst_data, src_data, row_size_in_bytes);
 
-			D3D12_MEMCPY_DEST dest_data;
-			dest_data.pData = p + layout.Offset;
-			dest_data.RowPitch = layout.Footprint.RowPitch;
-			dest_data.SlicePitch = layout.Footprint.RowPitch * num_row;
-
-			{
-				uint8_t const * src_slice
-					= reinterpret_cast<uint8_t const *>(src_data.pData);
-				uint8_t* dest_slice = reinterpret_cast<uint8_t*>(dest_data.pData);
-				for (UINT y = 0; y < num_row; ++y)
-				{
-					memcpy(dest_slice + dest_data.RowPitch * y, src_slice + src_data.RowPitch * y,
-						static_cast<size_t>(row_sizes_in_byte));
-				}
-			}
-			d3d_texture_upload_heaps_->Unmap(0, nullptr);
-		}
-
-		uint32_t const dst_subres = CalcSubresource(level, array_index, 0,
-			num_mip_maps_, array_size_);
-
-		ID3D12GraphicsCommandList* cmd_list = re.D3DRenderCmdList();
-
-		if (access_hint_ & EAH_GPU_Read)
-		{
-			re.ForceCPUGPUSync();
-		}
-
-		D3D12_RESOURCE_BARRIER barrier;
-		barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-		barrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
-		if (this->UpdateResourceBarrier(dst_subres, barrier, D3D12_RESOURCE_STATE_COPY_DEST))
-		{
-			cmd_list->ResourceBarrier(1, &barrier);
-		}
-
-		D3D12_TEXTURE_COPY_LOCATION src;
-		src.pResource = d3d_texture_upload_heaps_.get();
-		src.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
-		src.PlacedFootprint = layout;
-
-		D3D12_TEXTURE_COPY_LOCATION dst;
-		dst.pResource = d3d_resource_.get();
-		dst.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
-		dst.SubresourceIndex = dst_subres;
-
-		D3D12_BOX src_box;
-		src_box.left = 0;
-		src_box.top = 0;
-		src_box.front = 0;
-		src_box.right = width;
-		src_box.bottom = 1;
-		src_box.back = 1;
-
-		cmd_list->CopyTextureRegion(&dst, x_offset, 0, 0, &src, &src_box);
-
-		re.ForceCPUGPUSync();
+		this->Unmap1D(array_index, level);
 	}
 
 	void D3D12Texture::UpdateSubresource2D(uint32_t array_index, uint32_t level,
 		uint32_t x_offset, uint32_t y_offset, uint32_t width, uint32_t height,
 		void const * data, uint32_t row_pitch)
 	{
-		D3D12RenderEngine& re = *checked_cast<D3D12RenderEngine*>(&Context::Instance().RenderFactoryInstance().RenderEngineInstance());
-		ID3D12Device* device = re.D3DDevice();
-
-		D3D12_RESOURCE_DESC tex_desc;
-		tex_desc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
-		tex_desc.Alignment = 0;
-		tex_desc.Width = width;
-		tex_desc.Height = height;
-		tex_desc.DepthOrArraySize = 1;
-		tex_desc.MipLevels = 1;
-		tex_desc.Format = dxgi_fmt_;
-		tex_desc.SampleDesc.Count = 1;
-		tex_desc.SampleDesc.Quality = 0;
-		tex_desc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
-		tex_desc.Flags = D3D12_RESOURCE_FLAG_NONE;
-
 		D3D12_PLACED_SUBRESOURCE_FOOTPRINT layout;
-		uint64_t row_sizes_in_byte;
-		uint32_t num_row;
-		uint64_t upload_buffer_size = 0;
-		device->GetCopyableFootprints(&tex_desc, 0, 1, 0, &layout, &num_row, &row_sizes_in_byte, &upload_buffer_size);
+		uint32_t row_size_in_bytes = 0;
+		uint32_t num_row = 0;
+		uint32_t total_bytes = 0;
+		this->GetCopyableFootprints(width, height, 1, layout, num_row, row_size_in_bytes, total_bytes);
 
+		void* mapped_data;
+		uint32_t mapped_row_pitch;
+		this->Map2D(array_index, level, TMA_Write_Only, x_offset, y_offset, width, height, mapped_data, mapped_row_pitch);
+
+		uint8_t const * src_data = static_cast<uint8_t const *>(data);
+		uint8_t* dst_data = static_cast<uint8_t*>(mapped_data);
+		for (uint32_t y = 0; y < num_row; ++ y)
 		{
-			uint8_t* p;
-			d3d_texture_upload_heaps_->Map(0, nullptr, reinterpret_cast<void**>(&p));
+			memcpy(dst_data, src_data, row_size_in_bytes);
 
-			D3D12_SUBRESOURCE_DATA src_data;
-			src_data.pData = data;
-			src_data.RowPitch = row_pitch;
-			src_data.SlicePitch = row_pitch * height;
-
-			D3D12_MEMCPY_DEST dest_data;
-			dest_data.pData = p + layout.Offset;
-			dest_data.RowPitch = layout.Footprint.RowPitch;
-			dest_data.SlicePitch = layout.Footprint.RowPitch * num_row;
-
-			{
-				uint8_t const * src_slice
-					= reinterpret_cast<uint8_t const *>(src_data.pData);
-				uint8_t* dest_slice = reinterpret_cast<uint8_t*>(dest_data.pData);
-				for (UINT y = 0; y < num_row; ++ y)
-				{
-					memcpy(dest_slice + dest_data.RowPitch * y, src_slice + src_data.RowPitch * y,
-						static_cast<size_t>(row_sizes_in_byte));
-				}
-			}
-			d3d_texture_upload_heaps_->Unmap(0, nullptr);
+			src_data += row_pitch;
+			dst_data += mapped_row_pitch;
 		}
 
-		uint32_t const dst_subres = CalcSubresource(level, array_index, 0,
-			num_mip_maps_, array_size_);
-
-		ID3D12GraphicsCommandList* cmd_list = re.D3DRenderCmdList();
-
-		if (access_hint_ & EAH_GPU_Read)
-		{
-			re.ForceCPUGPUSync();
-		}
-
-		D3D12_RESOURCE_BARRIER barrier;
-		barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-		barrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
-		if (this->UpdateResourceBarrier(dst_subres, barrier, D3D12_RESOURCE_STATE_COPY_DEST))
-		{
-			cmd_list->ResourceBarrier(1, &barrier);
-		}
-
-		D3D12_TEXTURE_COPY_LOCATION src;
-		src.pResource = d3d_texture_upload_heaps_.get();
-		src.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
-		src.PlacedFootprint = layout;
-
-		D3D12_TEXTURE_COPY_LOCATION dst;
-		dst.pResource = d3d_resource_.get();
-		dst.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
-		dst.SubresourceIndex = dst_subres;
-
-		D3D12_BOX src_box;
-		src_box.left = 0;
-		src_box.top = 0;
-		src_box.front = 0;
-		src_box.right = width;
-		src_box.bottom = height;
-		src_box.back = 1;
-
-		cmd_list->CopyTextureRegion(&dst, x_offset, y_offset, 0, &src, &src_box);
-
-		re.ForceCPUGPUSync();
+		this->Unmap2D(array_index, level);
 	}
 
 	void D3D12Texture::UpdateSubresource3D(uint32_t array_index, uint32_t level,
@@ -1199,109 +1105,75 @@ namespace KlayGE
 		uint32_t width, uint32_t height, uint32_t depth,
 		void const * data, uint32_t row_pitch, uint32_t slice_pitch)
 	{
-		D3D12RenderEngine& re = *checked_cast<D3D12RenderEngine*>(&Context::Instance().RenderFactoryInstance().RenderEngineInstance());
-		ID3D12Device* device = re.D3DDevice();
-
-		D3D12_RESOURCE_DESC tex_desc;
-		tex_desc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
-		tex_desc.Alignment = 0;
-		tex_desc.Width = width;
-		tex_desc.Height = height;
-		tex_desc.DepthOrArraySize = static_cast<UINT16>(depth);
-		tex_desc.MipLevels = 1;
-		tex_desc.Format = dxgi_fmt_;
-		tex_desc.SampleDesc.Count = 1;
-		tex_desc.SampleDesc.Quality = 0;
-		tex_desc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
-		tex_desc.Flags = D3D12_RESOURCE_FLAG_NONE;
-
 		D3D12_PLACED_SUBRESOURCE_FOOTPRINT layout;
-		uint64_t row_sizes_in_byte;
-		uint32_t num_row;
-		uint64_t upload_buffer_size = 0;
-		device->GetCopyableFootprints(&tex_desc, 0, 1, 0, &layout, &num_row, &row_sizes_in_byte, &upload_buffer_size);
+		uint32_t row_size_in_bytes = 0;
+		uint32_t num_row = 0;
+		uint32_t total_bytes = 0;
+		this->GetCopyableFootprints(width, height, depth, layout, num_row, row_size_in_bytes, total_bytes);
 
+		void* mapped_data;
+		uint32_t mapped_row_pitch;
+		uint32_t mapped_slice_pitch;
+		this->Map3D(array_index, level, TMA_Write_Only, x_offset, y_offset, z_offset, width, height, depth,
+			mapped_data, mapped_row_pitch, mapped_slice_pitch);
+
+		for (uint32_t z = 0; z < depth; ++ z)
 		{
-			uint8_t* p;
-			d3d_texture_upload_heaps_->Map(0, nullptr, reinterpret_cast<void**>(&p));
-
-			D3D12_SUBRESOURCE_DATA src_data;
-			src_data.pData = data;
-			src_data.RowPitch = row_pitch;
-			src_data.SlicePitch = slice_pitch;
-
-			D3D12_MEMCPY_DEST dest_data;
-			dest_data.pData = p + layout.Offset;
-			dest_data.RowPitch = layout.Footprint.RowPitch;
-			dest_data.SlicePitch = layout.Footprint.RowPitch * num_row;
-
+			uint8_t const * src_data = static_cast<uint8_t const *>(data) + z * slice_pitch;
+			uint8_t* dst_data = static_cast<uint8_t*>(mapped_data) + z * mapped_slice_pitch;
+			for (uint32_t y = 0; y < num_row; ++ y)
 			{
-				uint8_t const * src_slice
-					= reinterpret_cast<uint8_t const *>(src_data.pData);
-				uint8_t* dest_slice = reinterpret_cast<uint8_t*>(dest_data.pData);
-				for (UINT y = 0; y < num_row; ++y)
-				{
-					memcpy(dest_slice + dest_data.RowPitch * y, src_slice + src_data.RowPitch * y,
-						static_cast<size_t>(row_sizes_in_byte));
-				}
+				memcpy(dst_data, src_data, row_size_in_bytes);
+
+				src_data += row_pitch;
+				dst_data += mapped_row_pitch;
 			}
-			d3d_texture_upload_heaps_->Unmap(0, nullptr);
 		}
 
-		uint32_t const dst_subres = CalcSubresource(level, array_index, 0,
-			num_mip_maps_, array_size_);
-
-		ID3D12GraphicsCommandList* cmd_list = re.D3DRenderCmdList();
-
-		if (access_hint_ & EAH_GPU_Read)
-		{
-			re.ForceCPUGPUSync();
-		}
-
-		D3D12_RESOURCE_BARRIER barrier;
-		barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-		barrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
-		if (this->UpdateResourceBarrier(dst_subres, barrier, D3D12_RESOURCE_STATE_COPY_DEST))
-		{
-			cmd_list->ResourceBarrier(1, &barrier);
-		}
-
-		D3D12_TEXTURE_COPY_LOCATION src;
-		src.pResource = d3d_texture_upload_heaps_.get();
-		src.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
-		src.PlacedFootprint = layout;
-
-		D3D12_TEXTURE_COPY_LOCATION dst;
-		dst.pResource = d3d_resource_.get();
-		dst.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
-		dst.SubresourceIndex = dst_subres;
-
-		D3D12_BOX src_box;
-		src_box.left = 0;
-		src_box.top = 0;
-		src_box.front = 0;
-		src_box.right = width;
-		src_box.bottom = height;
-		src_box.back = depth;
-
-		cmd_list->CopyTextureRegion(&dst, x_offset, y_offset, z_offset, &src, &src_box);
-
-		re.ForceCPUGPUSync();
+		this->Unmap3D(array_index, level);
 	}
 
 	void D3D12Texture::UpdateSubresourceCube(uint32_t array_index, Texture::CubeFaces face, uint32_t level,
 		uint32_t x_offset, uint32_t y_offset, uint32_t width, uint32_t height,
 		void const * data, uint32_t row_pitch)
 	{
-		D3D12RenderEngine& re = *checked_cast<D3D12RenderEngine*>(&Context::Instance().RenderFactoryInstance().RenderEngineInstance());
-		ID3D12Device* device = re.D3DDevice();
+		D3D12_PLACED_SUBRESOURCE_FOOTPRINT layout;
+		uint32_t row_size_in_bytes = 0;
+		uint32_t num_row = 0;
+		uint32_t total_bytes = 0;
+		this->GetCopyableFootprints(width, height, 1, layout, num_row, row_size_in_bytes, total_bytes);
+
+		void* mapped_data;
+		uint32_t mapped_row_pitch;
+		this->MapCube(array_index, face, level, TMA_Write_Only, x_offset, y_offset, width, height, mapped_data, mapped_row_pitch);
+
+		uint8_t const * src_data = static_cast<uint8_t const *>(data);
+		uint8_t* dst_data = static_cast<uint8_t*>(mapped_data);
+		for (uint32_t y = 0; y < num_row; ++ y)
+		{
+			memcpy(dst_data, src_data, row_size_in_bytes);
+
+			src_data += row_pitch;
+			dst_data += mapped_row_pitch;
+		}
+
+		this->UnmapCube(array_index, face, level);
+	}
+
+	void D3D12Texture::GetCopyableFootprints(uint32_t width, uint32_t height, uint32_t depth,
+		D3D12_PLACED_SUBRESOURCE_FOOTPRINT& layout,
+		uint32_t& num_row, uint32_t& row_size_in_bytes,
+		uint32_t& total_bytes)
+	{
+		auto& re = *checked_cast<D3D12RenderEngine*>(&Context::Instance().RenderFactoryInstance().RenderEngineInstance());
+		auto device = re.D3DDevice();
 
 		D3D12_RESOURCE_DESC tex_desc;
-		tex_desc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+		tex_desc.Dimension = (type_ == Texture::TT_2D) ? D3D12_RESOURCE_DIMENSION_TEXTURE2D : D3D12_RESOURCE_DIMENSION_TEXTURE3D;
 		tex_desc.Alignment = 0;
 		tex_desc.Width = width;
 		tex_desc.Height = height;
-		tex_desc.DepthOrArraySize = 1;
+		tex_desc.DepthOrArraySize = static_cast<uint16_t>(depth);
 		tex_desc.MipLevels = 1;
 		tex_desc.Format = dxgi_fmt_;
 		tex_desc.SampleDesc.Count = 1;
@@ -1309,77 +1181,12 @@ namespace KlayGE
 		tex_desc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
 		tex_desc.Flags = D3D12_RESOURCE_FLAG_NONE;
 
-		D3D12_PLACED_SUBRESOURCE_FOOTPRINT layout;
-		uint64_t row_sizes_in_byte;
-		uint32_t num_row;
-		uint64_t upload_buffer_size = 0;
-		device->GetCopyableFootprints(&tex_desc, 0, 1, 0, &layout, &num_row, &row_sizes_in_byte, &upload_buffer_size);
+		uint64_t row_size_in_bytes_64 = 0;
+		num_row = 0;
+		uint64_t total_bytes_64 = 0;
+		device->GetCopyableFootprints(&tex_desc, 0, 1, 0, &layout, &num_row, &row_size_in_bytes_64, &total_bytes_64);
 
-		{
-			uint8_t* p;
-			d3d_texture_upload_heaps_->Map(0, nullptr, reinterpret_cast<void**>(&p));
-
-			D3D12_SUBRESOURCE_DATA src_data;
-			src_data.pData = data;
-			src_data.RowPitch = row_pitch;
-			src_data.SlicePitch = row_pitch * height;
-
-			D3D12_MEMCPY_DEST dest_data;
-			dest_data.pData = p + layout.Offset;
-			dest_data.RowPitch = layout.Footprint.RowPitch;
-			dest_data.SlicePitch = layout.Footprint.RowPitch * num_row;
-
-			{
-				uint8_t const * src_slice
-					= reinterpret_cast<uint8_t const *>(src_data.pData);
-				uint8_t* dest_slice = reinterpret_cast<uint8_t*>(dest_data.pData);
-				for (UINT y = 0; y < num_row; ++y)
-				{
-					memcpy(dest_slice + dest_data.RowPitch * y, src_slice + src_data.RowPitch * y,
-						static_cast<size_t>(row_sizes_in_byte));
-				}
-			}
-			d3d_texture_upload_heaps_->Unmap(0, nullptr);
-		}
-
-		uint32_t const dst_subres = CalcSubresource(level, array_index * 6 + face - CF_Positive_X, 0,
-			num_mip_maps_, array_size_);
-
-		ID3D12GraphicsCommandList* cmd_list = re.D3DRenderCmdList();
-
-		if (access_hint_ & EAH_GPU_Read)
-		{
-			re.ForceCPUGPUSync();
-		}
-
-		D3D12_RESOURCE_BARRIER barrier;
-		barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-		barrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
-		if (this->UpdateResourceBarrier(dst_subres, barrier, D3D12_RESOURCE_STATE_COPY_DEST))
-		{
-			cmd_list->ResourceBarrier(1, &barrier);
-		}
-
-		D3D12_TEXTURE_COPY_LOCATION src;
-		src.pResource = d3d_texture_upload_heaps_.get();
-		src.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
-		src.PlacedFootprint = layout;
-
-		D3D12_TEXTURE_COPY_LOCATION dst;
-		dst.pResource = d3d_resource_.get();
-		dst.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
-		dst.SubresourceIndex = dst_subres;
-
-		D3D12_BOX src_box;
-		src_box.left = 0;
-		src_box.top = 0;
-		src_box.front = 0;
-		src_box.right = width;
-		src_box.bottom = height;
-		src_box.back = 1;
-
-		cmd_list->CopyTextureRegion(&dst, x_offset, y_offset, 0, &src, &src_box);
-
-		re.ForceCPUGPUSync();
+		row_size_in_bytes = static_cast<uint32_t>(row_size_in_bytes_64);
+		total_bytes = static_cast<uint32_t>(total_bytes_64);
 	}
 }

@@ -21,8 +21,7 @@
 #include <stdlib.h>
 #include <commctrl.h>
 #include <sstream>
-
-#include <boost/lexical_cast.hpp>
+#include <string>
 
 #include "resource.h"
 
@@ -176,8 +175,8 @@ INT_PTR CALLBACK Graphics_Tab_DlgProc(HWND hDlg, UINT uMsg, WPARAM /*wParam*/, L
 			{
 				SendMessage(hResCombo, CB_GETLBTEXT, i, reinterpret_cast<LPARAM>(buf));
 
-				std::string const res = boost::lexical_cast<std::string>(cfg.graphics_cfg.width) + 'x'
-					+ boost::lexical_cast<std::string>(cfg.graphics_cfg.height) + ' ';
+				std::string const res = std::to_string(cfg.graphics_cfg.width) + 'x'
+					+ std::to_string(cfg.graphics_cfg.height) + ' ';
 
 				std::string str;
 				Convert(str, buf);
@@ -315,14 +314,6 @@ INT_PTR CALLBACK Graphics_Tab_DlgProc(HWND hDlg, UINT uMsg, WPARAM /*wParam*/, L
 			SendMessage(hSyncCombo, CB_SETCURSEL, sel, 0);
 		}
 		{
-			HWND hMBFramesEdit = GetDlgItem(hDlg, IDC_MB_FRAMES_EDIT);
-
-			std::basic_string<TCHAR> str;
-			Convert(str, boost::lexical_cast<std::string>(cfg.graphics_cfg.motion_frames));
-
-			SetWindowText(hMBFramesEdit, str.c_str());
-		}
-		{
 			HWND hHDRCombo = GetDlgItem(hDlg, IDC_HDR_COMBO);
 			SendMessage(hHDRCombo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(TEXT("Yes")));
 			SendMessage(hHDRCombo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(TEXT("No")));
@@ -383,7 +374,7 @@ INT_PTR CALLBACK Graphics_Tab_DlgProc(HWND hDlg, UINT uMsg, WPARAM /*wParam*/, L
 			for (uint32_t i = 0; i < std::size(paper_white_candidates); ++ i)
 			{
 				std::basic_string<TCHAR> str;
-				Convert(str, boost::lexical_cast<std::string>(paper_white_candidates[i]));
+				Convert(str, std::to_string(paper_white_candidates[i]));
 				SendMessage(hPaperWhiteCombo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(str.c_str()));
 
 				if ((sel == -1) && (cfg.graphics_cfg.paper_white <= paper_white_candidates[i]))
@@ -399,7 +390,7 @@ INT_PTR CALLBACK Graphics_Tab_DlgProc(HWND hDlg, UINT uMsg, WPARAM /*wParam*/, L
 			for (uint32_t i = 0; i < std::size(max_lum_candidates); ++ i)
 			{
 				std::basic_string<TCHAR> str;
-				Convert(str, boost::lexical_cast<std::string>(max_lum_candidates[i]));
+				Convert(str, std::to_string(max_lum_candidates[i]));
 				SendMessage(hMaxLumCombo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(str.c_str()));
 
 				if ((sel == -1) && (cfg.graphics_cfg.display_max_luminance <= max_lum_candidates[i]))
@@ -428,12 +419,6 @@ INT_PTR CALLBACK Audio_Tab_DlgProc(HWND hDlg, UINT uMsg, WPARAM /*wParam*/, LPAR
 			{
 				SendMessage(hFactoryCombo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(TEXT("OpenAL")));
 				FreeLibrary(mod_al);
-			}
-			HMODULE mod_ds = LoadLibraryEx(TEXT("dsound.dll"), nullptr, 0);
-			if (mod_ds)
-			{
-				SendMessage(hFactoryCombo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(TEXT("DSound")));
-				FreeLibrary(mod_ds);
 			}
 			HMODULE mod_xaudio = LoadLibraryEx(TEXT("XAudio2_8.dll"), nullptr, 0);
 			if (mod_xaudio)
@@ -643,8 +628,8 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 					std::string str;
 					Convert(str, buf);
 					std::string::size_type p = str.find('x');
-					std::istringstream(str.substr(0, p)) >> cfg.graphics_cfg.width;
-					std::istringstream(str.substr(p + 1, str.size())) >> cfg.graphics_cfg.height;
+					cfg.graphics_cfg.width = std::stoi(str.substr(0, p));
+					cfg.graphics_cfg.height = std::stoi(str.substr(p + 1, str.size()));
 				}
 				{
 					HWND hClrFmtCombo = GetDlgItem(hTabDlg[GRAPHICS_TAB], IDC_CLR_FMT_COMBO);
@@ -753,12 +738,6 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 					}
 				}
 				{
-					HWND hMBFramesEdit = GetDlgItem(hTabDlg[GRAPHICS_TAB], IDC_MB_FRAMES_EDIT);
-					TCHAR buf[256];
-					GetWindowText(hMBFramesEdit, buf, static_cast<uint32_t>(std::size(buf)));
-					std::basic_stringstream<TCHAR>(buf) >> cfg.graphics_cfg.motion_frames;
-				}
-				{
 					HWND hHDRCombo = GetDlgItem(hTabDlg[GRAPHICS_TAB], IDC_HDR_COMBO);
 					int n = static_cast<int>(SendMessage(hHDRCombo, CB_GETCURSEL, 0, 0));
 					cfg.graphics_cfg.hdr = (0 == n) ? 1 : 0;
@@ -772,7 +751,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 					HWND hStereoSepEdit = GetDlgItem(hTabDlg[GRAPHICS_TAB], IDC_STEREO_SEP_EDIT);
 					TCHAR buf[256];
 					GetWindowText(hStereoSepEdit, buf, static_cast<int>(std::size(buf)));
-					std::basic_stringstream<TCHAR>(buf) >> cfg.graphics_cfg.stereo_separation;
+					cfg.graphics_cfg.stereo_separation = std::stof(buf);
 				}
 				{
 					HWND hOutputCombo = GetDlgItem(hTabDlg[GRAPHICS_TAB], IDC_OUTPUT_COMBO);

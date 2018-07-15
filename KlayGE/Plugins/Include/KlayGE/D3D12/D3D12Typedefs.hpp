@@ -34,9 +34,23 @@
 #pragma once
 
 #include <KlayGE/SALWrapper.hpp>
+#if defined(KLAYGE_COMPILER_CLANGC2)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wmicrosoft-enum-value" // Ignore int enum
+#endif
 #include <dxgi1_6.h>
+#if defined(KLAYGE_COMPILER_CLANGC2)
+#pragma clang diagnostic pop
+#endif
+#if defined(KLAYGE_COMPILER_CLANGC2)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wmicrosoft-enum-value" // Ignore int enum
+#endif
 #include <d3d12.h>
-#if defined(KLAYGE_COMPILER_GCC) || defined(KLAYGE_COMPILER_CLANG)
+#if defined(KLAYGE_COMPILER_CLANGC2)
+#pragma clang diagnostic pop
+#endif
+#if defined(KLAYGE_COMPILER_GCC) || defined(KLAYGE_COMPILER_CLANGC2)
 #undef __out
 #endif
 
@@ -44,6 +58,7 @@ namespace KlayGE
 {
 	typedef std::shared_ptr<IDXGIFactory4>				IDXGIFactory4Ptr;
 	typedef std::shared_ptr<IDXGIFactory5>				IDXGIFactory5Ptr;
+	typedef std::shared_ptr<IDXGIFactory6>				IDXGIFactory6Ptr;
 	typedef std::shared_ptr<IDXGIAdapter1>				IDXGIAdapter1Ptr;
 	typedef std::shared_ptr<IDXGISwapChain3>			IDXGISwapChain3Ptr;
 	typedef std::shared_ptr<IDXGISwapChain4>			IDXGISwapChain4Ptr;

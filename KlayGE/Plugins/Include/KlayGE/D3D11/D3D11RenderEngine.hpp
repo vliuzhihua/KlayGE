@@ -60,6 +60,7 @@ namespace KlayGE
 		IDXGIFactory3* DXGIFactory3() const;
 		IDXGIFactory4* DXGIFactory4() const;
 		IDXGIFactory5* DXGIFactory5() const;
+		IDXGIFactory6* DXGIFactory6() const;
 		uint8_t DXGISubVer() const;
 
 		ID3D11Device* D3DDevice() const;
@@ -67,10 +68,12 @@ namespace KlayGE
 		ID3D11Device2* D3DDevice2() const;
 		ID3D11Device3* D3DDevice3() const;
 		ID3D11Device4* D3DDevice4() const;
+		ID3D11Device5* D3DDevice5() const;
 		ID3D11DeviceContext* D3DDeviceImmContext() const;
 		ID3D11DeviceContext1* D3DDeviceImmContext1() const;
 		ID3D11DeviceContext2* D3DDeviceImmContext2() const;
 		ID3D11DeviceContext3* D3DDeviceImmContext3() const;
+		ID3D11DeviceContext4* D3DDeviceImmContext4() const;
 		uint8_t D3D11RuntimeSubVer() const;
 
 		D3D_FEATURE_LEVEL DeviceFeatureLevel() const;
@@ -83,7 +86,7 @@ namespace KlayGE
 
 		void ScissorRect(uint32_t x, uint32_t y, uint32_t width, uint32_t height);
 
-		void GetCustomAttrib(std::string_view name, void* value) override;
+		void GetCustomAttrib(std::string_view name, void* value) const override;
 
 		bool FullScreen() const;
 		void FullScreen(bool fs);
@@ -166,11 +169,6 @@ namespace KlayGE
 
 		virtual void StereoscopicForLCDShutter(int32_t eye) override;
 
-		bool VertexFormatSupport(ElementFormat elem_fmt);
-		bool TextureFormatSupport(ElementFormat elem_fmt);
-		bool RenderTargetFormatSupport(ElementFormat elem_fmt, uint32_t sample_count, uint32_t sample_quality);
-		bool UAVFormatSupport(ElementFormat elem_fmt);
-
 		virtual void CheckConfig(RenderSettings& settings) override;
 
 		D3D11AdapterList const & D3DAdapters() const;
@@ -196,6 +194,7 @@ namespace KlayGE
 		IDXGIFactory3Ptr gi_factory_3_;
 		IDXGIFactory4Ptr gi_factory_4_;
 		IDXGIFactory5Ptr gi_factory_5_;
+		IDXGIFactory6Ptr gi_factory_6_;
 		uint8_t dxgi_sub_ver_;
 		
 		ID3D11DevicePtr  d3d_device_;
@@ -203,10 +202,12 @@ namespace KlayGE
 		ID3D11Device2Ptr d3d_device_2_;
 		ID3D11Device3Ptr d3d_device_3_;
 		ID3D11Device4Ptr d3d_device_4_;
+		ID3D11Device5Ptr d3d_device_5_;
 		ID3D11DeviceContextPtr  d3d_imm_ctx_;
 		ID3D11DeviceContext1Ptr d3d_imm_ctx_1_;
 		ID3D11DeviceContext2Ptr d3d_imm_ctx_2_;
 		ID3D11DeviceContext3Ptr d3d_imm_ctx_3_;
+		ID3D11DeviceContext4Ptr d3d_imm_ctx_4_;
 		uint8_t d3d_11_runtime_sub_ver_;
 
 		D3D_FEATURE_LEVEL d3d_feature_level_;
@@ -265,11 +266,6 @@ namespace KlayGE
 		StereoMethod stereo_method_;
 		FrameBufferPtr stereo_nv_3d_vision_fb_;
 		TexturePtr stereo_nv_3d_vision_tex_;
-
-		std::vector<ElementFormat> vertex_format_;
-		std::vector<ElementFormat> texture_format_;
-		std::map<ElementFormat, std::vector<std::pair<uint32_t, uint32_t>>> rendertarget_format_;
-		std::vector<ElementFormat> uav_format_;
 
 		ID3D11QueryPtr timestamp_disjoint_query_;
 		double inv_timestamp_freq_;

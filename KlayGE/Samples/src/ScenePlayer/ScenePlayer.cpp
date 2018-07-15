@@ -1,5 +1,6 @@
 #include <KlayGE/KlayGE.hpp>
 #include <KFL/CXX17/iterator.hpp>
+#include <KFL/CustomizedStreamBuf.hpp>
 #include <KFL/Util.hpp>
 #include <KFL/Math.hpp>
 #include <KlayGE/Font.hpp>
@@ -28,8 +29,14 @@
 #include <vector>
 #include <sstream>
 #include <fstream>
-#include <boost/lexical_cast.hpp>
+#if defined(KLAYGE_COMPILER_CLANGC2)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wunused-variable" // Ignore unused variable (mpl_assertion_in_line_xxx) in boost
+#endif
 #include <boost/algorithm/string/split.hpp>
+#if defined(KLAYGE_COMPILER_CLANGC2)
+#pragma clang diagnostic pop
+#endif
 #include <boost/algorithm/string/trim.hpp>
 
 #include "SampleCommon.hpp"
@@ -301,7 +308,6 @@ namespace
 int SampleMain()
 {
 	ContextCfg cfg = Context::Instance().Config();
-	cfg.script_factory_name = "Python";
 	cfg.deferred_rendering = true;
 	cfg.graphics_cfg.fft_lens_effects = true;
 	Context::Instance().Config(cfg);
@@ -347,7 +353,7 @@ void ScenePlayerApp::LoadScene(std::string const & name)
 		{
 			sky_box_ = MakeSharedPtr<SceneObjectSkyBox>();
 
-			std::string skybox_name = attr->ValueString();
+			std::string const skybox_name = std::string(attr->ValueString());
 			if (!ResLoader::Instance().Locate(skybox_name).empty())
 			{
 				checked_pointer_cast<SceneObjectSkyBox>(sky_box_)->CubeMap(ASyncLoadTexture(skybox_name,
@@ -366,24 +372,13 @@ void ScenePlayerApp::LoadScene(std::string const & name)
 			}
 			else
 			{
-				std::istringstream attr_ss(skybox_name);
 				Color color(0, 0, 0, 1);
-				attr_ss >> color.r() >> color.g() >> color.b();
+				MemInputStreamBuf stream_buff(skybox_name.data(), skybox_name.size());
+				std::istream(&stream_buff) >> color.r() >> color.g() >> color.b();
 
-				uint32_t texel;
-				ElementFormat fmt;
-				if (rf.RenderEngineInstance().DeviceCaps().texture_format_support(EF_ABGR8))
-				{
-					fmt = EF_ABGR8;
-					texel = color.ABGR();
-				}
-				else
-				{
-					BOOST_ASSERT(rf.RenderEngineInstance().DeviceCaps().texture_format_support(EF_ARGB8));
-
-					fmt = EF_ARGB8;
-					texel = color.ARGB();
-				}
+				auto const fmt = rf.RenderEngineInstance().DeviceCaps().BestMatchTextureFormat({ EF_ABGR8, EF_ARGB8 });
+				BOOST_ASSERT(fmt != EF_Unknown);
+				uint32_t texel = (fmt == EF_ABGR8) ? color.ABGR() : color.ARGB();
 				ElementInitData init_data[6];
 				for (int i = 0; i < 6; ++ i)
 				{
@@ -392,7 +387,8 @@ void ScenePlayerApp::LoadScene(std::string const & name)
 					init_data[i].slice_pitch = init_data[i].row_pitch;
 				}
 
-				checked_pointer_cast<SceneObjectSkyBox>(sky_box_)->CubeMap(rf.MakeTextureCube(1, 1, 1, fmt, 1, 0, EAH_GPU_Read | EAH_Immutable, init_data));
+				checked_pointer_cast<SceneObjectSkyBox>(sky_box_)->CubeMap(rf.MakeTextureCube(1, 1, 1, fmt, 1, 0,
+					EAH_GPU_Read | EAH_Immutable, init_data));
 			}
 
 			sky_box_->AddToSceneManager();
@@ -403,7 +399,7 @@ void ScenePlayerApp::LoadScene(std::string const & name)
 	{
 		LightSourcePtr light;
 
-		std::string lt_str = light_node->Attrib("type")->ValueString();
+		std::string_view const lt_str = light_node->Attrib("type")->ValueString();
 		if ("ambient" == lt_str)
 		{
 			light = MakeSharedPtr<AmbientLightSource>();
@@ -434,8 +430,9 @@ void ScenePlayerApp::LoadScene(std::string const & name)
 		XMLNodePtr attr_node = light_node->FirstNode("attr");
 		if (attr_node)
 		{
+			std::string_view const attr_str = attr_node->Attrib("value")->ValueString();
 			std::vector<std::string> tokens;
-			boost::algorithm::split(tokens, attr_node->Attrib("value")->ValueString(), boost::is_any_of(" \t|"));
+			boost::algorithm::split(tokens, attr_str, boost::is_any_of(" \t|"));
 			for (auto& token : tokens)
 			{
 				boost::algorithm::trim(token);
@@ -463,9 +460,10 @@ void ScenePlayerApp::LoadScene(std::string const & name)
 		XMLNodePtr color_node = light_node->FirstNode("color");
 		if (color_node)
 		{
-			std::istringstream attr_ss(color_node->Attrib("v")->ValueString());
 			float3 color;
-			attr_ss >> color.x() >> color.y() >> color.z();
+			auto v = color_node->Attrib("v")->ValueString();
+			MemInputStreamBuf stream_buff(v.data(), v.size());
+			std::istream(&stream_buff) >> color.x() >> color.y() >> color.z();
 			light->Color(color);
 		}
 
@@ -475,9 +473,10 @@ void ScenePlayerApp::LoadScene(std::string const & name)
 			XMLNodePtr dir_node = light_node->FirstNode("dir");
 			if (dir_node)
 			{
-				std::istringstream attr_ss(dir_node->Attrib("v")->ValueString());
 				float3 dir;
-				attr_ss >> dir.x() >> dir.y() >> dir.z();
+				auto v = dir_node->Attrib("v")->ValueString();
+				MemInputStreamBuf stream_buff(v.data(), v.size());
+				std::istream(&stream_buff) >> dir.x() >> dir.y() >> dir.z();
 				light->Direction(dir);
 			}
 		}
@@ -487,18 +486,20 @@ void ScenePlayerApp::LoadScene(std::string const & name)
 			XMLNodePtr pos_node = light_node->FirstNode("pos");
 			if (pos_node)
 			{
-				std::istringstream attr_ss(pos_node->Attrib("v")->ValueString());
 				float3 pos;
-				attr_ss >> pos.x() >> pos.y() >> pos.z();
+				auto v = pos_node->Attrib("v")->ValueString();
+				MemInputStreamBuf stream_buff(v.data(), v.size());
+				std::istream(&stream_buff) >> pos.x() >> pos.y() >> pos.z();
 				light->Position(pos);
 			}
 
 			XMLNodePtr fall_off_node = light_node->FirstNode("fall_off");
 			if (fall_off_node)
 			{
-				std::istringstream attr_ss(fall_off_node->Attrib("v")->ValueString());
 				float3 fall_off;
-				attr_ss >> fall_off.x() >> fall_off.y() >> fall_off.z();
+				auto v = fall_off_node->Attrib("v")->ValueString();
+				MemInputStreamBuf stream_buff(v.data(), v.size());
+				std::istream(&stream_buff) >> fall_off.x() >> fall_off.y() >> fall_off.z();
 				light->Falloff(fall_off);
 			}
 
@@ -510,7 +511,7 @@ void ScenePlayerApp::LoadScene(std::string const & name)
 					XMLAttributePtr attr = projective_node->Attrib("name");
 					if (attr)
 					{
-						TexturePtr projective = ASyncLoadTexture(attr->ValueString(), EAH_GPU_Read | EAH_Immutable);
+						TexturePtr projective = ASyncLoadTexture(std::string(attr->ValueString()), EAH_GPU_Read | EAH_Immutable);
 						light->ProjectiveTexture(projective);
 					}
 				}
@@ -535,7 +536,7 @@ void ScenePlayerApp::LoadScene(std::string const & name)
 			update_node = update_node->FirstNode();
 			if (update_node && (XNT_CData == update_node->Type()))
 			{
-				std::string update_script = update_node->ValueString();
+				std::string const update_script = std::string(update_node->ValueString());
 				if (!update_script.empty())
 				{
 					light->BindUpdateFunc(LightSourceUpdate(update_script));
@@ -551,8 +552,9 @@ void ScenePlayerApp::LoadScene(std::string const & name)
 		{
 			float3 scale(1, 1, 1);
 			{
-				std::istringstream attr_ss(scale_node->Attrib("v")->ValueString());
-				attr_ss >> scale.x() >> scale.y() >> scale.z();
+				auto v = scale_node->Attrib("v")->ValueString();
+				MemInputStreamBuf stream_buff(v.data(), v.size());
+				std::istream(&stream_buff) >> scale.x() >> scale.y() >> scale.z();
 			}
 
 			SceneObjectPtr light_proxy = MakeSharedPtr<SceneObjectLightSourceProxy>(light);
@@ -575,22 +577,25 @@ void ScenePlayerApp::LoadScene(std::string const & name)
 		XMLNodePtr scale_node = model_node->FirstNode("scale");
 		if (scale_node)
 		{
-			std::istringstream attr_ss(scale_node->Attrib("v")->ValueString());
-			attr_ss >> scale.x() >> scale.y() >> scale.z();
+			auto v = scale_node->Attrib("v")->ValueString();
+			MemInputStreamBuf stream_buff(v.data(), v.size());
+			std::istream(&stream_buff) >> scale.x() >> scale.y() >> scale.z();
 		}
 		
 		XMLNodePtr rotate_node = model_node->FirstNode("rotate");
 		if (!!rotate_node)
 		{
-			std::istringstream attr_ss(rotate_node->Attrib("v")->ValueString());
-			attr_ss >> rotate.x() >> rotate.y() >> rotate.z() >> rotate.w();
+			auto v = rotate_node->Attrib("v")->ValueString();
+			MemInputStreamBuf stream_buff(v.data(), v.size());
+			std::istream(&stream_buff) >> rotate.x() >> rotate.y() >> rotate.z() >> rotate.w();
 		}
 
 		XMLNodePtr translate_node = model_node->FirstNode("translate");
 		if (scale_node)
 		{
-			std::istringstream attr_ss(translate_node->Attrib("v")->ValueString());
-			attr_ss >> translate.x() >> translate.y() >> translate.z();
+			auto v = translate_node->Attrib("v")->ValueString();
+			MemInputStreamBuf stream_buff(v.data(), v.size());
+			std::istream(&stream_buff) >> translate.x() >> translate.y() >> translate.z();
 		}
 
 		obj_mat = MathLib::transformation<float>(nullptr, nullptr, &scale, nullptr, &rotate, &translate);
@@ -605,8 +610,9 @@ void ScenePlayerApp::LoadScene(std::string const & name)
 				{
 					obj_attr = SceneObject::SOA_Cullable;
 
+					std::string_view const attr_str = attr->ValueString();
 					std::vector<std::string> tokens;
-					boost::algorithm::split(tokens, attr->ValueString(), boost::is_any_of(" \t|"));
+					boost::algorithm::split(tokens, attr_str, boost::is_any_of(" \t|"));
 					for (auto& token : tokens)
 					{
 						boost::algorithm::trim(token);
@@ -638,14 +644,14 @@ void ScenePlayerApp::LoadScene(std::string const & name)
 			update_node = update_node->FirstNode();
 			if (update_node && (XNT_CData == update_node->Type()))
 			{
-				update_script = update_node->ValueString();
+				update_script = std::string(update_node->ValueString());
 			}
 		}
 
 		XMLAttributePtr attr = model_node->Attrib("meshml");
 		BOOST_ASSERT(attr);
 
-		RenderModelPtr model = ASyncLoadModel(attr->ValueString(), EAH_GPU_Read | EAH_Immutable);
+		RenderModelPtr model = ASyncLoadModel(std::string(attr->ValueString()), EAH_GPU_Read | EAH_Immutable);
 		scene_models_.push_back(model);
 		SceneObjectPtr scene_obj = MakeSharedPtr<SceneObjectHelper>(model, obj_attr);
 		scene_obj->ModelMatrix(obj_mat);
@@ -674,20 +680,23 @@ void ScenePlayerApp::LoadScene(std::string const & name)
 		XMLNodePtr eye_pos_node = camera_node->FirstNode("eye_pos");
 		if (eye_pos_node)
 		{
-			std::istringstream attr_ss(eye_pos_node->Attrib("v")->ValueString());
-			attr_ss >> eye_pos.x() >> eye_pos.y() >> eye_pos.z();
+			auto v = eye_pos_node->Attrib("v")->ValueString();
+			MemInputStreamBuf stream_buff(v.data(), v.size());
+			std::istream(&stream_buff) >> eye_pos.x() >> eye_pos.y() >> eye_pos.z();
 		}
 		XMLNodePtr look_at_node = camera_node->FirstNode("look_at");
 		if (look_at_node)
 		{
-			std::istringstream attr_ss(look_at_node->Attrib("v")->ValueString());
-			attr_ss >> look_at.x() >> look_at.y() >> look_at.z();
+			auto v = look_at_node->Attrib("v")->ValueString();
+			MemInputStreamBuf stream_buff(v.data(), v.size());
+			std::istream(&stream_buff) >> look_at.x() >> look_at.y() >> look_at.z();
 		}
 		XMLNodePtr up_node = camera_node->FirstNode("up");
 		if (up_node)
 		{
-			std::istringstream attr_ss(up_node->Attrib("v")->ValueString());
-			attr_ss >> up.x() >> up.y() >> up.z();
+			auto v = up_node->Attrib("v")->ValueString();
+			MemInputStreamBuf stream_buff(v.data(), v.size());
+			std::istream(&stream_buff) >> up.x() >> up.y() >> up.z();
 		}
 
 		XMLNodePtr fov_node = camera_node->FirstNode("fov");
@@ -719,7 +728,7 @@ void ScenePlayerApp::LoadScene(std::string const & name)
 			update_node = update_node->FirstNode();
 			if (update_node && (XNT_CData == update_node->Type()))
 			{
-				update_script = update_node->ValueString();
+				update_script = std::string(update_node->ValueString());
 			}
 		}
 
@@ -748,7 +757,11 @@ void ScenePlayerApp::OnCreate()
 	actionMap.AddActions(actions, actions + std::size(actions));
 
 	action_handler_t input_handler = MakeSharedPtr<input_signal>();
-	input_handler->connect(std::bind(&ScenePlayerApp::InputHandler, this, std::placeholders::_1, std::placeholders::_2));
+	input_handler->connect(
+		[this](InputEngine const & sender, InputAction const & action)
+		{
+			this->InputHandler(sender, action);
+		});
 	inputEngine.ActionMap(actionMap, input_handler);
 
 	UIManager::Instance().Load(ResLoader::Instance().Open("ScenePlayer.uiml"));
@@ -765,31 +778,67 @@ void ScenePlayerApp::OnCreate()
 	id_cg_ = dialog_->IDFromName("CG");
 	id_ctrl_camera_ = dialog_->IDFromName("CtrlCamera");
 
-	dialog_->Control<UIButton>(id_open_)->OnClickedEvent().connect(std::bind(&ScenePlayerApp::OpenHandler, this, std::placeholders::_1));
+	dialog_->Control<UIButton>(id_open_)->OnClickedEvent().connect(
+		[this](UIButton const & sender)
+		{
+			this->OpenHandler(sender);
+		});
 
-	dialog_->Control<UIComboBox>(id_illum_combo_)->OnSelectionChangedEvent().connect(std::bind(&ScenePlayerApp::IllumChangedHandler, this, std::placeholders::_1));
+	dialog_->Control<UIComboBox>(id_illum_combo_)->OnSelectionChangedEvent().connect(
+		[this](UIComboBox const & sender)
+		{
+			this->IllumChangedHandler(sender);
+		});
 	this->IllumChangedHandler(*dialog_->Control<UIComboBox>(id_illum_combo_));
 
 	dialog_->Control<UISlider>(id_il_scale_slider_)->SetValue(static_cast<int>(il_scale_ * 10));
-	dialog_->Control<UISlider>(id_il_scale_slider_)->OnValueChangedEvent().connect(std::bind(&ScenePlayerApp::ILScaleChangedHandler, this, std::placeholders::_1));
+	dialog_->Control<UISlider>(id_il_scale_slider_)->OnValueChangedEvent().connect(
+		[this](UISlider const & sender)
+		{
+			this->ILScaleChangedHandler(sender);
+		});
 	this->ILScaleChangedHandler(*dialog_->Control<UISlider>(id_il_scale_slider_));
 
-	dialog_->Control<UICheckBox>(id_ssgi_)->OnChangedEvent().connect(std::bind(&ScenePlayerApp::SSGIHandler, this, std::placeholders::_1));
+	dialog_->Control<UICheckBox>(id_ssgi_)->OnChangedEvent().connect(
+		[this](UICheckBox const & sender)
+		{
+			this->SSGIHandler(sender);
+		});
 	this->SSGIHandler(*dialog_->Control<UICheckBox>(id_ssgi_));
 
-	dialog_->Control<UICheckBox>(id_ssvo_)->OnChangedEvent().connect(std::bind(&ScenePlayerApp::SSVOHandler, this, std::placeholders::_1));
+	dialog_->Control<UICheckBox>(id_ssvo_)->OnChangedEvent().connect(
+		[this](UICheckBox const & sender)
+		{
+			this->SSVOHandler(sender);
+		});
 	this->SSVOHandler(*dialog_->Control<UICheckBox>(id_ssvo_));
 
-	dialog_->Control<UICheckBox>(id_hdr_)->OnChangedEvent().connect(std::bind(&ScenePlayerApp::HDRHandler, this, std::placeholders::_1));
+	dialog_->Control<UICheckBox>(id_hdr_)->OnChangedEvent().connect(
+		[this](UICheckBox const & sender)
+		{
+			this->HDRHandler(sender);
+		});
 	this->HDRHandler(*dialog_->Control<UICheckBox>(id_hdr_));
 
-	dialog_->Control<UICheckBox>(id_aa_)->OnChangedEvent().connect(std::bind(&ScenePlayerApp::AAHandler, this, std::placeholders::_1));
+	dialog_->Control<UICheckBox>(id_aa_)->OnChangedEvent().connect(
+		[this](UICheckBox const & sender)
+		{
+			this->AAHandler(sender);
+		});
 	this->AAHandler(*dialog_->Control<UICheckBox>(id_aa_));
 
-	dialog_->Control<UICheckBox>(id_cg_)->OnChangedEvent().connect(std::bind(&ScenePlayerApp::ColorGradingHandler, this, std::placeholders::_1));
+	dialog_->Control<UICheckBox>(id_cg_)->OnChangedEvent().connect(
+		[this](UICheckBox const & sender)
+		{
+			this->ColorGradingHandler(sender);
+		});
 	this->ColorGradingHandler(*dialog_->Control<UICheckBox>(id_cg_));
 
-	dialog_->Control<UICheckBox>(id_ctrl_camera_)->OnChangedEvent().connect(std::bind(&ScenePlayerApp::CtrlCameraHandler, this, std::placeholders::_1));
+	dialog_->Control<UICheckBox>(id_ctrl_camera_)->OnChangedEvent().connect(
+		[this](UICheckBox const & sender)
+		{
+			this->CtrlCameraHandler(sender);
+		});
 }
 
 void ScenePlayerApp::OnResize(uint32_t width, uint32_t height)

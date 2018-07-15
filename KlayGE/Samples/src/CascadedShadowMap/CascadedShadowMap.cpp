@@ -71,8 +71,7 @@ void CascadedShadowMapApp::OnCreate()
 
 	TexturePtr c_cube = ASyncLoadTexture("Lake_CraterLake03_filtered_c.dds", EAH_GPU_Read | EAH_Immutable);
 	TexturePtr y_cube = ASyncLoadTexture("Lake_CraterLake03_filtered_y.dds", EAH_GPU_Read | EAH_Immutable);
-	RenderablePtr plane_model = ASyncLoadModel("plane.meshml", EAH_GPU_Read | EAH_Immutable,
-		CreateModelFactory<RenderModel>(), CreateMeshFactory<StaticMesh>());
+	RenderablePtr plane_model = ASyncLoadModel("plane.meshml", EAH_GPU_Read | EAH_Immutable);
 	RenderablePtr katapult_model = ASyncLoadModel("katapult.meshml", EAH_GPU_Read | EAH_Immutable);
 
 	font_ = SyncLoadFont("gkai00mp.kfont");
@@ -105,7 +104,11 @@ void CascadedShadowMapApp::OnCreate()
 	actionMap.AddActions(actions, actions + std::size(actions));
 
 	action_handler_t input_handler = MakeSharedPtr<input_signal>();
-	input_handler->connect(std::bind(&CascadedShadowMapApp::InputHandler, this, std::placeholders::_1, std::placeholders::_2));
+	input_handler->connect(
+		[this](InputEngine const & sender, InputAction const & action)
+		{
+			this->InputHandler(sender, action);
+		});
 	inputEngine.ActionMap(actionMap, input_handler);
 
 	UIManager::Instance().Load(ResLoader::Instance().Open("CascadedShadowMap.uiml"));
@@ -117,16 +120,32 @@ void CascadedShadowMapApp::OnCreate()
 	id_pssm_factor_slider_ = dialog_->IDFromName("PSSMFactorSlider");
 	id_ctrl_camera_ = dialog_->IDFromName("CtrlCamera");
 
-	dialog_->Control<UIComboBox>(id_csm_type_combo_)->OnSelectionChangedEvent().connect(std::bind(&CascadedShadowMapApp::CSMTypeChangedHandler, this, std::placeholders::_1));
+	dialog_->Control<UIComboBox>(id_csm_type_combo_)->OnSelectionChangedEvent().connect(
+		[this](UIComboBox const & sender)
+		{
+			this->CSMTypeChangedHandler(sender);
+		});
 	this->CSMTypeChangedHandler(*dialog_->Control<UIComboBox>(id_csm_type_combo_));
 
-	dialog_->Control<UIComboBox>(id_cascades_combo_)->OnSelectionChangedEvent().connect(std::bind(&CascadedShadowMapApp::CascadesChangedHandler, this, std::placeholders::_1));
+	dialog_->Control<UIComboBox>(id_cascades_combo_)->OnSelectionChangedEvent().connect(
+		[this](UIComboBox const & sender)
+		{
+			this->CascadesChangedHandler(sender);
+		});
 	this->CascadesChangedHandler(*dialog_->Control<UIComboBox>(id_cascades_combo_));
 
-	dialog_->Control<UISlider>(id_pssm_factor_slider_)->OnValueChangedEvent().connect(std::bind(&CascadedShadowMapApp::PSSMFactorChangedHandler, this, std::placeholders::_1));
+	dialog_->Control<UISlider>(id_pssm_factor_slider_)->OnValueChangedEvent().connect(
+		[this](UISlider const & sender)
+		{
+			this->PSSMFactorChangedHandler(sender);
+		});
 	this->PSSMFactorChangedHandler(*dialog_->Control<UISlider>(id_pssm_factor_slider_));
 
-	dialog_->Control<UICheckBox>(id_ctrl_camera_)->OnChangedEvent().connect(std::bind(&CascadedShadowMapApp::CtrlCameraHandler, this, std::placeholders::_1));
+	dialog_->Control<UICheckBox>(id_ctrl_camera_)->OnChangedEvent().connect(
+		[this](UICheckBox const & sender)
+		{
+			this->CtrlCameraHandler(sender);
+		});
 	this->CtrlCameraHandler(*dialog_->Control<UICheckBox>(id_ctrl_camera_));
 
 	sky_box_ = MakeSharedPtr<SceneObjectSkyBox>();

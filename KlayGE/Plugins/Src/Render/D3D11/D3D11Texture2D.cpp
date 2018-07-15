@@ -181,16 +181,31 @@ namespace KlayGE
 
 		if ((src_width == dst_width) && (src_height == dst_height) && (this->Format() == target.Format()))
 		{
+			D3D11_BOX* src_box_ptr;
 			D3D11_BOX src_box;
-			src_box.left = src_x_offset;
-			src_box.top = src_y_offset;
-			src_box.front = 0;
-			src_box.right = src_x_offset + src_width;
-			src_box.bottom = src_y_offset + src_height;
-			src_box.back = 1;
+			if ((sample_count_ != 1) || IsDepthFormat(format_))
+			{
+				BOOST_ASSERT(other.SampleCount() == sample_count_);
+				BOOST_ASSERT(dst_x_offset == 0);
+				BOOST_ASSERT(dst_y_offset == 0);
+
+				src_box_ptr = nullptr;
+			}
+			else
+			{
+				src_box.left = src_x_offset;
+				src_box.top = src_y_offset;
+				src_box.front = 0;
+				src_box.right = src_x_offset + src_width;
+				src_box.bottom = src_y_offset + src_height;
+				src_box.back = 1;
+
+				src_box_ptr = &src_box;
+			}
 
 			d3d_imm_ctx_->CopySubresourceRegion(other.D3DResource(), D3D11CalcSubresource(dst_level, dst_array_index, target.NumMipMaps()),
-				dst_x_offset, dst_y_offset, 0, this->D3DResource(), D3D11CalcSubresource(src_level, src_array_index, this->NumMipMaps()), &src_box);
+				dst_x_offset, dst_y_offset, 0, this->D3DResource(), D3D11CalcSubresource(src_level, src_array_index, this->NumMipMaps()),
+				src_box_ptr);
 		}
 		else
 		{
@@ -210,16 +225,33 @@ namespace KlayGE
 
 		if ((src_width == dst_width) && (src_height == dst_height) && (this->Format() == target.Format()))
 		{
+			D3D11_BOX* src_box_ptr;
 			D3D11_BOX src_box;
-			src_box.left = src_x_offset;
-			src_box.top = src_y_offset;
-			src_box.front = 0;
-			src_box.right = src_x_offset + src_width;
-			src_box.bottom = src_y_offset + src_height;
-			src_box.back = 1;
+			if ((sample_count_ != 1) || IsDepthFormat(format_))
+			{
+				BOOST_ASSERT(other.SampleCount() == sample_count_);
+				BOOST_ASSERT(dst_x_offset == 0);
+				BOOST_ASSERT(dst_y_offset == 0);
 
-			d3d_imm_ctx_->CopySubresourceRegion(other.D3DResource(), D3D11CalcSubresource(dst_level, dst_array_index * 6 + dst_face - CF_Positive_X, target.NumMipMaps()),
-				dst_x_offset, dst_y_offset, 0, this->D3DResource(), D3D11CalcSubresource(src_level, src_array_index, this->NumMipMaps()), &src_box);
+				src_box_ptr = nullptr;
+			}
+			else
+			{
+				src_box.left = src_x_offset;
+				src_box.top = src_y_offset;
+				src_box.front = 0;
+				src_box.right = src_x_offset + src_width;
+				src_box.bottom = src_y_offset + src_height;
+				src_box.back = 1;
+
+				src_box_ptr = &src_box;
+			}
+
+			d3d_imm_ctx_->CopySubresourceRegion(other.D3DResource(),
+				D3D11CalcSubresource(dst_level, dst_array_index * 6 + dst_face - CF_Positive_X, target.NumMipMaps()),
+				dst_x_offset, dst_y_offset, 0, this->D3DResource(),
+				D3D11CalcSubresource(src_level, src_array_index, this->NumMipMaps()),
+				src_box_ptr);
 		}
 		else
 		{
@@ -256,15 +288,17 @@ namespace KlayGE
 			if (sample_count_ > 1)
 			{
 				desc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2DMSARRAY;
+				desc.Texture2DMSArray.FirstArraySlice = first_array_index;
+				desc.Texture2DMSArray.ArraySize = num_items;
 			}
 			else
 			{
 				desc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2DARRAY;
+				desc.Texture2DArray.MostDetailedMip = first_level;
+				desc.Texture2DArray.MipLevels = num_levels;
+				desc.Texture2DArray.FirstArraySlice = first_array_index;
+				desc.Texture2DArray.ArraySize = num_items;
 			}
-			desc.Texture2DArray.MostDetailedMip = first_level;
-			desc.Texture2DArray.MipLevels = num_levels;
-			desc.Texture2DArray.FirstArraySlice = first_array_index;
-			desc.Texture2DArray.ArraySize = num_items;
 		}
 		else
 		{
@@ -275,9 +309,9 @@ namespace KlayGE
 			else
 			{
 				desc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
+				desc.Texture2D.MostDetailedMip = first_level;
+				desc.Texture2D.MipLevels = num_levels;
 			}
-			desc.Texture2D.MostDetailedMip = first_level;
-			desc.Texture2D.MipLevels = num_levels;
 		}
 
 		return desc;
@@ -307,37 +341,33 @@ namespace KlayGE
 	{
 		D3D11_RENDER_TARGET_VIEW_DESC desc;
 		desc.Format = D3D11Mapping::MappingFormat(this->Format());
-		if (this->SampleCount() > 1)
+		if (array_size_ > 1)
 		{
-			if (this->ArraySize() > 1)
+			if (sample_count_ > 1)
 			{
 				desc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2DMSARRAY;
+				desc.Texture2DMSArray.FirstArraySlice = first_array_index;
+				desc.Texture2DMSArray.ArraySize = array_size;
 			}
 			else
 			{
-				desc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2DMS;
+				desc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2DARRAY;
+				desc.Texture2DArray.MipSlice = level;
+				desc.Texture2DArray.FirstArraySlice = first_array_index;
+				desc.Texture2DArray.ArraySize = array_size;
 			}
 		}
 		else
 		{
-			if (this->ArraySize() > 1)
+			if (sample_count_ > 1)
 			{
-				desc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2DARRAY;
+				desc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2DMS;
 			}
 			else
 			{
 				desc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D;
+				desc.Texture2D.MipSlice = level;
 			}
-		}
-		if (this->ArraySize() > 1)
-		{
-			desc.Texture2DArray.MipSlice = level;
-			desc.Texture2DArray.FirstArraySlice = first_array_index;
-			desc.Texture2DArray.ArraySize = array_size;
-		}
-		else
-		{
-			desc.Texture2D.MipSlice = level;
 		}
 
 		return desc;
@@ -348,37 +378,33 @@ namespace KlayGE
 		D3D11_DEPTH_STENCIL_VIEW_DESC desc;
 		desc.Format = D3D11Mapping::MappingFormat(this->Format());
 		desc.Flags = 0;
-		if (this->SampleCount() > 1)
+		if (array_size_ > 1)
 		{
-			if (this->ArraySize() > 1)
+			if (sample_count_ > 1)
 			{
 				desc.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2DMSARRAY;
+				desc.Texture2DMSArray.FirstArraySlice = first_array_index;
+				desc.Texture2DMSArray.ArraySize = array_size;
 			}
 			else
 			{
-				desc.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2DMS;
+				desc.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2DARRAY;
+				desc.Texture2DArray.MipSlice = level;
+				desc.Texture2DArray.FirstArraySlice = first_array_index;
+				desc.Texture2DArray.ArraySize = array_size;
 			}
 		}
 		else
 		{
-			if (this->ArraySize() > 1)
+			if (sample_count_ > 1)
 			{
-				desc.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2DARRAY;
+				desc.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2DMS;
 			}
 			else
 			{
 				desc.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2D;
+				desc.Texture2D.MipSlice = level;
 			}
-		}
-		if (this->ArraySize() > 1)
-		{
-			desc.Texture2DArray.MipSlice = level;
-			desc.Texture2DArray.FirstArraySlice = first_array_index;
-			desc.Texture2DArray.ArraySize = array_size;
-		}
-		else
-		{
-			desc.Texture2D.MipSlice = level;
 		}
 
 		return desc;
@@ -420,8 +446,10 @@ namespace KlayGE
 		}
 	}
 
-	void D3D11Texture2D::CreateHWResource(ArrayRef<ElementInitData> init_data)
+	void D3D11Texture2D::CreateHWResource(ArrayRef<ElementInitData> init_data, float4 const * clear_value_hint)
 	{
+		KFL_UNUSED(clear_value_hint);
+
 		D3D11_TEXTURE2D_DESC desc;
 		desc.Width = width_;
 		desc.Height = height_;

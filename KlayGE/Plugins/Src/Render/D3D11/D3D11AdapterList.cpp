@@ -19,6 +19,7 @@
 #include <system_error>
 #include <boost/assert.hpp>
 
+#include <KlayGE/D3D11/D3D11Adapter.hpp>
 #include <KlayGE/D3D11/D3D11AdapterList.hpp>
 
 namespace KlayGE
@@ -86,6 +87,29 @@ namespace KlayGE
 		}
 
 		// 如果没有找到兼容的设备则抛出错误
+		if (adapters_.empty())
+		{
+			TERRC(std::errc::function_not_supported);
+		}
+	}
+
+	void D3D11AdapterList::Enumerate(IDXGIFactory6Ptr const & gi_factory)
+	{
+		UINT adapter_no = 0;
+		IDXGIAdapter1* dxgi_adapter = nullptr;
+		while (gi_factory->EnumAdapterByGpuPreference(adapter_no, DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE,
+			IID_IDXGIAdapter1, reinterpret_cast<void**>(&dxgi_adapter)) != DXGI_ERROR_NOT_FOUND)
+		{
+			if (dxgi_adapter != nullptr)
+			{
+				auto adapter = MakeUniquePtr<D3D11Adapter>(adapter_no, MakeCOMPtr(dxgi_adapter));
+				adapter->Enumerate();
+				adapters_.push_back(std::move(adapter));
+			}
+
+			++ adapter_no;
+		}
+
 		if (adapters_.empty())
 		{
 			TERRC(std::errc::function_not_supported);
