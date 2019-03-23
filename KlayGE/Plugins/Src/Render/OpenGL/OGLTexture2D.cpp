@@ -132,8 +132,6 @@ namespace KlayGE
 	{
 		BOOST_ASSERT(type_ == target.Type());
 
-		OGLRenderEngine& re = *checked_cast<OGLRenderEngine*>(&Context::Instance().RenderFactoryInstance().RenderEngineInstance());
-			
 		if ((format_ == target.Format()) && !IsCompressedFormat(format_) && (glloader_GL_VERSION_4_3() || glloader_GL_ARB_copy_image())
 			&& (src_width == dst_width) && (src_height == dst_height) && (1 == sample_count_))
 		{
@@ -148,6 +146,8 @@ namespace KlayGE
 		{
 			if ((sample_count_ > 1) && !IsCompressedFormat(format_) && (glloader_GL_ARB_texture_rg() || (4 == NumComponents(format_))))
 			{
+				OGLRenderEngine& re = *checked_cast<OGLRenderEngine*>(&Context::Instance().RenderFactoryInstance().RenderEngineInstance());
+
 				GLuint fbo_src, fbo_dst;
 				re.GetFBOForBlit(fbo_src, fbo_dst);
 
@@ -367,6 +367,7 @@ namespace KlayGE
 		row_pitch = w * texel_size;
 
 		uint8_t* p;
+		GLintptr const subres_offset = array_index * mipmap_start_offset_.back() + mipmap_start_offset_[level];
 		OGLRenderEngine& re = *checked_cast<OGLRenderEngine*>(&Context::Instance().RenderFactoryInstance().RenderEngineInstance());
 		switch (tma)
 		{
@@ -384,11 +385,11 @@ namespace KlayGE
 				re.BindTexture(0, target_type_, texture_);
 				if (IsCompressedFormat(format_))
 				{
-					glGetCompressedTexImage(target_type_, level, nullptr);
+					glGetCompressedTexImage(target_type_, level, reinterpret_cast<GLvoid*>(subres_offset));
 				}
 				else
 				{
-					glGetTexImage(target_type_, level, gl_format, gl_type, nullptr);
+					glGetTexImage(target_type_, level, gl_format, gl_type, reinterpret_cast<GLvoid*>(subres_offset));
 				}
 				p = static_cast<uint8_t*>(glMapBuffer(GL_PIXEL_PACK_BUFFER, GL_READ_ONLY));
 			}
@@ -404,7 +405,7 @@ namespace KlayGE
 			KFL_UNREACHABLE("Invalid texture map access mode");
 		}
 
-		p += array_index * mipmap_start_offset_.back() + mipmap_start_offset_[level];
+		p += subres_offset;
 		if (IsCompressedFormat(format_))
 		{
 			uint32_t const block_size = NumFormatBytes(format_) * 4;

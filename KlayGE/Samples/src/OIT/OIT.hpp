@@ -34,8 +34,8 @@ private:
 	void LayerChangedHandler(KlayGE::UIComboBox const & sender);
 
 	KlayGE::FontPtr font_;
-	KlayGE::SceneObjectPtr polygon_;
-	KlayGE::SceneObjectPtr sky_box_;
+	KlayGE::RenderModelPtr polygon_model_;
+	KlayGE::SceneNodePtr sky_box_;
 
 	KlayGE::TrackballCameraController tb_controller_;
 
@@ -46,7 +46,7 @@ private:
 	std::vector<KlayGE::TexturePtr> peeled_texs_;
 	std::array<KlayGE::FrameBufferPtr, 2> depth_fbs_;
 	std::array<KlayGE::TexturePtr, 2> depth_texs_;
-	std::array<KlayGE::RenderViewPtr, 2> depth_views_;
+	std::array<KlayGE::DepthStencilViewPtr, 2> depth_views_;
 	std::array<KlayGE::ConditionalRenderPtr, 2> oc_queries_;
 	KlayGE::PostProcessPtr blend_pp_;
 	KlayGE::uint32_t num_layers_;
@@ -65,8 +65,11 @@ private:
 	KlayGE::GraphicsBufferPtr start_offset_buf_;
 	KlayGE::GraphicsBufferPtr frag_length_buf_;
 	KlayGE::UnorderedAccessViewPtr frag_link_uav_;
+	KlayGE::ShaderResourceViewPtr frag_link_srv_;
 	KlayGE::UnorderedAccessViewPtr start_offset_uav_;
+	KlayGE::ShaderResourceViewPtr start_offset_srv_;
 	KlayGE::UnorderedAccessViewPtr frag_length_uav_;
+	KlayGE::ShaderResourceViewPtr frag_length_srv_;
 
 	OITMode oit_mode_;
 	KlayGE::UIDialogPtr dialog_oit_;

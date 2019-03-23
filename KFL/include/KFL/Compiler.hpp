@@ -66,6 +66,7 @@
 	#if __cplusplus > 201402L
 		#define KLAYGE_CXX17_CORE_STATIC_ASSERT_V2_SUPPORT
 	#endif
+	#define KLAYGE_CXX17_LIBRARY_SIZE_AND_MORE_SUPPORT
 
 	#if defined(__APPLE__)
 		#if CLANG_VERSION >= 61
@@ -77,13 +78,13 @@
 		#if CLANG_VERSION >= 80
 			#define KLAYGE_CXX17_CORE_IF_CONSTEXPR_SUPPORT
 		#endif
-		#define KLAYGE_CXX17_LIBRARY_SIZE_AND_MORE_SUPPORT
 		#if CLANG_VERSION >= 90
 			#define KLAYGE_CXX17_LIBRARY_STRING_VIEW_SUPPORT
 		#endif
-
-		#define KLAYGE_SYMBOL_EXPORT __attribute__((__visibility__("default")))
-		#define KLAYGE_SYMBOL_IMPORT
+		#if CLANG_VERSION >= 100
+			#define KLAYGE_CXX17_LIBRARY_ANY_SUPPORT
+			#define KLAYGE_CXX17_LIBRARY_OPTIONAL_SUPPORT
+		#endif
 	#elif defined(__ANDROID__)
 		#if CLANG_VERSION >= 50
 			#define KLAYGE_COMPILER_VERSION CLANG_VERSION
@@ -94,38 +95,29 @@
 		#define KLAYGE_CXX17_CORE_IF_CONSTEXPR_SUPPORT
 		#define KLAYGE_CXX17_LIBRARY_ANY_SUPPORT
 		#define KLAYGE_CXX17_LIBRARY_OPTIONAL_SUPPORT
-		#define KLAYGE_CXX17_LIBRARY_SIZE_AND_MORE_SUPPORT
 		#define KLAYGE_CXX17_LIBRARY_STRING_VIEW_SUPPORT
-
-		#define KLAYGE_SYMBOL_EXPORT __attribute__((__visibility__("default")))
-		#define KLAYGE_SYMBOL_IMPORT
-	#elif defined(__c2__)
-		#if CLANG_VERSION >= 36
+	#elif defined(linux) || defined(__linux) || defined(__linux__)
+		#if CLANG_VERSION >= 50
 			#define KLAYGE_COMPILER_VERSION CLANG_VERSION
 		#else
-			#error "Unsupported compiler version. Please install clang++ 3.6 or up."
+			#error "Unsupported compiler version. Please install clang++ 5.0 or up."
 		#endif
 
-		#define KLAYGE_COMPILER_CLANGC2
-
-		#if CLANG_VERSION >= 39
-			#define KLAYGE_CXX17_CORE_IF_CONSTEXPR_SUPPORT
-		#endif
-		#define KLAYGE_CXX17_LIBRARY_SIZE_AND_MORE_SUPPORT
-		#define KLAYGE_TS_LIBRARY_FILESYSTEM_SUPPORT
-
-		#define KLAYGE_SYMBOL_EXPORT __declspec(dllexport)
-		#define KLAYGE_SYMBOL_IMPORT __declspec(dllimport)
-
-		#ifndef _CRT_SECURE_NO_DEPRECATE
-			#define _CRT_SECURE_NO_DEPRECATE
-		#endif
-		#ifndef _SCL_SECURE_NO_DEPRECATE
-			#define _SCL_SECURE_NO_DEPRECATE
+		#define KLAYGE_CXX17_CORE_IF_CONSTEXPR_SUPPORT
+		#define KLAYGE_CXX17_LIBRARY_ANY_SUPPORT
+		#define KLAYGE_CXX17_LIBRARY_OPTIONAL_SUPPORT
+		#define KLAYGE_CXX17_LIBRARY_STRING_VIEW_SUPPORT
+		#if CLANG_VERSION >= 70
+			#define KLAYGE_CXX17_LIBRARY_FILESYSTEM_SUPPORT
+		#else
+			#define KLAYGE_TS_LIBRARY_FILESYSTEM_SUPPORT
 		#endif
 	#else
-		#error "Clang++ on an unknown platform. Only Apple+, Android, and Windows are supported."
+		#error "Clang++ on an unknown platform. Only Apple, Android, Linux, and Windows are supported."
 	#endif
+
+	#define KLAYGE_SYMBOL_EXPORT __attribute__((__visibility__("default")))
+	#define KLAYGE_SYMBOL_IMPORT __attribute__((__visibility__("default")))
 
 	#define KLAYGE_ATTRIBUTE_NORETURN __attribute__((noreturn))
 	#define KLAYGE_BUILTIN_UNREACHABLE __builtin_unreachable()
@@ -133,6 +125,11 @@
 	// GNU C++
 
 	#define KLAYGE_COMPILER_GCC
+	#if defined(_WIN32) || defined(__WIN32__) || defined(WIN32)
+		#define KLAYGE_COMPILER_NAME mgw
+	#else
+		#define KLAYGE_COMPILER_NAME gcc
+	#endif
 
 	#include <bits/c++config.h>
 	#ifdef _GLIBCXX_USE_FLOAT128
@@ -163,14 +160,21 @@
 	#define KLAYGE_CXX17_LIBRARY_OPTIONAL_SUPPORT
 	#define KLAYGE_CXX17_LIBRARY_SIZE_AND_MORE_SUPPORT
 	#define KLAYGE_CXX17_LIBRARY_STRING_VIEW_SUPPORT
-	#define KLAYGE_TS_LIBRARY_FILESYSTEM_SUPPORT
+	#if GCC_VERSION >= 80
+		#if !defined(__MINGW32__) || (GCC_VERSION != 81)
+			// MinGW-w64 8.1 can't use built-in filesystem due to a bug: https://sourceforge.net/p/mingw-w64/bugs/737/
+			#define KLAYGE_CXX17_LIBRARY_FILESYSTEM_SUPPORT
+		#endif
+	#else
+		#define KLAYGE_TS_LIBRARY_FILESYSTEM_SUPPORT
+	#endif
 
 	#if defined(_WIN32) || defined(__WIN32__) || defined(WIN32)
 		#define KLAYGE_SYMBOL_EXPORT __attribute__((__dllexport__))
 		#define KLAYGE_SYMBOL_IMPORT __attribute__((__dllimport__))
 	#else
 		#define KLAYGE_SYMBOL_EXPORT __attribute__((__visibility__("default")))
-		#define KLAYGE_SYMBOL_IMPORT
+		#define KLAYGE_SYMBOL_IMPORT __attribute__((__visibility__("default")))
 	#endif
 
 	#define KLAYGE_ATTRIBUTE_NORETURN __attribute__((noreturn))
@@ -185,7 +189,9 @@
 	#define KLAYGE_SYMBOL_EXPORT __declspec(dllexport)
 	#define KLAYGE_SYMBOL_IMPORT __declspec(dllimport)
 
-	#if _MSC_VER >= 1910
+	#if _MSC_VER >= 1920
+		#define KLAYGE_COMPILER_VERSION 142
+	#elif _MSC_VER >= 1910
 		#define KLAYGE_COMPILER_VERSION 141
 	#elif _MSC_VER >= 1900
 		#define KLAYGE_COMPILER_VERSION 140
@@ -215,13 +221,6 @@
 
 	#pragma warning(disable: 4251) // STL classes are not dllexport.
 	#pragma warning(disable: 4819) // Allow non-ANSI characters.
-
-	#ifndef _CRT_SECURE_NO_DEPRECATE
-		#define _CRT_SECURE_NO_DEPRECATE
-	#endif
-	#ifndef _SCL_SECURE_NO_DEPRECATE
-		#define _SCL_SECURE_NO_DEPRECATE
-	#endif
 
 	#define KLAYGE_ATTRIBUTE_NORETURN __declspec(noreturn)
 	#define KLAYGE_BUILTIN_UNREACHABLE __assume(false)

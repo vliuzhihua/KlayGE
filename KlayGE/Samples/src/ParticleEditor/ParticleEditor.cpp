@@ -13,7 +13,7 @@
 #include <KlayGE/ResLoader.hpp>
 #include <KlayGE/RenderSettings.hpp>
 #include <KlayGE/RenderableHelper.hpp>
-#include <KlayGE/SceneObjectHelper.hpp>
+#include <KlayGE/SceneNodeHelper.hpp>
 #include <KlayGE/Texture.hpp>
 #include <KlayGE/RenderLayout.hpp>
 #include <KlayGE/Window.hpp>
@@ -36,11 +36,11 @@ using namespace KlayGE;
 
 namespace
 {
-	class TerrainRenderable : public RenderableHelper
+	class TerrainRenderable : public Renderable
 	{
 	public:
 		TerrainRenderable()
-			: RenderableHelper(L"Terrain")
+			: Renderable(L"Terrain")
 		{
 			RenderFactory& rf = Context::Instance().RenderFactoryInstance();
 
@@ -51,8 +51,8 @@ namespace
 
 			*(effect_->ParameterByName("grass_tex")) = ASyncLoadTexture("grass.dds", EAH_GPU_Read | EAH_Immutable);
 
-			rl_ = rf.MakeRenderLayout();
-			rl_->TopologyType(RenderLayout::TT_TriangleStrip);
+			rls_[0] = rf.MakeRenderLayout();
+			rls_[0]->TopologyType(RenderLayout::TT_TriangleStrip);
 
 			float3 vertices[] =
 			{
@@ -63,7 +63,7 @@ namespace
 			};
 
 			GraphicsBufferPtr pos_vb = rf.MakeVertexBuffer(BU_Static, EAH_GPU_Read | EAH_Immutable, sizeof(vertices), vertices);
-			rl_->BindVertexStream(pos_vb, VertexElement(VEU_Position, 0, EF_BGR32F));
+			rls_[0]->BindVertexStream(pos_vb, VertexElement(VEU_Position, 0, EF_BGR32F));
 
 			pos_aabb_ = MathLib::compute_aabbox(vertices, vertices + std::size(vertices));
 			pos_aabb_.Min().y() = -0.1f;
@@ -102,15 +102,6 @@ namespace
 	private:
 		RenderTechnique* depth_tech_;
 		RenderTechnique* color_tech_;
-	};
-
-	class TerrainObject : public SceneObjectHelper
-	{
-	public:
-		TerrainObject()
-			: SceneObjectHelper(MakeSharedPtr<TerrainRenderable>(), SOA_Cullable)
-		{
-		}
 	};
 
 	enum
@@ -154,15 +145,15 @@ void ParticleEditorApp::OnCreate()
 	actionMap.AddActions(actions, actions + std::size(actions));
 
 	action_handler_t input_handler = MakeSharedPtr<input_signal>();
-	input_handler->connect(
+	input_handler->Connect(
 		[this](InputEngine const & sender, InputAction const & action)
 		{
 			this->InputHandler(sender, action);
 		});
 	inputEngine.ActionMap(actionMap, input_handler);
 
-	terrain_ = MakeSharedPtr<TerrainObject>();
-	terrain_->AddToSceneManager();
+	terrain_ = MakeSharedPtr<SceneNode>(MakeSharedPtr<TerrainRenderable>(), SceneNode::SOA_Cullable);
+	Context::Instance().SceneManagerInstance().SceneRootNode().AddChild(terrain_);
 
 	RenderFactory& rf = Context::Instance().RenderFactoryInstance();
 	RenderEngine& re = rf.RenderEngineInstance();
@@ -223,112 +214,112 @@ void ParticleEditorApp::OnCreate()
 
 	this->LoadParticleSystem(ResLoader::Instance().Locate("Fire.psml"));
 
-	dialog_->Control<UIButton>(id_open_)->OnClickedEvent().connect(
+	dialog_->Control<UIButton>(id_open_)->OnClickedEvent().Connect(
 		[this](UIButton const & sender)
 		{
 			this->OpenHandler(sender);
 		});
-	dialog_->Control<UIButton>(id_save_as_)->OnClickedEvent().connect(
+	dialog_->Control<UIButton>(id_save_as_)->OnClickedEvent().Connect(
 		[this](UIButton const & sender)
 		{
 			this->SaveAsHandler(sender);
 		});
 
-	dialog_->Control<UISlider>(id_gravity_slider_)->OnValueChangedEvent().connect(
+	dialog_->Control<UISlider>(id_gravity_slider_)->OnValueChangedEvent().Connect(
 		[this](UISlider const & sender)
 		{
 			this->GravityChangedHandler(sender);
 		});
 	this->GravityChangedHandler(*dialog_->Control<UISlider>(id_gravity_slider_));
-	dialog_->Control<UISlider>(id_density_slider_)->OnValueChangedEvent().connect(
+	dialog_->Control<UISlider>(id_density_slider_)->OnValueChangedEvent().Connect(
 		[this](UISlider const & sender)
 		{
 			this->DensityChangedHandler(sender);
 		});
 	this->DensityChangedHandler(*dialog_->Control<UISlider>(id_density_slider_));
-	dialog_->Control<UISlider>(id_freq_slider_)->OnValueChangedEvent().connect(
+	dialog_->Control<UISlider>(id_freq_slider_)->OnValueChangedEvent().Connect(
 		[this](UISlider const & sender)
 		{
 			this->FreqChangedHandler(sender);
 		});
 	this->FreqChangedHandler(*dialog_->Control<UISlider>(id_freq_slider_));
-	dialog_->Control<UISlider>(id_angle_slider_)->OnValueChangedEvent().connect(
+	dialog_->Control<UISlider>(id_angle_slider_)->OnValueChangedEvent().Connect(
 		[this](UISlider const & sender)
 		{
 			this->AngleChangedHandler(sender);
 		});
 	this->AngleChangedHandler(*dialog_->Control<UISlider>(id_angle_slider_));
-	dialog_->Control<UISlider>(id_detail_x_slider_)->OnValueChangedEvent().connect(
+	dialog_->Control<UISlider>(id_detail_x_slider_)->OnValueChangedEvent().Connect(
 		[this](UISlider const & sender)
 		{
 			this->DetailXChangedHandler(sender);
 		});
 	this->DetailXChangedHandler(*dialog_->Control<UISlider>(id_detail_x_slider_));
-	dialog_->Control<UISlider>(id_detail_y_slider_)->OnValueChangedEvent().connect(
+	dialog_->Control<UISlider>(id_detail_y_slider_)->OnValueChangedEvent().Connect(
 		[this](UISlider const & sender)
 		{
 			this->DetailYChangedHandler(sender);
 		});
 	this->DetailYChangedHandler(*dialog_->Control<UISlider>(id_detail_y_slider_));
-	dialog_->Control<UISlider>(id_detail_z_slider_)->OnValueChangedEvent().connect(
+	dialog_->Control<UISlider>(id_detail_z_slider_)->OnValueChangedEvent().Connect(
 		[this](UISlider const & sender)
 		{
 			this->DetailZChangedHandler(sender);
 		});
 	this->DetailZChangedHandler(*dialog_->Control<UISlider>(id_detail_z_slider_));
-	dialog_->Control<UISlider>(id_min_velocity_slider_)->OnValueChangedEvent().connect(
+	dialog_->Control<UISlider>(id_min_velocity_slider_)->OnValueChangedEvent().Connect(
 		[this](UISlider const & sender)
 		{
 			this->MinVelocityChangedHandler(sender);
 		});
 	this->MinVelocityChangedHandler(*dialog_->Control<UISlider>(id_min_velocity_slider_));
-	dialog_->Control<UISlider>(id_max_velocity_slider_)->OnValueChangedEvent().connect(
+	dialog_->Control<UISlider>(id_max_velocity_slider_)->OnValueChangedEvent().Connect(
 		[this](UISlider const & sender)
 		{
 			this->MaxVelocityChangedHandler(sender);
 		});
 	this->MaxVelocityChangedHandler(*dialog_->Control<UISlider>(id_max_velocity_slider_));
-	dialog_->Control<UISlider>(id_min_life_slider_)->OnValueChangedEvent().connect(
+	dialog_->Control<UISlider>(id_min_life_slider_)->OnValueChangedEvent().Connect(
 		[this](UISlider const & sender)
 		{
 			this->MinLifeChangedHandler(sender);
 		});
 	this->MinLifeChangedHandler(*dialog_->Control<UISlider>(id_min_life_slider_));
-	dialog_->Control<UISlider>(id_max_life_slider_)->OnValueChangedEvent().connect(
+	dialog_->Control<UISlider>(id_max_life_slider_)->OnValueChangedEvent().Connect(
 		[this](UISlider const & sender)
 		{
 			this->MaxLifeChangedHandler(sender);
 		});
 	this->MaxLifeChangedHandler(*dialog_->Control<UISlider>(id_max_life_slider_));
 
-	dialog_->Control<UICheckBox>(id_fps_camera_)->OnChangedEvent().connect(
+	dialog_->Control<UICheckBox>(id_fps_camera_)->OnChangedEvent().Connect(
 		[this](UICheckBox const & sender)
 		{
 			this->FPSCameraHandler(sender);
 		});
 
-	dialog_->Control<UITexButton>(id_particle_alpha_from_button_)->OnClickedEvent().connect(
+	dialog_->Control<UITexButton>(id_particle_alpha_from_button_)->OnClickedEvent().Connect(
 		[this](UITexButton const & sender)
 		{
 			this->ChangeParticleAlphaFromHandler(sender);
 		});
-	dialog_->Control<UITexButton>(id_particle_alpha_to_button_)->OnClickedEvent().connect(
+	dialog_->Control<UITexButton>(id_particle_alpha_to_button_)->OnClickedEvent().Connect(
 		[this](UITexButton const & sender)
 		{
 			this->ChangeParticleAlphaToHandler(sender);
 		});
-	dialog_->Control<UITexButton>(id_particle_color_from_button_)->OnClickedEvent().connect(
+	dialog_->Control<UITexButton>(id_particle_color_from_button_)->OnClickedEvent().Connect(
 		[this](UITexButton const & sender)
 		{
 			this->ChangeParticleColorFromHandler(sender);
 		});
-	dialog_->Control<UITexButton>(id_particle_color_to_button_)->OnClickedEvent().connect(
+	dialog_->Control<UITexButton>(id_particle_color_to_button_)->OnClickedEvent().Connect(
 		[this](UITexButton const & sender)
 		{
 			this->ChangeParticleColorToHandler(sender);
 		});
 
-	dialog_->Control<UIComboBox>(id_curve_type_)->OnSelectionChangedEvent().connect(
+	dialog_->Control<UIComboBox>(id_curve_type_)->OnSelectionChangedEvent().Connect(
 		[this](UIComboBox const & sender)
 		{
 			this->CurveTypeChangedHandler(sender);
@@ -352,28 +343,28 @@ void ParticleEditorApp::OnResize(uint32_t width, uint32_t height)
 	BOOST_ASSERT(fmt != EF_Unknown);
 	scene_depth_tex_ = rf.MakeTexture2D(width, height, 1, 1, fmt, 1, 0, EAH_GPU_Read | EAH_GPU_Write);
 
-	RenderViewPtr ds_view;
+	DepthStencilViewPtr ds_view;
 	if (depth_texture_support_)
 	{
 		auto const ds_fmt = caps.BestMatchTextureRenderTargetFormat({ EF_D24S8, EF_D16 }, 1, 0);
 		BOOST_ASSERT(ds_fmt != EF_Unknown);
 
 		scene_ds_tex_ = rf.MakeTexture2D(width, height, 1, 1, ds_fmt, 1, 0, EAH_GPU_Read | EAH_GPU_Write);
-		ds_view = rf.Make2DDepthStencilRenderView(*scene_ds_tex_, 0, 1, 0);
+		ds_view = rf.Make2DDsv(scene_ds_tex_, 0, 1, 0);
 
 		depth_to_linear_pp_->InputPin(0, scene_ds_tex_);
 		depth_to_linear_pp_->OutputPin(0, scene_depth_tex_);
 	}
 	else
 	{
-		ds_view = rf.Make2DDepthStencilRenderView(width, height, EF_D16, 1, 0);
+		ds_view = rf.Make2DDsv(width, height, EF_D16, 1, 0);
 
-		scene_depth_buffer_->Attach(FrameBuffer::ATT_Color0, rf.Make2DRenderView(*scene_depth_tex_, 0, 1, 0));
-		scene_depth_buffer_->Attach(FrameBuffer::ATT_DepthStencil, ds_view);
+		scene_depth_buffer_->Attach(FrameBuffer::Attachment::Color0, rf.Make2DRtv(scene_depth_tex_, 0, 1, 0));
+		scene_depth_buffer_->Attach(ds_view);
 	}
 
-	scene_buffer_->Attach(FrameBuffer::ATT_Color0, rf.Make2DRenderView(*scene_tex_, 0, 1, 0));
-	scene_buffer_->Attach(FrameBuffer::ATT_DepthStencil, ds_view);
+	scene_buffer_->Attach(FrameBuffer::Attachment::Color0, rf.Make2DRtv(scene_tex_, 0, 1, 0));
+	scene_buffer_->Attach(ds_view);
 
 	copy_pp_->InputPin(0, scene_tex_);
 
@@ -823,12 +814,16 @@ void ParticleEditorApp::LoadParticleSystem(std::string const & name)
 
 	if (ps_)
 	{
-		ps_->DelFromSceneManager();
+		Context::Instance().SceneManagerInstance().SceneRootNode().RemoveChild(ps_);
 	}
 	ps_ = SyncLoadParticleSystem(name);
 	ps_->Gravity(0.5f);
 	ps_->MediaDensity(0.5f);
-	ps_->AddToSceneManager();
+	{
+		auto& scene_mgr = Context::Instance().SceneManagerInstance();
+		std::lock_guard<std::mutex> lock(scene_mgr.MutexForUpdate());
+		scene_mgr.SceneRootNode().AddChild(ps_);
+	}
 
 	if (scene_depth_tex_)
 	{
@@ -910,10 +905,7 @@ uint32_t ParticleEditorApp::DoUpdate(uint32_t pass)
 			{
 				re.BindFrameBuffer(scene_buffer_);
 
-				Camera const & camera = this->ActiveCamera();
-				float q = camera.FarPlane() / (camera.FarPlane() - camera.NearPlane());
-				float4 near_q_far(this->ActiveCamera().NearPlane() * q, q, camera.FarPlane(), 1 / camera.FarPlane());
-				depth_to_linear_pp_->SetParam(0, near_q_far);
+				depth_to_linear_pp_->SetParam(0, this->ActiveCamera().NearQFarParam());
 			
 				Color clear_clr(0.2f, 0.4f, 0.6f, 1);
 				if (Context::Instance().Config().graphics_cfg.gamma)

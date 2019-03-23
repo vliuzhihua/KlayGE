@@ -5,7 +5,6 @@
 #include <KFL/Math.hpp>
 #include <KlayGE/Font.hpp>
 #include <KlayGE/Renderable.hpp>
-#include <KlayGE/RenderableHelper.hpp>
 #include <KlayGE/RenderEngine.hpp>
 #include <KlayGE/RenderEffect.hpp>
 #include <KlayGE/FrameBuffer.hpp>
@@ -15,7 +14,8 @@
 #include <KlayGE/RenderSettings.hpp>
 #include <KlayGE/Mesh.hpp>
 #include <KlayGE/GraphicsBuffer.hpp>
-#include <KlayGE/SceneObjectHelper.hpp>
+#include <KlayGE/SceneNodeHelper.hpp>
+#include <KlayGE/SkyBox.hpp>
 #include <KlayGE/UI.hpp>
 #include <KlayGE/Camera.hpp>
 #include <KlayGE/DeferredRenderingLayer.hpp>
@@ -29,14 +29,8 @@
 #include <vector>
 #include <sstream>
 #include <fstream>
-#if defined(KLAYGE_COMPILER_CLANGC2)
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wunused-variable" // Ignore unused variable (mpl_assertion_in_line_xxx) in boost
-#endif
+
 #include <boost/algorithm/string/split.hpp>
-#if defined(KLAYGE_COMPILER_CLANGC2)
-#pragma clang diagnostic pop
-#endif
 #include <boost/algorithm/string/trim.hpp>
 
 #include "SampleCommon.hpp"
@@ -165,15 +159,16 @@ namespace
 		}
 	};
 
-	class SceneObjectUpdate : public PyScriptUpdate
+	class SceneNodeUpdate : public PyScriptUpdate
 	{
 	public:
-		explicit SceneObjectUpdate(std::string const & script)
-			: PyScriptUpdate(script)
+		SceneNodeUpdate(SceneNode& node, std::string const & script)
+			: PyScriptUpdate(script),
+				node_(node)
 		{
 		}
 
-		void operator()(SceneObject& obj, float app_time, float elapsed_time)
+		void operator()(float app_time, float elapsed_time)
 		{
 			std::any py_ret = this->Run(app_time, elapsed_time);
 			if (std::any_cast<std::vector<std::any>>(&py_ret) != nullptr)
@@ -194,12 +189,15 @@ namespace
 							{
 								obj_mat[i] = std::any_cast<float>(mat[i]);
 							}
-							obj.ModelMatrix(obj_mat);
+							node_.TransformToParent(obj_mat);
 						}
 					}
 				}
 			}
 		}
+
+	private:
+		SceneNode& node_;
 	};
 
 	class CameraUpdate : public PyScriptUpdate
@@ -351,22 +349,22 @@ void ScenePlayerApp::LoadScene(std::string const & name)
 		XMLAttributePtr attr = root->Attrib("skybox");
 		if (attr)
 		{
-			sky_box_ = MakeSharedPtr<SceneObjectSkyBox>();
+			sky_box_ = MakeSharedPtr<SceneNode>(MakeSharedPtr<RenderableSkyBox>(), SceneNode::SOA_NotCastShadow);
 
 			std::string const skybox_name = std::string(attr->ValueString());
 			if (!ResLoader::Instance().Locate(skybox_name).empty())
 			{
-				checked_pointer_cast<SceneObjectSkyBox>(sky_box_)->CubeMap(ASyncLoadTexture(skybox_name,
+				checked_pointer_cast<RenderableSkyBox>(sky_box_->GetRenderable())->CubeMap(ASyncLoadTexture(skybox_name,
 					EAH_GPU_Read | EAH_Immutable));
 			}
 			else if (!ResLoader::Instance().Locate(skybox_name + ".dds").empty())
 			{
-				checked_pointer_cast<SceneObjectSkyBox>(sky_box_)->CubeMap(ASyncLoadTexture(skybox_name + ".dds",
+				checked_pointer_cast<RenderableSkyBox>(sky_box_->GetRenderable())->CubeMap(ASyncLoadTexture(skybox_name + ".dds",
 					EAH_GPU_Read | EAH_Immutable));
 			}
 			else if (!ResLoader::Instance().Locate(skybox_name + "_y.dds").empty())
 			{
-				checked_pointer_cast<SceneObjectSkyBox>(sky_box_)->CompressedCubeMap(
+				checked_pointer_cast<RenderableSkyBox>(sky_box_->GetRenderable())->CompressedCubeMap(
 					ASyncLoadTexture(skybox_name + "_y.dds", EAH_GPU_Read | EAH_Immutable),
 					ASyncLoadTexture(skybox_name + "_c.dds", EAH_GPU_Read | EAH_Immutable));
 			}
@@ -387,11 +385,11 @@ void ScenePlayerApp::LoadScene(std::string const & name)
 					init_data[i].slice_pitch = init_data[i].row_pitch;
 				}
 
-				checked_pointer_cast<SceneObjectSkyBox>(sky_box_)->CubeMap(rf.MakeTextureCube(1, 1, 1, fmt, 1, 0,
+				checked_pointer_cast<RenderableSkyBox>(sky_box_->GetRenderable())->CubeMap(rf.MakeTextureCube(1, 1, 1, fmt, 1, 0,
 					EAH_GPU_Read | EAH_Immutable, init_data));
 			}
 
-			sky_box_->AddToSceneManager();
+			Context::Instance().SceneManagerInstance().SceneRootNode().AddChild(sky_box_);
 		}
 	}
 
@@ -557,9 +555,9 @@ void ScenePlayerApp::LoadScene(std::string const & name)
 				std::istream(&stream_buff) >> scale.x() >> scale.y() >> scale.z();
 			}
 
-			SceneObjectPtr light_proxy = MakeSharedPtr<SceneObjectLightSourceProxy>(light);
-			checked_pointer_cast<SceneObjectLightSourceProxy>(light_proxy)->Scaling(scale);
-			light_proxy->AddToSceneManager();
+			auto light_proxy = MakeSharedPtr<SceneObjectLightSourceProxy>(light);
+			light_proxy->Scaling(scale);
+			Context::Instance().SceneManagerInstance().SceneRootNode().AddChild(light_proxy->RootNode());
 
 			light_proxies_.push_back(light_proxy);
 		}
@@ -567,7 +565,7 @@ void ScenePlayerApp::LoadScene(std::string const & name)
 
 	for (XMLNodePtr model_node = root->FirstNode("model"); model_node; model_node = model_node->NextSibling("model"))
 	{
-		uint32_t obj_attr = SceneObject::SOA_Cullable;
+		uint32_t obj_attr = SceneNode::SOA_Cullable;
 		float4x4 obj_mat = float4x4::Identity();
 
 		float3 scale(1, 1, 1);
@@ -608,7 +606,7 @@ void ScenePlayerApp::LoadScene(std::string const & name)
 			{
 				if (!attr->TryConvert(obj_attr))
 				{
-					obj_attr = SceneObject::SOA_Cullable;
+					obj_attr = SceneNode::SOA_Cullable;
 
 					std::string_view const attr_str = attr->ValueString();
 					std::vector<std::string> tokens;
@@ -618,19 +616,19 @@ void ScenePlayerApp::LoadScene(std::string const & name)
 						boost::algorithm::trim(token);
 						if ("cullable" == token)
 						{
-							obj_attr |= SceneObject::SOA_Cullable;
+							obj_attr |= SceneNode::SOA_Cullable;
 						}
 						else if ("overlay" == token)
 						{
-							obj_attr |= SceneObject::SOA_Overlay;
+							obj_attr |= SceneNode::SOA_Overlay;
 						}
 						else if ("moveable" == token)
 						{
-							obj_attr |= SceneObject::SOA_Moveable;
+							obj_attr |= SceneNode::SOA_Moveable;
 						}
 						else if ("invisible" == token)
 						{
-							obj_attr |= SceneObject::SOA_Invisible;
+							obj_attr |= SceneNode::SOA_Invisible;
 						}
 					}
 				}
@@ -651,16 +649,21 @@ void ScenePlayerApp::LoadScene(std::string const & name)
 		XMLAttributePtr attr = model_node->Attrib("meshml");
 		BOOST_ASSERT(attr);
 
-		RenderModelPtr model = ASyncLoadModel(std::string(attr->ValueString()), EAH_GPU_Read | EAH_Immutable);
+		auto scene_obj = MakeSharedPtr<SceneNode>(SceneNode::SOA_Cullable);
+		scene_obj->TransformToParent(obj_mat);
+		Context::Instance().SceneManagerInstance().SceneRootNode().AddChild(scene_obj);
+		RenderModelPtr model = ASyncLoadModel(attr->ValueString(), EAH_GPU_Read | EAH_Immutable,
+			obj_attr,
+			[scene_obj](RenderModel& model)
+			{
+				AddToSceneHelper(*scene_obj, model);
+			});
 		scene_models_.push_back(model);
-		SceneObjectPtr scene_obj = MakeSharedPtr<SceneObjectHelper>(model, obj_attr);
-		scene_obj->ModelMatrix(obj_mat);
 		if (!update_script.empty())
 		{
-			scene_obj->BindSubThreadUpdateFunc(SceneObjectUpdate(update_script));
+			scene_obj->OnSubThreadUpdate().Connect(SceneNodeUpdate(*scene_obj, update_script));
 		}
 		scene_objs_.push_back(scene_obj);
-		scene_obj->AddToSceneManager();
 	}
 
 	{
@@ -757,7 +760,7 @@ void ScenePlayerApp::OnCreate()
 	actionMap.AddActions(actions, actions + std::size(actions));
 
 	action_handler_t input_handler = MakeSharedPtr<input_signal>();
-	input_handler->connect(
+	input_handler->Connect(
 		[this](InputEngine const & sender, InputAction const & action)
 		{
 			this->InputHandler(sender, action);
@@ -778,13 +781,13 @@ void ScenePlayerApp::OnCreate()
 	id_cg_ = dialog_->IDFromName("CG");
 	id_ctrl_camera_ = dialog_->IDFromName("CtrlCamera");
 
-	dialog_->Control<UIButton>(id_open_)->OnClickedEvent().connect(
+	dialog_->Control<UIButton>(id_open_)->OnClickedEvent().Connect(
 		[this](UIButton const & sender)
 		{
 			this->OpenHandler(sender);
 		});
 
-	dialog_->Control<UIComboBox>(id_illum_combo_)->OnSelectionChangedEvent().connect(
+	dialog_->Control<UIComboBox>(id_illum_combo_)->OnSelectionChangedEvent().Connect(
 		[this](UIComboBox const & sender)
 		{
 			this->IllumChangedHandler(sender);
@@ -792,49 +795,49 @@ void ScenePlayerApp::OnCreate()
 	this->IllumChangedHandler(*dialog_->Control<UIComboBox>(id_illum_combo_));
 
 	dialog_->Control<UISlider>(id_il_scale_slider_)->SetValue(static_cast<int>(il_scale_ * 10));
-	dialog_->Control<UISlider>(id_il_scale_slider_)->OnValueChangedEvent().connect(
+	dialog_->Control<UISlider>(id_il_scale_slider_)->OnValueChangedEvent().Connect(
 		[this](UISlider const & sender)
 		{
 			this->ILScaleChangedHandler(sender);
 		});
 	this->ILScaleChangedHandler(*dialog_->Control<UISlider>(id_il_scale_slider_));
 
-	dialog_->Control<UICheckBox>(id_ssgi_)->OnChangedEvent().connect(
+	dialog_->Control<UICheckBox>(id_ssgi_)->OnChangedEvent().Connect(
 		[this](UICheckBox const & sender)
 		{
 			this->SSGIHandler(sender);
 		});
 	this->SSGIHandler(*dialog_->Control<UICheckBox>(id_ssgi_));
 
-	dialog_->Control<UICheckBox>(id_ssvo_)->OnChangedEvent().connect(
+	dialog_->Control<UICheckBox>(id_ssvo_)->OnChangedEvent().Connect(
 		[this](UICheckBox const & sender)
 		{
 			this->SSVOHandler(sender);
 		});
 	this->SSVOHandler(*dialog_->Control<UICheckBox>(id_ssvo_));
 
-	dialog_->Control<UICheckBox>(id_hdr_)->OnChangedEvent().connect(
+	dialog_->Control<UICheckBox>(id_hdr_)->OnChangedEvent().Connect(
 		[this](UICheckBox const & sender)
 		{
 			this->HDRHandler(sender);
 		});
 	this->HDRHandler(*dialog_->Control<UICheckBox>(id_hdr_));
 
-	dialog_->Control<UICheckBox>(id_aa_)->OnChangedEvent().connect(
+	dialog_->Control<UICheckBox>(id_aa_)->OnChangedEvent().Connect(
 		[this](UICheckBox const & sender)
 		{
 			this->AAHandler(sender);
 		});
 	this->AAHandler(*dialog_->Control<UICheckBox>(id_aa_));
 
-	dialog_->Control<UICheckBox>(id_cg_)->OnChangedEvent().connect(
+	dialog_->Control<UICheckBox>(id_cg_)->OnChangedEvent().Connect(
 		[this](UICheckBox const & sender)
 		{
 			this->ColorGradingHandler(sender);
 		});
 	this->ColorGradingHandler(*dialog_->Control<UICheckBox>(id_cg_));
 
-	dialog_->Control<UICheckBox>(id_ctrl_camera_)->OnChangedEvent().connect(
+	dialog_->Control<UICheckBox>(id_ctrl_camera_)->OnChangedEvent().Connect(
 		[this](UICheckBox const & sender)
 		{
 			this->CtrlCameraHandler(sender);
@@ -879,7 +882,7 @@ void ScenePlayerApp::OpenHandler(UIButton const & /*sender*/)
 	ofn.lpstrFileTitle = nullptr;
 	ofn.nMaxFileTitle = 0;
 	ofn.lpstrInitialDir = nullptr;
-	ofn.Flags = OFN_NOCHANGEDIR | OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST | OFN_NOCHANGEDIR;
+	ofn.Flags = OFN_NOCHANGEDIR | OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST;
 
 	if (GetOpenFileNameA(&ofn))
 	{

@@ -5,16 +5,16 @@
 #include <KFL/Math.hpp>
 #include <KlayGE/Font.hpp>
 #include <KlayGE/Renderable.hpp>
-#include <KlayGE/RenderableHelper.hpp>
 #include <KlayGE/FrameBuffer.hpp>
 #include <KlayGE/RenderEngine.hpp>
 #include <KlayGE/RenderEffect.hpp>
+#include <KlayGE/RenderView.hpp>
 #include <KlayGE/SceneManager.hpp>
 #include <KlayGE/Context.hpp>
 #include <KlayGE/ResLoader.hpp>
 #include <KlayGE/RenderSettings.hpp>
 #include <KlayGE/Mesh.hpp>
-#include <KlayGE/SceneObjectHelper.hpp>
+#include <KlayGE/SceneNodeHelper.hpp>
 #include <KlayGE/PostProcess.hpp>
 #include <KlayGE/SATPostProcess.hpp>
 #include <KlayGE/Script.hpp>
@@ -42,8 +42,8 @@ namespace
 	class MotionBlurRenderMesh : public StaticMesh
 	{
 	public:
-		MotionBlurRenderMesh(RenderModelPtr const & model, std::wstring const & name)
-			: StaticMesh(model, name),
+		explicit MotionBlurRenderMesh(std::wstring_view name)
+			: StaticMesh(name),
 				half_exposure_(1)
 		{
 		}
@@ -67,15 +67,17 @@ namespace
 	class RenderInstanceMesh : public MotionBlurRenderMesh
 	{
 	public:
-		RenderInstanceMesh(RenderModelPtr const & model, std::wstring const & /*name*/)
-			: MotionBlurRenderMesh(model, L"InstancedMesh")
+		explicit RenderInstanceMesh(std::wstring_view /*name*/)
+			: MotionBlurRenderMesh(L"InstancedMesh")
 		{
 			effect_ = SyncLoadRenderEffect("MotionBlurDoF.fxml");
 			technique_ = effect_->TechniqueByName("ColorDepthInstanced");
 		}
 
-		virtual void DoBuildMeshInfo() override
+		void DoBuildMeshInfo(RenderModel const & model) override
 		{
+			KFL_UNUSED(model);
+
 			AABBox const & bb = this->PosBound();
 			*(effect_->ParameterByName("pos_center")) = bb.Center();
 			*(effect_->ParameterByName("pos_extent")) = bb.HalfSize();
@@ -124,15 +126,17 @@ namespace
 		};
 
 	public:
-		RenderNonInstancedMesh(RenderModelPtr const & model, std::wstring const & /*name*/)
-			: MotionBlurRenderMesh(model, L"NonInstancedMesh")
+		explicit RenderNonInstancedMesh(std::wstring_view /*name*/)
+			: MotionBlurRenderMesh(L"NonInstancedMesh")
 		{
 			effect_ = SyncLoadRenderEffect("MotionBlurDoF.fxml");
 			technique_ = effect_->TechniqueByName("ColorDepthNonInstanced");
 		}
 
-		virtual void DoBuildMeshInfo() override
+		void DoBuildMeshInfo(RenderModel const & model) override
 		{
+			KFL_UNUSED(model);
+
 			AABBox const & bb = this->PosBound();
 			*(effect_->ParameterByName("pos_center")) = bb.Center();
 			*(effect_->ParameterByName("pos_extent")) = bb.HalfSize();
@@ -153,14 +157,10 @@ namespace
 			*(effect_->ParameterByName("proj")) = curr_proj;
 			*(effect_->ParameterByName("prev_view")) = prev_view;
 			*(effect_->ParameterByName("prev_proj")) = prev_proj;
-			*(effect_->ParameterByName("elapsed_time")) = app.FrameTime();
 
 			*(effect_->ParameterByName("half_exposure_x_framerate")) = half_exposure_ / app.FrameTime();
-		}
 
-		void OnInstanceBegin(uint32_t id)
-		{
-			InstData const * data = static_cast<InstData const *>(instances_[id]->InstanceData());
+			InstData const * data = static_cast<InstData const *>(curr_node_->InstanceData());
 
 			float4x4 model;
 			model.Col(0, data->mat[0]);
@@ -198,7 +198,7 @@ namespace
 		}
 	};
 
-	class Teapot : public SceneObjectHelper
+	class Teapot : public SceneNode
 	{
 	private:
 		struct InstData
@@ -210,8 +210,10 @@ namespace
 
 	public:
 		Teapot()
-			: SceneObjectHelper(SOA_Moveable | SOA_Cullable)
+			: SceneNode(SOA_Moveable | SOA_Cullable)
 		{
+			this->AddRenderable(RenderablePtr());
+
 			instance_format_.push_back(VertexElement(VEU_TextureCoord, 1, EF_ABGR32F));
 			instance_format_.push_back(VertexElement(VEU_TextureCoord, 2, EF_ABGR32F));
 			instance_format_.push_back(VertexElement(VEU_TextureCoord, 3, EF_ABGR32F));
@@ -219,11 +221,18 @@ namespace
 			instance_format_.push_back(VertexElement(VEU_TextureCoord, 5, EF_ABGR32F));
 			instance_format_.push_back(VertexElement(VEU_TextureCoord, 6, EF_ABGR32F));
 			instance_format_.push_back(VertexElement(VEU_Diffuse, 0, EF_ABGR8));
+
+			this->OnMainThreadUpdate().Connect([this](float app_time, float elapsed_time)
+				{
+					KFL_UNUSED(app_time);
+
+					this->MainThreadUpdateFunc(elapsed_time);
+				});
 		}
 
 		void Instance(float4x4 const & mat, Color const & clr)
 		{
-			model_ = mat;
+			xform_to_parent_ = mat;
 			inst_.clr = clr.ABGR();
 		}
 
@@ -232,49 +241,27 @@ namespace
 			return &inst_;
 		}
 
-		void SetRenderable(RenderablePtr const & ra)
+		void MainThreadUpdateFunc(float elapsed_time)
 		{
-			renderable_ = ra;
-		}
+			last_xform_to_parent_ = xform_to_parent_;
 
-		void SubThreadUpdate(float app_time, float elapsed_time) override
-		{
-			KFL_UNUSED(app_time);
-
-			last_model_ = model_;
-
-			float4x4 mat_t = MathLib::transpose(last_model_);
+			float4x4 mat_t = MathLib::transpose(last_xform_to_parent_);
 			inst_.last_mat[0] = mat_t.Row(0);
 			inst_.last_mat[1] = mat_t.Row(1);
 			inst_.last_mat[2] = mat_t.Row(2);
 
-			float e = elapsed_time * 0.3f * -model_(3, 1);
-			model_ *= MathLib::rotation_y(e);
+			float e = elapsed_time * 0.3f * -xform_to_parent_(3, 1);
+			xform_to_parent_ *= MathLib::rotation_y(e);
 
-			mat_t = MathLib::transpose(model_);
+			mat_t = MathLib::transpose(xform_to_parent_);
 			inst_.mat[0] = mat_t.Row(0);
 			inst_.mat[1] = mat_t.Row(1);
 			inst_.mat[2] = mat_t.Row(2);
 		}
 
-		void VelocityPass(bool velocity)
-		{
-			checked_pointer_cast<MotionBlurRenderMesh>(renderable_)->VelocityPass(velocity);
-		}
-
-		void BlurRadius(uint32_t blur_radius)
-		{
-			checked_pointer_cast<MotionBlurRenderMesh>(renderable_)->BlurRadius(blur_radius);
-		}
-
-		void Exposure(float exposure)
-		{
-			checked_pointer_cast<MotionBlurRenderMesh>(renderable_)->Exposure(exposure);
-		}
-
 	private:
 		InstData inst_;
-		float4x4 last_model_;
+		float4x4 last_xform_to_parent_;
 	};
 
 
@@ -372,7 +359,7 @@ namespace
 				RenderFactory& rf = Context::Instance().RenderFactoryInstance();
 				spread_tex_ = rf.MakeTexture2D(width, height, 1, 1, fmt, 1, 0,
 					EAH_GPU_Read | EAH_GPU_Write | (cs_support_ ? EAH_GPU_Unordered : 0));
-				spread_fb_->Attach(FrameBuffer::ATT_Color0, rf.Make2DRenderView(*spread_tex_, 0, 1, 0));
+				spread_fb_->Attach(FrameBuffer::Attachment::Color0, rf.Make2DRtv(spread_tex_, 0, 1, 0));
 
 				spreading_pp_->SetParam(0, float4(static_cast<float>(width),
 					static_cast<float>(height), 1.0f / width, 1.0f / height));
@@ -515,7 +502,7 @@ namespace
 				RenderFactory& rf = Context::Instance().RenderFactoryInstance();
 				RenderDeviceCaps const & caps = rf.RenderEngineInstance().DeviceCaps();
 				bokeh_tex_ = rf.MakeTexture2D(out_width, out_height, 1, 1, tex->Format(), 1, 0, EAH_GPU_Read | EAH_GPU_Write);
-				bokeh_fb_->Attach(FrameBuffer::ATT_Color0, rf.Make2DRenderView(*bokeh_tex_, 0, 1, 0));
+				bokeh_fb_->Attach(FrameBuffer::Attachment::Color0, rf.Make2DRtv(bokeh_tex_, 0, 1, 0));
 
 				if (gs_support_)
 				{
@@ -692,10 +679,10 @@ MotionBlurDoFApp::MotionBlurDoFApp()
 void MotionBlurDoFApp::OnCreate()
 {
 	loading_percentage_ = 0;
-	model_instance_ = ASyncLoadModel("teapot.meshml", EAH_GPU_Read | EAH_Immutable,
-		CreateModelFactory<RenderModel>(), CreateMeshFactory<RenderInstanceMesh>());
-	model_mesh_ = ASyncLoadModel("teapot.meshml", EAH_GPU_Read | EAH_Immutable,
-		CreateModelFactory<RenderModel>(), CreateMeshFactory<RenderNonInstancedMesh>());
+	model_instance_ = ASyncLoadModel("teapot.glb", EAH_GPU_Read | EAH_Immutable,
+		SceneNode::SOA_Cullable, nullptr, CreateModelFactory<RenderModel>, CreateMeshFactory<RenderInstanceMesh>);
+	model_mesh_ = ASyncLoadModel("teapot.glb", EAH_GPU_Read | EAH_Immutable,
+		SceneNode::SOA_Cullable, nullptr, CreateModelFactory<RenderModel>, CreateMeshFactory<RenderNonInstancedMesh>);
 
 	RenderFactory& rf = Context::Instance().RenderFactoryInstance();
 
@@ -721,7 +708,7 @@ void MotionBlurDoFApp::OnCreate()
 	actionMap.AddActions(actions, actions + std::size(actions));
 
 	action_handler_t input_handler = MakeSharedPtr<input_signal>();
-	input_handler->connect(
+	input_handler->Connect(
 		[this](InputEngine const & sender, InputAction const & action)
 		{
 			this->InputHandler(sender, action);
@@ -763,31 +750,31 @@ void MotionBlurDoFApp::OnCreate()
 
 	if (depth_of_field_)
 	{
-		dof_dialog_->Control<UICheckBox>(id_dof_on_)->OnChangedEvent().connect(
+		dof_dialog_->Control<UICheckBox>(id_dof_on_)->OnChangedEvent().Connect(
 			[this](UICheckBox const & sender)
 			{
 				this->DoFOnHandler(sender);
 			});
 		this->DoFOnHandler(*dof_dialog_->Control<UICheckBox>(id_dof_on_));
-		dof_dialog_->Control<UICheckBox>(id_bokeh_on_)->OnChangedEvent().connect(
+		dof_dialog_->Control<UICheckBox>(id_bokeh_on_)->OnChangedEvent().Connect(
 			[this](UICheckBox const & sender)
 			{
 				this->BokehOnHandler(sender);
 			});
 		this->BokehOnHandler(*dof_dialog_->Control<UICheckBox>(id_bokeh_on_));
-		dof_dialog_->Control<UISlider>(id_dof_focus_plane_slider_)->OnValueChangedEvent().connect(
+		dof_dialog_->Control<UISlider>(id_dof_focus_plane_slider_)->OnValueChangedEvent().Connect(
 			[this](UISlider const & sender)
 			{
 				this->DoFFocusPlaneChangedHandler(sender);
 			});
 		this->DoFFocusPlaneChangedHandler(*dof_dialog_->Control<UISlider>(id_dof_focus_plane_slider_));
-		dof_dialog_->Control<UISlider>(id_dof_focus_range_slider_)->OnValueChangedEvent().connect(
+		dof_dialog_->Control<UISlider>(id_dof_focus_range_slider_)->OnValueChangedEvent().Connect(
 			[this](UISlider const & sender)
 			{
 				this->DoFFocusRangeChangedHandler(sender);
 			});
 		this->DoFFocusRangeChangedHandler(*dof_dialog_->Control<UISlider>(id_dof_focus_range_slider_));
-		dof_dialog_->Control<UICheckBox>(id_dof_blur_factor_)->OnChangedEvent().connect(
+		dof_dialog_->Control<UICheckBox>(id_dof_blur_factor_)->OnChangedEvent().Connect(
 			[this](UICheckBox const & sender)
 			{
 				this->DoFBlurFactorHandler(sender);
@@ -804,42 +791,42 @@ void MotionBlurDoFApp::OnCreate()
 		dof_on_ = false;
 	}
 
-	mb_dialog_->Control<UICheckBox>(id_mb_on_)->OnChangedEvent().connect(
+	mb_dialog_->Control<UICheckBox>(id_mb_on_)->OnChangedEvent().Connect(
 		[this](UICheckBox const & sender)
 		{
 			this->MBOnHandler(sender);
 		});
-	mb_dialog_->Control<UISlider>(id_mb_exposure_slider_)->OnValueChangedEvent().connect(
+	mb_dialog_->Control<UISlider>(id_mb_exposure_slider_)->OnValueChangedEvent().Connect(
 		[this](UISlider const & sender)
 		{
 			this->MBExposureChangedHandler(sender);
 		});
 	this->MBExposureChangedHandler(*mb_dialog_->Control<UISlider>(id_mb_exposure_slider_));
-	mb_dialog_->Control<UISlider>(id_mb_blur_radius_slider_)->OnValueChangedEvent().connect(
+	mb_dialog_->Control<UISlider>(id_mb_blur_radius_slider_)->OnValueChangedEvent().Connect(
 		[this](UISlider const & sender)
 		{
 			this->MBBlurRadiusChangedHandler(sender);
 		});
 	this->MBBlurRadiusChangedHandler(*mb_dialog_->Control<UISlider>(id_mb_blur_radius_slider_));
-	mb_dialog_->Control<UISlider>(id_mb_reconstruction_samples_slider_)->OnValueChangedEvent().connect(
+	mb_dialog_->Control<UISlider>(id_mb_reconstruction_samples_slider_)->OnValueChangedEvent().Connect(
 		[this](UISlider const & sender)
 		{
 			this->MBReconstructionSamplesChangedHandler(sender);
 		});
 	this->MBReconstructionSamplesChangedHandler(*mb_dialog_->Control<UISlider>(id_mb_reconstruction_samples_slider_));
-	mb_dialog_->Control<UIComboBox>(id_motion_blur_type_)->OnSelectionChangedEvent().connect(
+	mb_dialog_->Control<UIComboBox>(id_motion_blur_type_)->OnSelectionChangedEvent().Connect(
 		[this](UIComboBox const & sender)
 		{
 			this->MotionBlurChangedHandler(sender);
 		});
 
-	app_dialog_->Control<UICheckBox>(id_ctrl_camera_)->OnChangedEvent().connect(
+	app_dialog_->Control<UICheckBox>(id_ctrl_camera_)->OnChangedEvent().Connect(
 		[this](UICheckBox const & sender)
 		{
 			this->CtrlCameraHandler(sender);
 		});
 
-	app_dialog_->Control<UICheckBox>(id_use_instancing_)->OnChangedEvent().connect(
+	app_dialog_->Control<UICheckBox>(id_use_instancing_)->OnChangedEvent().Connect(
 		[this](UICheckBox const & sender)
 		{
 			this->UseInstancingHandler(sender);
@@ -856,15 +843,15 @@ void MotionBlurDoFApp::OnResize(uint32_t width, uint32_t height)
 
 	depth_texture_support_ = caps.depth_texture_support;
 
-	RenderViewPtr ds_view;
+	DepthStencilViewPtr ds_view;
 	if (depth_texture_support_)
 	{
 		ds_tex_ = rf.MakeTexture2D(width, height, 1, 1, EF_D16, 1, 0, EAH_GPU_Read | EAH_GPU_Write);
-		ds_view = rf.Make2DDepthStencilRenderView(*ds_tex_, 0, 1, 0);
+		ds_view = rf.Make2DDsv(ds_tex_, 0, 1, 0);
 	}
 	else
 	{
-		ds_view = rf.Make2DDepthStencilRenderView(width, height, EF_D16, 1, 0);
+		ds_view = rf.Make2DDsv(width, height, EF_D16, 1, 0);
 	}
 
 	auto const depth_fmt = caps.BestMatchTextureRenderTargetFormat(
@@ -884,14 +871,14 @@ void MotionBlurDoFApp::OnResize(uint32_t width, uint32_t height)
 	BOOST_ASSERT(color_fmt != EF_Unknown);
 
 	color_tex_ = rf.MakeTexture2D(width, height, 2, 1, color_fmt, 1, 0, EAH_GPU_Read | EAH_GPU_Write | EAH_Generate_Mips);
-	clr_depth_fb_->Attach(FrameBuffer::ATT_Color0, rf.Make2DRenderView(*color_tex_, 0, 1, 0));
-	clr_depth_fb_->Attach(FrameBuffer::ATT_DepthStencil, ds_view);
+	clr_depth_fb_->Attach(FrameBuffer::Attachment::Color0, rf.Make2DRtv(color_tex_, 0, 1, 0));
+	clr_depth_fb_->Attach(ds_view);
 
 	auto const motion_fmt = caps.BestMatchTextureRenderTargetFormat({ EF_GR8, EF_ABGR8, EF_ARGB8 }, 1, 0);
 	BOOST_ASSERT(motion_fmt != EF_Unknown);
 	velocity_tex_ = rf.MakeTexture2D(width, height, 1, 1, motion_fmt, 1, 0, EAH_GPU_Read | EAH_GPU_Write);
-	velocity_fb_->Attach(FrameBuffer::ATT_Color0, rf.Make2DRenderView(*velocity_tex_, 0, 1, 0));
-	velocity_fb_->Attach(FrameBuffer::ATT_DepthStencil, ds_view);
+	velocity_fb_->Attach(FrameBuffer::Attachment::Color0, rf.Make2DRtv(velocity_tex_, 0, 1, 0));
+	velocity_fb_->Attach(ds_view);
 
 	dof_tex_ = rf.MakeTexture2D(width, height, 1, 1, color_fmt, 1, 0, EAH_GPU_Read | EAH_GPU_Write);
 
@@ -995,9 +982,9 @@ void MotionBlurDoFApp::MBExposureChangedHandler(KlayGE::UISlider const & sender)
 	stream << "Exposure: " << exposure_;
 	mb_dialog_->Control<UIStatic>(id_mb_exposure_static_)->SetText(stream.str());
 
-	for (size_t i = 0; i < scene_objs_.size(); ++ i)
+	for (size_t i = 0; i < scene_nodes_.size(); ++ i)
 	{
-		checked_pointer_cast<Teapot>(scene_objs_[i])->Exposure(exposure_);
+		checked_pointer_cast<MotionBlurRenderMesh>(scene_nodes_[i]->GetRenderable())->Exposure(exposure_);
 	}
 }
 
@@ -1010,9 +997,9 @@ void MotionBlurDoFApp::MBBlurRadiusChangedHandler(KlayGE::UISlider const & sende
 	stream << "Blur Radius: " << blur_radius_;
 	mb_dialog_->Control<UIStatic>(id_mb_blur_radius_static_)->SetText(stream.str());
 
-	for (size_t i = 0; i < scene_objs_.size(); ++ i)
+	for (size_t i = 0; i < scene_nodes_.size(); ++ i)
 	{
-		checked_pointer_cast<Teapot>(scene_objs_[i])->BlurRadius(blur_radius_);
+		checked_pointer_cast<MotionBlurRenderMesh>(scene_nodes_[i]->GetRenderable())->BlurRadius(blur_radius_);
 	}
 }
 
@@ -1037,16 +1024,18 @@ void MotionBlurDoFApp::UseInstancingHandler(UICheckBox const & /*sender*/)
 
 	if (use_instance_)
 	{
-		for (size_t i = 0; i < scene_objs_.size(); ++ i)
+		for (size_t i = 0; i < scene_nodes_.size(); ++ i)
 		{
-			checked_pointer_cast<Teapot>(scene_objs_[i])->SetRenderable(renderInstance_);
+			checked_pointer_cast<Teapot>(scene_nodes_[i])->ClearRenderables();
+			checked_pointer_cast<Teapot>(scene_nodes_[i])->AddRenderable(renderInstance_);
 		}
 	}
 	else
 	{
-		for (size_t i = 0; i < scene_objs_.size(); ++ i)
+		for (size_t i = 0; i < scene_nodes_.size(); ++ i)
 		{
-			checked_pointer_cast<Teapot>(scene_objs_[i])->SetRenderable(renderMesh_);
+			checked_pointer_cast<Teapot>(scene_nodes_[i])->ClearRenderables();
+			checked_pointer_cast<Teapot>(scene_nodes_[i])->AddRenderable(renderMesh_);
 		}
 	}
 }
@@ -1096,6 +1085,11 @@ void MotionBlurDoFApp::DoUpdateOverlay()
 
 uint32_t MotionBlurDoFApp::DoUpdate(uint32_t pass)
 {
+	Context& context = Context::Instance();
+	App3DFramework& app = context.AppInstance();
+	SceneManager& scene_mgr = context.SceneManagerInstance();
+	RenderEngine& re = context.RenderFactoryInstance().RenderEngineInstance();
+
 	if (0 == pass)
 	{
 		if (loading_percentage_ < 100)
@@ -1104,7 +1098,7 @@ uint32_t MotionBlurDoFApp::DoUpdate(uint32_t pass)
 			{
 				if (model_instance_->HWResourceReady())
 				{
-					renderInstance_ = model_instance_->Subrenderable(0);
+					renderInstance_ = model_instance_->Mesh(0);
 					loading_percentage_ = 80 - NUM_LINE;
 				}
 			}
@@ -1137,17 +1131,20 @@ uint32_t MotionBlurDoFApp::DoUpdate(uint32_t pass)
 						LogWarn() << "Wrong callings to script engine" << std::endl;
 					}
 
-					SceneObjectPtr so = MakeSharedPtr<Teapot>();
+					auto so = MakeSharedPtr<Teapot>();
 					checked_pointer_cast<Teapot>(so)->Instance(MathLib::translation(pos), clr);
 
-					checked_pointer_cast<Teapot>(so)->SetRenderable(renderInstance_);
-					checked_pointer_cast<Teapot>(so)->Exposure(exposure_);
-					checked_pointer_cast<Teapot>(so)->BlurRadius(blur_radius_);
-					so->AddToSceneManager();
-					scene_objs_.push_back(so);
+					checked_pointer_cast<Teapot>(so)->ClearRenderables();
+					checked_pointer_cast<Teapot>(so)->AddRenderable(renderInstance_);
+					checked_pointer_cast<MotionBlurRenderMesh>(so->GetRenderable())->Exposure(exposure_);
+					checked_pointer_cast<MotionBlurRenderMesh>(so->GetRenderable())->BlurRadius(blur_radius_);
+					scene_nodes_.push_back(so);
 
 					so->SubThreadUpdate(0, 0);
 					so->MainThreadUpdate(0, 0);
+
+					std::lock_guard<std::mutex> lock(scene_mgr.MutexForUpdate());
+					scene_mgr.SceneRootNode().AddChild(so);
 				}
 
 				++ loading_percentage_;
@@ -1156,17 +1153,12 @@ uint32_t MotionBlurDoFApp::DoUpdate(uint32_t pass)
 			{
 				if (model_mesh_)
 				{
-					renderMesh_ = model_mesh_->Subrenderable(0);
+					renderMesh_ = model_mesh_->Mesh(0);
 					loading_percentage_ = 100;
 				}
 			}
 		}
 	}
-
-	Context& context = Context::Instance();
-	App3DFramework& app = context.AppInstance();
-	SceneManager& sceneMgr = context.SceneManagerInstance();
-	RenderEngine& renderEngine = context.RenderFactoryInstance().RenderEngineInstance();
 
 	switch (pass)
 	{
@@ -1178,13 +1170,11 @@ uint32_t MotionBlurDoFApp::DoUpdate(uint32_t pass)
 
 			if (depth_texture_support_)
 			{
-				float q = camera.FarPlane() / (camera.FarPlane() - camera.NearPlane());
-				float4 near_q_far(camera.NearPlane() * q, q, camera.FarPlane(), 1 / camera.FarPlane());
-				depth_to_linear_pp_->SetParam(0, near_q_far);
+				depth_to_linear_pp_->SetParam(0, camera.NearQFarParam());
 			}
 		}
 
-		renderEngine.BindFrameBuffer(clr_depth_fb_);
+		re.BindFrameBuffer(clr_depth_fb_);
 		{
 			Color clear_clr(0.2f, 0.4f, 0.6f, 1);
 			if (Context::Instance().Config().graphics_cfg.gamma)
@@ -1193,11 +1183,11 @@ uint32_t MotionBlurDoFApp::DoUpdate(uint32_t pass)
 				clear_clr.g() = 0.133f;
 				clear_clr.b() = 0.325f;
 			}
-			renderEngine.CurFrameBuffer()->Clear(FrameBuffer::CBM_Color | FrameBuffer::CBM_Depth, clear_clr, 1.0f, 0);
+			re.CurFrameBuffer()->Clear(FrameBuffer::CBM_Color | FrameBuffer::CBM_Depth, clear_clr, 1.0f, 0);
 		}
-		for (size_t i = 0; i < scene_objs_.size(); ++ i)
+		for (size_t i = 0; i < scene_nodes_.size(); ++ i)
 		{
-			checked_pointer_cast<Teapot>(scene_objs_[i])->VelocityPass(false);
+			checked_pointer_cast<MotionBlurRenderMesh>(scene_nodes_[i]->GetRenderable())->VelocityPass(false);
 		}
 		return App3DFramework::URV_NeedFlush;
 
@@ -1207,19 +1197,19 @@ uint32_t MotionBlurDoFApp::DoUpdate(uint32_t pass)
 			depth_to_linear_pp_->Apply();
 		}
 
-		renderEngine.BindFrameBuffer(velocity_fb_);
-		renderEngine.CurFrameBuffer()->Clear(FrameBuffer::CBM_Color | FrameBuffer::CBM_Depth, Color(0.5f, 0.5f, 0.5f, 1), 1.0f, 0);
-		for (size_t i = 0; i < scene_objs_.size(); ++ i)
+		re.BindFrameBuffer(velocity_fb_);
+		re.CurFrameBuffer()->Clear(FrameBuffer::CBM_Color | FrameBuffer::CBM_Depth, Color(0.5f, 0.5f, 0.5f, 1), 1.0f, 0);
+		for (size_t i = 0; i < scene_nodes_.size(); ++ i)
 		{
-			checked_pointer_cast<Teapot>(scene_objs_[i])->VelocityPass(true);
+			checked_pointer_cast<MotionBlurRenderMesh>(scene_nodes_[i]->GetRenderable())->VelocityPass(true);
 		}
 		return App3DFramework::URV_NeedFlush;
 
 	default:
-		num_objs_rendered_ = sceneMgr.NumObjectsRendered();
-		num_renderables_rendered_ = sceneMgr.NumRenderablesRendered();
-		num_primitives_rendered_ = sceneMgr.NumPrimitivesRendered();
-		num_vertices_rendered_ = sceneMgr.NumVerticesRendered();
+		num_objs_rendered_ = scene_mgr.NumObjectsRendered();
+		num_renderables_rendered_ = scene_mgr.NumRenderablesRendered();
+		num_primitives_rendered_ = scene_mgr.NumPrimitivesRendered();
+		num_vertices_rendered_ = scene_mgr.NumVerticesRendered();
 
 		color_tex_->BuildMipSubLevels();
 		depth_tex_->BuildMipSubLevels();
@@ -1245,8 +1235,8 @@ uint32_t MotionBlurDoFApp::DoUpdate(uint32_t pass)
 			motion_blur_copy_pp_->Apply();
 		}
 
-		renderEngine.BindFrameBuffer(FrameBufferPtr());
-		renderEngine.CurFrameBuffer()->Attached(FrameBuffer::ATT_DepthStencil)->ClearDepth(1.0f);
+		re.BindFrameBuffer(FrameBufferPtr());
+		re.CurFrameBuffer()->AttachedDsv()->ClearDepth(1.0f);
 		return App3DFramework::URV_Finished;
 	}
 }

@@ -40,7 +40,6 @@
 
 #include <KFL/Rect.hpp>
 #include <KlayGE/Renderable.hpp>
-#include <KlayGE/RenderableHelper.hpp>
 
 #include <list>
 #include <vector>
@@ -87,11 +86,11 @@ namespace KlayGE
 
 	private:
 		std::shared_ptr<FontRenderable> font_renderable_;
-		uint32_t		fso_attrib_;
+		uint32_t fsn_attrib_;
 	};
 
-	KLAYGE_CORE_API FontPtr SyncLoadFont(std::string const & font_name, uint32_t flags = 0);
-	KLAYGE_CORE_API FontPtr ASyncLoadFont(std::string const & font_name, uint32_t flags = 0);
+	KLAYGE_CORE_API FontPtr SyncLoadFont(std::string_view font_name, uint32_t flags = 0);
+	KLAYGE_CORE_API FontPtr ASyncLoadFont(std::string_view font_name, uint32_t flags = 0);
 }
 
 #endif		// _FONT_HPP

@@ -40,14 +40,7 @@
 #include <fstream>
 #include <string>
 
-#if defined(KLAYGE_COMPILER_CLANGC2)
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wunused-variable" // Ignore unused variable (mpl_assertion_in_line_xxx) in boost
-#endif
 #include <boost/algorithm/string/split.hpp>
-#if defined(KLAYGE_COMPILER_CLANGC2)
-#pragma clang diagnostic pop
-#endif
 #include <boost/algorithm/string/trim.hpp>
 
 #include <KlayGE/RenderMaterial.hpp>
@@ -108,9 +101,9 @@ namespace
 		};
 
 	public:
-		explicit RenderMaterialLoadingDesc(std::string const & res_name)
+		explicit RenderMaterialLoadingDesc(std::string_view res_name)
 		{
-			mtl_desc_.res_name = res_name;
+			mtl_desc_.res_name = std::string(res_name);
 			mtl_desc_.mtl_data = MakeSharedPtr<RenderMaterialDesc::RenderMaterialData>();
 			mtl_desc_.mtl = MakeSharedPtr<RenderMaterialPtr>();
 		}
@@ -398,6 +391,8 @@ namespace
 			{
 				RenderMaterialPtr mtl = MakeSharedPtr<RenderMaterial>();
 
+				mtl->name = mtl_desc_.mtl_data->name;
+
 				mtl->albedo = mtl_desc_.mtl_data->albedo;
 				mtl->metalness = mtl_desc_.mtl_data->metalness;
 				mtl->glossiness = mtl_desc_.mtl_data->glossiness;
@@ -426,12 +421,12 @@ namespace
 
 namespace KlayGE
 {
-	RenderMaterialPtr SyncLoadRenderMaterial(std::string const & mtlml_name)
+	RenderMaterialPtr SyncLoadRenderMaterial(std::string_view mtlml_name)
 	{
 		return ResLoader::Instance().SyncQueryT<RenderMaterial>(MakeSharedPtr<RenderMaterialLoadingDesc>(mtlml_name));
 	}
 
-	RenderMaterialPtr ASyncLoadRenderMaterial(std::string const & mtlml_name)
+	RenderMaterialPtr ASyncLoadRenderMaterial(std::string_view mtlml_name)
 	{
 		// TODO: Make it really async
 		return ResLoader::Instance().SyncQueryT<RenderMaterial>(MakeSharedPtr<RenderMaterialLoadingDesc>(mtlml_name));
@@ -601,7 +596,7 @@ namespace KlayGE
 			root->AppendNode(two_sided_node);
 		}
 
-		std::ofstream ofs(mtlml_name.c_str());
+		std::ofstream ofs(std::string(mtlml_name).c_str());
 		if (!ofs)
 		{
 			ofs.open((ResLoader::Instance().LocalFolder() + mtlml_name).c_str());

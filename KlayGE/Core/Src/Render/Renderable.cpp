@@ -23,8 +23,9 @@
 #include <KlayGE/Context.hpp>
 #include <KlayGE/RenderEngine.hpp>
 #include <KlayGE/RenderFactory.hpp>
-#include <KlayGE/SceneObject.hpp>
+#include <KlayGE/SceneNode.hpp>
 #include <KlayGE/RenderEffect.hpp>
+#include <KlayGE/RenderView.hpp>
 #include <KlayGE/FrameBuffer.hpp>
 #include <KlayGE/Camera.hpp>
 #include <KlayGE/RenderMaterial.hpp>
@@ -35,9 +36,12 @@
 namespace KlayGE
 {
 	Renderable::Renderable()
-		: active_lod_(0),
-			select_mode_on_(false),
-			model_mat_(float4x4::Identity()), effect_attrs_(0)
+		: Renderable(L"")
+	{
+	}
+
+	Renderable::Renderable(std::wstring_view name)
+		: name_(name), rls_(1)
 	{
 		auto drl = Context::Instance().DeferredRenderingLayerInstance();
 		if (drl)
@@ -52,12 +56,12 @@ namespace KlayGE
 
 	void Renderable::NumLods(uint32_t lods)
 	{
-		KFL_UNUSED(lods);
+		rls_.resize(lods);
 	}
 
 	uint32_t Renderable::NumLods() const
 	{
-		return 1;
+		return static_cast<uint32_t>(rls_.size());
 	}
 
 	void Renderable::ActiveLod(int32_t lod)
@@ -71,17 +75,21 @@ namespace KlayGE
 			// -1 means automatic choose lod
 			active_lod_ = -1;
 		}
+	}
 
-		for (auto const & mesh : subrenderables_)
-		{
-			mesh->ActiveLod(lod);
-		}
+	RenderLayout& Renderable::GetRenderLayout() const
+	{
+		return this->GetRenderLayout(active_lod_);
 	}
 
 	RenderLayout& Renderable::GetRenderLayout(uint32_t lod) const
 	{
-		KFL_UNUSED(lod);
-		return this->GetRenderLayout();
+		return *rls_[lod];
+	}
+
+	std::wstring const & Renderable::Name() const
+	{
+		return name_;
 	}
 
 	void Renderable::OnRenderBegin()
@@ -209,12 +217,14 @@ namespace KlayGE
 	{
 	}
 
-	void Renderable::OnInstanceBegin(uint32_t /*id*/)
+	AABBox const & Renderable::PosBound() const
 	{
+		return pos_aabb_;
 	}
 
-	void Renderable::OnInstanceEnd(uint32_t /*id*/)
+	AABBox const & Renderable::TexcoordBound() const
 	{
+		return tc_aabb_;
 	}
 
 	void Renderable::AddToRenderQueue()
@@ -254,27 +264,29 @@ namespace KlayGE
 		}
 		else
 		{
-			this->OnRenderBegin();
 			if (instances_.empty())
 			{
+				this->OnRenderBegin();
 				re.Render(effect, tech, layout);
+				this->OnRenderEnd();
 			}
 			else
 			{
-				for (uint32_t i = 0; i < instances_.size(); ++ i)
+				for (auto const * node : instances_)
 				{
-					this->OnInstanceBegin(i);
+					this->BindSceneNode(node);
+
+					this->OnRenderBegin();
 					re.Render(effect, tech, layout);
-					this->OnInstanceEnd(i);
+					this->OnRenderEnd();
 				}
 			}
-			this->OnRenderEnd();
 		}
 	}
 
-	void Renderable::AddInstance(SceneObject const * obj)
+	void Renderable::AddInstance(SceneNode const * node)
 	{
-		instances_.push_back(obj);
+		instances_.push_back(node);
 	}
 
 	void Renderable::ClearInstances()
@@ -334,6 +346,12 @@ namespace KlayGE
 		model_mat_ = mat;
 	}
 
+	void Renderable::BindSceneNode(SceneNode const * node)
+	{
+		curr_node_ = node;
+		this->ModelMatrix(node->TransformToWorld());
+	}
+
 	void Renderable::UpdateBoundBox()
 	{
 	}
@@ -355,10 +373,20 @@ namespace KlayGE
 		{
 			if (ready && textures_[i])
 			{
-				ready = textures_[i]->HWResourceReady();
+				ready = textures_[i]->TextureResource()->HWResourceReady();
 			}
 		}
 		return ready;
+	}
+
+	bool Renderable::Enabled() const
+	{
+		return enabled_;
+	}
+
+	void Renderable::Enabled(bool enabled)
+	{
+		enabled_ = enabled;
 	}
 
 	void Renderable::ObjectID(uint32_t id)

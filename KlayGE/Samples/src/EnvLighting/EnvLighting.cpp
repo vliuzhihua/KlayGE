@@ -6,15 +6,16 @@
 #include <KlayGE/Renderable.hpp>
 #include <KlayGE/RenderEngine.hpp>
 #include <KlayGE/RenderEffect.hpp>
+#include <KlayGE/RenderView.hpp>
 #include <KlayGE/FrameBuffer.hpp>
 #include <KlayGE/SceneManager.hpp>
 #include <KlayGE/Context.hpp>
 #include <KlayGE/ResLoader.hpp>
 #include <KlayGE/Texture.hpp>
-#include <KlayGE/RenderableHelper.hpp>
 #include <KlayGE/RenderSettings.hpp>
 #include <KlayGE/Mesh.hpp>
-#include <KlayGE/SceneObjectHelper.hpp>
+#include <KlayGE/SceneNodeHelper.hpp>
+#include <KlayGE/SkyBox.hpp>
 #include <KlayGE/Camera.hpp>
 #include <KlayGE/UI.hpp>
 #include <KlayGE/PostProcess.hpp>
@@ -25,8 +26,15 @@
 #include <KlayGE/RenderFactory.hpp>
 #include <KlayGE/InputFactory.hpp>
 
+//#define CALC_FITTING_TABLE
+
 #include <vector>
 #include <sstream>
+#ifdef CALC_FITTING_TABLE
+#include <iostream>
+#include <iomanip>
+#include <fstream>
+#endif
 
 #include "SampleCommon.hpp"
 #include "EnvLighting.hpp"
@@ -39,15 +47,16 @@ namespace
 	class SphereRenderable : public StaticMesh
 	{
 	public:
-		SphereRenderable(RenderModelPtr const & model, std::wstring const & /*name*/)
-			: StaticMesh(model, L"Sphere")
+		explicit SphereRenderable(std::wstring_view name)
+			: StaticMesh(name)
 		{
 			effect_ = SyncLoadRenderEffect("EnvLighting.fxml");
 			techs_[0] = effect_->TechniqueByName("PBFittingPrefiltered");
 			techs_[1] = effect_->TechniqueByName("PBPrefiltered");
-			techs_[2] = effect_->TechniqueByName("Prefiltered");
-			techs_[3] = effect_->TechniqueByName("Approximate");
-			techs_[4] = effect_->TechniqueByName("GroundTruth");
+			techs_[2] = effect_->TechniqueByName("PBFittingError");
+			techs_[3] = effect_->TechniqueByName("Prefiltered");
+			techs_[4] = effect_->TechniqueByName("Approximate");
+			techs_[5] = effect_->TechniqueByName("GroundTruth");
 			this->RenderingType(0);
 
 			SceneManager& sm = Context::Instance().SceneManagerInstance();
@@ -64,10 +73,90 @@ namespace
 					break;
 				}
 			}
+
+			// From https://github.com/BIDS/colormap/blob/master/parula.py
+			uint32_t const color_map[] =
+			{
+				Color(0.2081f, 0.1663f, 0.5292f, 1).ABGR(),
+				Color(0.2116238095f, 0.1897809524f, 0.5776761905f, 1).ABGR(),
+				Color(0.212252381f, 0.2137714286f, 0.6269714286f, 1).ABGR(),
+				Color(0.2081f, 0.2386f, 0.6770857143f, 1).ABGR(),
+				Color(0.1959047619f, 0.2644571429f, 0.7279f, 1).ABGR(),
+				Color(0.1707285714f, 0.2919380952f, 0.779247619f, 1).ABGR(),
+				Color(0.1252714286f, 0.3242428571f, 0.8302714286f, 1).ABGR(),
+				Color(0.0591333333f, 0.3598333333f, 0.8683333333f, 1).ABGR(),
+				Color(0.0116952381f, 0.3875095238f, 0.8819571429f, 1).ABGR(),
+				Color(0.0059571429f, 0.4086142857f, 0.8828428571f, 1).ABGR(),
+				Color(0.0165142857f, 0.4266f, 0.8786333333f, 1).ABGR(),
+				Color(0.032852381f, 0.4430428571f, 0.8719571429f, 1).ABGR(),
+				Color(0.0498142857f, 0.4585714286f, 0.8640571429f, 1).ABGR(),
+				Color(0.0629333333f, 0.4736904762f, 0.8554380952f, 1).ABGR(),
+				Color(0.0722666667f, 0.4886666667f, 0.8467f, 1).ABGR(),
+				Color(0.0779428571f, 0.5039857143f, 0.8383714286f, 1).ABGR(),
+				Color(0.079347619f, 0.5200238095f, 0.8311809524f, 1).ABGR(),
+				Color(0.0749428571f, 0.5375428571f, 0.8262714286f, 1).ABGR(),
+				Color(0.0640571429f, 0.5569857143f, 0.8239571429f, 1).ABGR(),
+				Color(0.0487714286f, 0.5772238095f, 0.8228285714f, 1).ABGR(),
+				Color(0.0343428571f, 0.5965809524f, 0.819852381f, 1).ABGR(),
+				Color(0.0265f, 0.6137f, 0.8135f, 1).ABGR(),
+				Color(0.0238904762f, 0.6286619048f, 0.8037619048f, 1).ABGR(),
+				Color(0.0230904762f, 0.6417857143f, 0.7912666667f, 1).ABGR(),
+				Color(0.0227714286f, 0.6534857143f, 0.7767571429f, 1).ABGR(),
+				Color(0.0266619048f, 0.6641952381f, 0.7607190476f, 1).ABGR(),
+				Color(0.0383714286f, 0.6742714286f, 0.743552381f, 1).ABGR(),
+				Color(0.0589714286f, 0.6837571429f, 0.7253857143f, 1).ABGR(),
+				Color(0.0843f, 0.6928333333f, 0.7061666667f, 1).ABGR(),
+				Color(0.1132952381f, 0.7015f, 0.6858571429f, 1).ABGR(),
+				Color(0.1452714286f, 0.7097571429f, 0.6646285714f, 1).ABGR(),
+				Color(0.1801333333f, 0.7176571429f, 0.6424333333f, 1).ABGR(),
+				Color(0.2178285714f, 0.7250428571f, 0.6192619048f, 1).ABGR(),
+				Color(0.2586428571f, 0.7317142857f, 0.5954285714f, 1).ABGR(),
+				Color(0.3021714286f, 0.7376047619f, 0.5711857143f, 1).ABGR(),
+				Color(0.3481666667f, 0.7424333333f, 0.5472666667f, 1).ABGR(),
+				Color(0.3952571429f, 0.7459f, 0.5244428571f, 1).ABGR(),
+				Color(0.4420095238f, 0.7480809524f, 0.5033142857f, 1).ABGR(),
+				Color(0.4871238095f, 0.7490619048f, 0.4839761905f, 1).ABGR(),
+				Color(0.5300285714f, 0.7491142857f, 0.4661142857f, 1).ABGR(),
+				Color(0.5708571429f, 0.7485190476f, 0.4493904762f, 1).ABGR(),
+				Color(0.609852381f, 0.7473142857f, 0.4336857143f, 1).ABGR(),
+				Color(0.6473f, 0.7456f, 0.4188f, 1).ABGR(),
+				Color(0.6834190476f, 0.7434761905f, 0.4044333333f, 1).ABGR(),
+				Color(0.7184095238f, 0.7411333333f, 0.3904761905f, 1).ABGR(),
+				Color(0.7524857143f, 0.7384f, 0.3768142857f, 1).ABGR(),
+				Color(0.7858428571f, 0.7355666667f, 0.3632714286f, 1).ABGR(),
+				Color(0.8185047619f, 0.7327333333f, 0.3497904762f, 1).ABGR(),
+				Color(0.8506571429f, 0.7299f, 0.3360285714f, 1).ABGR(),
+				Color(0.8824333333f, 0.7274333333f, 0.3217f, 1).ABGR(),
+				Color(0.9139333333f, 0.7257857143f, 0.3062761905f, 1).ABGR(),
+				Color(0.9449571429f, 0.7261142857f, 0.2886428571f, 1).ABGR(),
+				Color(0.9738952381f, 0.7313952381f, 0.266647619f, 1).ABGR(),
+				Color(0.9937714286f, 0.7454571429f, 0.240347619f, 1).ABGR(),
+				Color(0.9990428571f, 0.7653142857f, 0.2164142857f, 1).ABGR(),
+				Color(0.9955333333f, 0.7860571429f, 0.196652381f, 1).ABGR(),
+				Color(0.988f, 0.8066f, 0.1793666667f, 1).ABGR(),
+				Color(0.9788571429f, 0.8271428571f, 0.1633142857f, 1).ABGR(),
+				Color(0.9697f, 0.8481380952f, 0.147452381f, 1).ABGR(),
+				Color(0.9625857143f, 0.8705142857f, 0.1309f, 1).ABGR(),
+				Color(0.9588714286f, 0.8949f, 0.1132428571f, 1).ABGR(),
+				Color(0.9598238095f, 0.9218333333f, 0.0948380952f, 1).ABGR(),
+				Color(0.9661f, 0.9514428571f, 0.0755333333f, 1).ABGR(),
+				Color(0.9763f, 0.9831f, 0.0538f, 1).ABGR()
+			};
+
+			ElementInitData init_data;
+			init_data.data = color_map;
+			init_data.row_pitch = sizeof(color_map);
+			init_data.slice_pitch = init_data.row_pitch * 1;
+			auto& rf = Context::Instance().RenderFactoryInstance();
+			TexturePtr color_map_tex = rf.MakeTexture2D(static_cast<uint32_t>(std::size(color_map)), 1, 1, 1, EF_ABGR8,
+				1, 0, EAH_GPU_Read | EAH_Immutable, init_data);
+			*(effect_->ParameterByName("color_map")) = color_map_tex;
 		}
 
-		virtual void DoBuildMeshInfo() override
+		void DoBuildMeshInfo(RenderModel const & model) override
 		{
+			KFL_UNUSED(model);
+
 			AABBox const & pos_bb = this->PosBound();
 			*(effect_->ParameterByName("pos_center")) = pos_bb.Center();
 			*(effect_->ParameterByName("pos_extent")) = pos_bb.HalfSize();
@@ -89,7 +178,7 @@ namespace
 			technique_ = techs_[type];
 		}
 
-		void IntegrateBRDFTex(TexturePtr const & tex)
+		void IntegratedBRDFTex(TexturePtr const & tex)
 		{
 			*(effect_->ParameterByName("integrated_brdf_tex")) = tex;
 		}
@@ -107,31 +196,10 @@ namespace
 		}
 
 	private:
-		array<RenderTechnique*, 5> techs_;
+		array<RenderTechnique*, 6> techs_;
 	};
 
-	class SphereObject : public SceneObjectHelper
-	{
-	public:
-		SphereObject(float4 const & diff, float4 const & spec, float glossiness)
-			: SceneObjectHelper(SOA_Cullable)
-		{
-			renderable_ = SyncLoadModel("sphere_high.meshml", EAH_GPU_Read | EAH_Immutable, CreateModelFactory<RenderModel>(), CreateMeshFactory<SphereRenderable>())->Subrenderable(0);
-			checked_pointer_cast<SphereRenderable>(renderable_)->Material(diff, spec, glossiness);
-		}
-
-		void RenderingType(int type)
-		{
-			checked_pointer_cast<SphereRenderable>(renderable_)->RenderingType(type);
-		}
-
-		void IntegrateBRDFTex(TexturePtr const & tex)
-		{
-			checked_pointer_cast<SphereRenderable>(renderable_)->IntegrateBRDFTex(tex);
-		}
-	};
-
-	float4 diff_parametes[] =
+	float4 const diff_parametes[] =
 	{
 		float4(0.0147f,  0.0332f,  0.064f,   1),
 		float4(0.0183f,  0.0657f,  0.0248f,  1),
@@ -235,7 +303,7 @@ namespace
 		float4(0.253f,   0.187f,   0.0263f,  1)
 	};
 
-	float4 spec_parameters[] = 
+	float4 const spec_parameters[] = 
 	{
 		float4(0.0016f,		0.00115f,	0.000709f,	1),
 		float4(0.00161f,	0.00121f,	0.000781f,	1),
@@ -339,7 +407,7 @@ namespace
 		float4(0.00376f,	0.00389f,	0.00213f,	1)
 	};
 
-	float glossiness_parametes[] =
+	float const glossiness_parametes[] =
 	{
 		1,
 		1,
@@ -446,11 +514,13 @@ namespace
 
 	enum
 	{
+		Zoom,
 		Exit,
 	};
 
 	InputActionDefine actions[] =
 	{
+		InputActionDefine(Zoom, MS_Z),
 		InputActionDefine(Exit, KS_Escape),
 	};
 
@@ -515,40 +585,180 @@ namespace
 		return rg / static_cast<float>(NUM_SAMPLES);
 	}
 
-	TexturePtr GenIntegrateBRDF()
+	void GenIntegratedBRDF(uint32_t width, uint32_t height, std::vector<float2>& integrate_brdf_f32)
 	{
-		uint32_t const WIDTH = 128;
-		uint32_t const HEIGHT = 128;
-
-		std::vector<uint8_t> integrate_brdf_gr(WIDTH * HEIGHT * 2, 0);
-		for (uint32_t y = 0; y < HEIGHT; ++ y)
+		integrate_brdf_f32.resize(width * height);
+		for (uint32_t y = 0; y < height; ++ y)
 		{
-			float shininess = Glossiness2Shininess((y + 0.5f) / HEIGHT);
-			for (uint32_t x = 0; x < WIDTH; ++ x)
+			float shininess = Glossiness2Shininess((y + 0.5f) / height);
+			for (uint32_t x = 0; x < width; ++ x)
 			{
-				float cos_theta = (x + 0.5f) / WIDTH;
+				float cos_theta = (x + 0.5f) / width;
 
-				float2 lut = IntegrateBRDFBP(shininess, cos_theta);
-				integrate_brdf_gr[(y * WIDTH + x) * 2 + 0]
+				integrate_brdf_f32[y * width + x] = IntegrateBRDFBP(shininess, cos_theta);
+			}
+		}
+	}
+
+	TexturePtr GenIntegratedBRDF(uint32_t width, uint32_t height)
+	{
+		std::vector<float2> integrate_brdf_f32(width * height);
+		GenIntegratedBRDF(width, height, integrate_brdf_f32);
+
+		std::vector<uint8_t> integrate_brdf_gr(width * height * 2);
+		for (uint32_t y = 0; y < height; ++ y)
+		{
+			for (uint32_t x = 0; x < width; ++ x)
+			{
+				float2 const lut = integrate_brdf_f32[y * width + x];
+				integrate_brdf_gr[(y * width + x) * 2 + 0]
 					= static_cast<uint8_t>(MathLib::clamp(static_cast<int>(lut.x() * 255 + 0.5f), 0, 255));
-				integrate_brdf_gr[(y * WIDTH + x) * 2 + 1]
+				integrate_brdf_gr[(y * width + x) * 2 + 1]
 					= static_cast<uint8_t>(MathLib::clamp(static_cast<int>(lut.y() * 100 * 255 + 0.5f), 0, 255));
 			}
 		}
 
-		std::vector<uint8_t> integrated_brdf_bc5(WIDTH * HEIGHT);
-		TexCompressionBC5 bc5_codec;
-		bc5_codec.EncodeMem(WIDTH, HEIGHT, &integrated_brdf_bc5[0], WIDTH * 4, WIDTH * HEIGHT,
-			&integrate_brdf_gr[0], WIDTH * 2, WIDTH * HEIGHT * 2, TCM_Quality);
+		ElementInitData init_data;
+		init_data.data = &integrate_brdf_gr[0];
+		init_data.row_pitch = width * 2;
+		init_data.slice_pitch = init_data.row_pitch * height;
+
+		TexturePtr ret = MakeSharedPtr<SoftwareTexture>(Texture::TT_2D, width, height, 1, 1, 1, EF_GR8, false);
+		ret->CreateHWResource(init_data, nullptr);
+
+		return ret;
+	}
+
+#ifdef CALC_FITTING_TABLE
+	void GenFittedBRDF(uint32_t width, uint32_t height, std::vector<float2>& fitted_brdf_f32,
+		ArrayRef<float4> r_factors, ArrayRef<float4> g_factors)
+	{
+		fitted_brdf_f32.resize(width * height);
+		for (uint32_t y = 0; y < height; ++ y)
+		{
+			float glossiness = (y + 0.5f) / height;
+			for (uint32_t x = 0; x < width; ++ x)
+			{
+				float n_dot_v = (x + 0.5f) / width;
+
+				float2 env_brdf;
+				float4 tmp = ((r_factors[0] * glossiness + r_factors[1]) * glossiness + r_factors[2]) * glossiness + r_factors[3];
+				env_brdf.x() = (((tmp.x() * n_dot_v + tmp.y()) * n_dot_v + tmp.z()) * n_dot_v) + tmp.w();
+				tmp = ((g_factors[0] * glossiness + g_factors[1]) * glossiness + g_factors[2]) * glossiness + g_factors[3];
+				env_brdf.y() = (((tmp.x() * n_dot_v + tmp.y()) * n_dot_v + tmp.z()) * n_dot_v) + tmp.w();
+
+				fitted_brdf_f32[y * width + x] = env_brdf;
+			}
+		}
+	}
+
+	void GenFittedBRDF(uint32_t width, uint32_t height, std::vector<float2>& fitted_brdf_f32)
+	{
+		std::array<float4, 4> const r_min_factors_base =
+		{
+			float4(3.221071959f, -4.037492752f, 2.019851685f, -0.3509000242f),
+			float4(-5.483835697f, 4.748570442f, -2.599167109f, 0.8398050666f),
+			float4(2.386495829f, 0.3970752358f, 0.1965616345f, -0.6608897448f),
+			float4(-0.2426506728f, 0.05738930777f, 0.318114996f, 0.1741847545f),
+		};
+		std::array<float4, 4> const g_min_factors_base =
+		{
+			float4(-0.645807467f, 1.143745551f, -0.578012509f, 0.069540519f),
+			float4(0.895991894f, -1.581523545f, 0.81029122f, -0.108531864f),
+			float4(-0.088478638f, 0.154233504f, -0.098784305f, 0.029798974f),
+			float4(0.001030646f, 0.008038982f, -0.016316089f, 0.007532373f),
+		};
+
+		GenFittedBRDF(width, height, fitted_brdf_f32,
+			ArrayRef<float4>(r_min_factors_base.data(), r_min_factors_base.size()),
+			ArrayRef<float4>(g_min_factors_base.data(), g_min_factors_base.size()));
+	}
+
+	TexturePtr GenFittedBRDF(uint32_t width, uint32_t height)
+	{
+		std::vector<float2> fitted_brdf_f32(width * height);
+		GenFittedBRDF(width, height, fitted_brdf_f32);
+
+		std::vector<uint8_t> fitted_brdf_gr(width * height * 2);
+		for (uint32_t y = 0; y < height; ++ y)
+		{
+			for (uint32_t x = 0; x < width; ++ x)
+			{
+				float2 const & env_brdf = fitted_brdf_f32[y * width + x];
+
+				fitted_brdf_gr[(y * width + x) * 2 + 0]
+					= static_cast<uint8_t>(MathLib::clamp(static_cast<int>(env_brdf.x() * 255 + 0.5f), 0, 255));
+				fitted_brdf_gr[(y * width + x) * 2 + 1]
+					= static_cast<uint8_t>(MathLib::clamp(static_cast<int>(env_brdf.y() * 100 * 255 + 0.5f), 0, 255));
+			}
+		}
 
 		ElementInitData init_data;
-		init_data.data = &integrated_brdf_bc5[0];
-		init_data.row_pitch = WIDTH * 4;
-		init_data.slice_pitch = WIDTH * HEIGHT;
-		
-		RenderFactory& rf = Context::Instance().RenderFactoryInstance(); 
-		return rf.MakeTexture2D(WIDTH, HEIGHT, 1, 1, EF_BC5, 1, 0, EAH_GPU_Read | EAH_Immutable, init_data);
+		init_data.data = &fitted_brdf_gr[0];
+		init_data.row_pitch = width * 2;
+		init_data.slice_pitch = init_data.row_pitch * height;
+
+		TexturePtr ret = MakeSharedPtr<SoftwareTexture>(Texture::TT_2D, width, height, 1, 1, 1, EF_GR8, false);
+		ret->CreateHWResource(init_data, nullptr);
+
+		return ret;
 	}
+
+	void CalcMse(std::vector<float2> const & ground_truth_table, std::vector<float2> const & test_table,
+		uint32_t width, uint32_t height, float2& mse, float2& min_diff, float2& max_diff)
+	{
+		mse = float2(0, 0);
+		min_diff = float2(1, 1);
+		max_diff = float2(-1, -1);
+		for (uint32_t y = 0; y < height; ++ y)
+		{
+			for (uint32_t x = 0; x < width; ++ x)
+			{
+				float2 const diff = ground_truth_table[y * width + x] - test_table[y * width + x];
+
+				min_diff.x() = std::min(min_diff.x(), diff.x());
+				max_diff.x() = std::max(max_diff.x(), diff.x());
+
+				min_diff.y() = std::min(min_diff.y(), diff.y());
+				max_diff.y() = std::max(max_diff.y(), diff.y());
+
+				mse.x() += diff.x() * diff.x();
+				mse.y() += diff.y() * diff.y();
+			}
+		}
+
+		mse /= (width * height);
+	}
+
+	void CalcMse(Texture& ground_truth_tex, Texture& test_tex, float2& mse, float2& min_diff, float2& max_diff)
+	{
+		uint32_t const width = ground_truth_tex.Width(0);
+		uint32_t const height = ground_truth_tex.Height(0);
+
+		Texture::Mapper ground_truth_mapper(ground_truth_tex, 0, 0, TMA_Read_Only, 0, 0, width, height);
+		Texture::Mapper test_mapper(test_tex, 0, 0, TMA_Read_Only, 0, 0, width, height);
+
+		uint8_t* ground_truth_ptr = ground_truth_mapper.Pointer<uint8_t>();
+		uint8_t* test_ptr = test_mapper.Pointer<uint8_t>();
+
+		std::vector<float2> ground_truth_table(width * height);
+		std::vector<float2> test_table(ground_truth_table.size());
+		for (uint32_t y = 0; y < height; ++ y)
+		{
+			for (uint32_t x = 0; x < width; ++ x)
+			{
+				ground_truth_table[y * width + x] = float2(ground_truth_ptr[y * ground_truth_mapper.RowPitch() + x * 2 + 0] / 255.0f,
+					ground_truth_ptr[y * ground_truth_mapper.RowPitch() + x * 2 + 1] / 100.0f / 255.0f);
+
+				test_table[y * width + x] = float2(test_ptr[y * test_mapper.RowPitch() + x * 2 + 0] / 255.0f,
+					test_ptr[y * test_mapper.RowPitch() + x * 2 + 1] / 100.0f / 255.0f);
+			}
+		}
+
+		CalcMse(ground_truth_table, test_table, width, height,
+			mse, min_diff, max_diff);
+	}
+#endif
 }
 
 
@@ -570,43 +780,175 @@ EnvLightingApp::EnvLightingApp()
 
 void EnvLightingApp::OnCreate()
 {
+	uint32_t const WIDTH = 128;
+	uint32_t const HEIGHT = 128;
+
 	font_ = SyncLoadFont("gkai00mp.kfont");
 
 	TexturePtr y_cube_map = ASyncLoadTexture("uffizi_cross_filtered_y.dds", EAH_GPU_Read | EAH_Immutable);
 	TexturePtr c_cube_map = ASyncLoadTexture("uffizi_cross_filtered_c.dds", EAH_GPU_Read | EAH_Immutable);
 	if (ResLoader::Instance().Locate("IntegratedBRDF.dds").empty())
 	{
-		SaveTexture(GenIntegrateBRDF(), "../../Samples/media/EnvLighting/IntegratedBRDF.dds");
+		SaveTexture(GenIntegratedBRDF(WIDTH, HEIGHT), "../../Samples/media/EnvLighting/IntegratedBRDF.dds");
 	}
-	integrate_brdf_tex_ = ASyncLoadTexture("IntegratedBRDF.dds", EAH_GPU_Read | EAH_Immutable);
+
+#ifdef CALC_FITTING_TABLE
+	{
+		uint32_t const width = 128;
+		uint32_t const height = 32;
+
+		std::vector<float2> integrated_brdf;
+		GenIntegratedBRDF(width, height, integrated_brdf);
+
+		std::vector<float2> fitted_brdf;
+		GenFittedBRDF(width, height, fitted_brdf);
+
+		std::ofstream ofs_x("IntegratedBRDF_128_32_x.csv");
+		std::ofstream ofs_y("IntegratedBRDF_128_32_y.csv");
+
+		ofs_x << std::setprecision(10);
+		ofs_y << std::setprecision(10);
+
+		for (uint32_t y = 0; y < height; ++ y)
+		{
+			for (uint32_t x = 0; x < width; ++ x)
+			{
+				float2 const lut = integrated_brdf[y * width + x];
+
+				ofs_x << lut.x() << ',';
+				ofs_y << lut.y() << ',';
+			}
+			ofs_x << endl;
+			ofs_y << endl;
+		}
+	}
+
+	{
+		auto ground_truth_tex = GenIntegratedBRDF(WIDTH, HEIGHT);
+
+		{
+			auto test_tex = GenFittedBRDF(WIDTH, HEIGHT);
+
+			float2 mse;
+			float2 min_diff;
+			float2 max_diff;
+			CalcMse(*ground_truth_tex, *test_tex, mse, min_diff, max_diff);
+
+			float2 psnr;
+			psnr.x() = 10 * -log10(mse.x());
+			psnr.y() = 10 * -log10(mse.y());
+
+			std::cout << "Fitted table" << std::endl;
+
+			std::cout << "Min: (" << min_diff.x() << ", " << min_diff.y() << ")" << std::endl;
+			std::cout << "Max: (" << max_diff.x() << ", " << max_diff.y() << ")" << std::endl;
+			std::cout << "MSE: (" << mse.x() << ", " << mse.y() << ")" << std::endl;
+			std::cout << "PSNR: (" << psnr.x() << ", " << psnr.y() << ")" << std::endl << std::endl;
+		}
+
+		uint2 const size_combinations[] = 
+		{
+			uint2(WIDTH, HEIGHT / 4),
+			uint2(WIDTH / 4, HEIGHT),
+			uint2(WIDTH / 4, HEIGHT / 4),
+			uint2(WIDTH, HEIGHT / 32),
+			uint2(WIDTH / 32, HEIGHT),
+			uint2(WIDTH / 32, HEIGHT / 32),
+		};
+		for (size_t i = 0; i < std::size(size_combinations); ++ i)
+		{
+			auto downsampled_tex = GenIntegratedBRDF(size_combinations[i].x(), size_combinations[i].y());
+
+			auto test_tex = MakeSharedPtr<SoftwareTexture>(Texture::TT_2D, WIDTH, HEIGHT, 1, 1, 1, EF_GR8, false);
+			test_tex->CreateHWResource({}, nullptr);
+			downsampled_tex->CopyToTexture(*test_tex);
+
+			float2 mse;
+			float2 min_diff;
+			float2 max_diff;
+			CalcMse(*ground_truth_tex, *test_tex, mse, min_diff, max_diff);
+
+			float2 psnr;
+			psnr.x() = 10 * -log10(mse.x());
+			psnr.y() = 10 * -log10(mse.y());
+
+			std::cout << "Downsampled (" << downsampled_tex->Width(0) << ", " << downsampled_tex->Height(0) << ") table" << std::endl;
+
+			std::cout << "Min: (" << min_diff.x() << ", " << min_diff.y() << ")" << std::endl;
+			std::cout << "Max: (" << max_diff.x() << ", " << max_diff.y() << ")" << std::endl;
+			std::cout << "MSE: (" << mse.x() << ", " << mse.y() << ")" << std::endl;
+			std::cout << "PSNR: (" << psnr.x() << ", " << psnr.y() << ")" << std::endl << std::endl;
+		}
+	}
+#endif
+
+	auto& rf = Context::Instance().RenderFactoryInstance();
+	auto const & caps = rf.RenderEngineInstance().DeviceCaps();
+	ElementFormat const fmt = caps.BestMatchTextureFormat({ EF_GR8, EF_ABGR8, EF_ARGB8 });
+	if (fmt == EF_GR8)
+	{
+		integrated_brdf_tex_ = ASyncLoadTexture("IntegratedBRDF.dds", EAH_GPU_Read | EAH_Immutable);
+	}
+	else
+	{
+		auto integrated_brdf_sw_tex = LoadSoftwareTexture("IntegratedBRDF.dds");
+
+		integrated_brdf_tex_ = rf.MakeTexture2D(integrated_brdf_sw_tex->Width(0), integrated_brdf_sw_tex->Height(0), 1, 1, fmt, 1, 0, EAH_GPU_Read);
+		integrated_brdf_sw_tex->CopyToTexture(*integrated_brdf_tex_);
+	}
 
 	AmbientLightSourcePtr ambient_light = MakeSharedPtr<AmbientLightSource>();
 	ambient_light->SkylightTex(y_cube_map, c_cube_map);
 	ambient_light->AddToSceneManager();
 
-	uint32_t spheres_row = 10;
-	uint32_t spheres_column = 10; 
-	spheres_.resize(spheres_row * spheres_column);
-	for (uint32_t i = 0; i < spheres_row; ++ i)
-	{
-		for (uint32_t j = 0; j < spheres_column; ++ j)
+	sphere_group_ = MakeSharedPtr<SceneNode>(SceneNode::SOA_Cullable);
+	Context::Instance().SceneManagerInstance().SceneRootNode().AddChild(sphere_group_);
+
+	sphere_group_->OnMainThreadUpdate().Connect([this](float app_time, float elapsed_time)
 		{
-			spheres_[i * spheres_column + j] = MakeSharedPtr<SphereObject>(diff_parametes[i * spheres_column + j],
-				spec_parameters[i * spheres_column + j], glossiness_parametes[i * spheres_column + j]);
-			spheres_[i * spheres_column + j]->ModelMatrix(MathLib::scaling(1.3f, 1.3f, 1.3f)
-				* MathLib::translation((-static_cast<float>(spheres_column / 2) + j + 0.5f) * 0.08f,
-										0.0f, 
-									   (-static_cast<float>(spheres_row / 2) + i + 0.5f) * 0.08f));
-			checked_pointer_cast<SphereObject>(spheres_[i * spheres_column + j])->IntegrateBRDFTex(integrate_brdf_tex_);
-			spheres_[i * spheres_column + j]->AddToSceneManager();
-		}
+			KFL_UNUSED(app_time);
+			KFL_UNUSED(elapsed_time);
+
+			auto& re = Context::Instance().RenderFactoryInstance().RenderEngineInstance();
+			auto const & camera = *re.CurFrameBuffer()->GetViewport()->camera;
+
+			sphere_group_->TransformToParent(MathLib::translation(0.0f, 0.0f, distance_) * camera.InverseViewMatrix());
+		});
+
+	auto sphere_model_unique = SyncLoadModel("sphere_high.glb", EAH_GPU_Read | EAH_Immutable,
+		SceneNode::SOA_Cullable, nullptr,
+		CreateModelFactory<RenderModel>, CreateMeshFactory<SphereRenderable>);
+
+	sphere_models_.resize(std::size(diff_parametes));
+	for (size_t i = 0; i < sphere_models_.size(); ++ i)
+	{
+		sphere_models_[i] = sphere_model_unique->Clone(CreateModelFactory<RenderModel>, CreateMeshFactory<SphereRenderable>);
+
+		uint32_t const spheres_row = 10;
+		uint32_t const spheres_column = 10;
+		size_t const y = i / spheres_column;
+		size_t const x = i - y * spheres_column;
+
+		sphere_models_[i]->RootNode()->TransformToParent(MathLib::translation(
+			(-static_cast<float>(spheres_column / 2) + x + 0.5f) * 0.06f,
+			-(-static_cast<float>(spheres_row / 2) + y + 0.5f) * 0.06f,
+			0.0f));
+
+		sphere_models_[i]->ForEachMesh([i, this](Renderable& mesh)
+			{
+				auto& sphere_mesh = *checked_cast<SphereRenderable*>(&mesh);
+				sphere_mesh.Material(diff_parametes[i], spec_parameters[i], glossiness_parametes[i]);
+				sphere_mesh.IntegratedBRDFTex(integrated_brdf_tex_);
+			});
+
+		sphere_group_->AddChild(sphere_models_[i]->RootNode());
 	}
 
-	sky_box_ = MakeSharedPtr<SceneObjectSkyBox>(0);
-	checked_pointer_cast<SceneObjectSkyBox>(sky_box_)->CompressedCubeMap(y_cube_map, c_cube_map);
-	sky_box_->AddToSceneManager();
+	sky_box_ = MakeSharedPtr<SceneNode>(MakeSharedPtr<RenderableSkyBox>(), SceneNode::SOA_NotCastShadow);
+	checked_pointer_cast<RenderableSkyBox>(sky_box_->GetRenderable())->CompressedCubeMap(y_cube_map, c_cube_map);
+	Context::Instance().SceneManagerInstance().SceneRootNode().AddChild(sky_box_);
 
-	this->LookAt(float3(0.0f, 0.2f, -0.6f), float3(0, 0, 0));
+	this->LookAt(float3(0.0f, 0.0f, -0.8f), float3(0, 0, 0));
 	this->Proj(0.05f, 100);
 
 	obj_controller_.AttachCamera(this->ActiveCamera());
@@ -617,7 +959,7 @@ void EnvLightingApp::OnCreate()
 	actionMap.AddActions(actions, actions + std::size(actions));
 
 	action_handler_t input_handler = MakeSharedPtr<input_signal>();
-	input_handler->connect(
+	input_handler->Connect(
 		[this](InputEngine const & sender, InputAction const & action)
 		{
 			this->InputHandler(sender, action);
@@ -629,7 +971,7 @@ void EnvLightingApp::OnCreate()
 	dialog_ = UIManager::Instance().GetDialog("Method");
 	id_type_combo_ = dialog_->IDFromName("TypeCombo");
 
-	dialog_->Control<UIComboBox>(id_type_combo_)->OnSelectionChangedEvent().connect(
+	dialog_->Control<UIComboBox>(id_type_combo_)->OnSelectionChangedEvent().Connect(
 		[this](UIComboBox const & sender)
 		{
 			this->TypeChangedHandler(sender);
@@ -648,6 +990,14 @@ void EnvLightingApp::InputHandler(InputEngine const & /*sender*/, InputAction co
 {
 	switch (action.first)
 	{
+	case Zoom:
+		{
+			auto const param = checked_pointer_cast<InputMouseActionParam>(action.second);
+			float const delta = -param->wheel_delta / 120.0f * 0.05f;
+			distance_ += delta;
+		}
+		break;
+
 	case Exit:
 		this->Quit();
 		break;
@@ -657,9 +1007,12 @@ void EnvLightingApp::InputHandler(InputEngine const & /*sender*/, InputAction co
 void EnvLightingApp::TypeChangedHandler(KlayGE::UIComboBox const & sender)
 {
 	rendering_type_ = sender.GetSelectedIndex();
-	for (size_t i = 0; i < spheres_.size(); ++ i)
+	for (size_t i = 0; i < sphere_models_.size(); ++ i)
 	{
-		checked_pointer_cast<SphereObject>(spheres_[i])->RenderingType(rendering_type_);
+		sphere_models_[i]->ForEachMesh([this](Renderable& mesh)
+			{
+				checked_cast<SphereRenderable*>(&mesh)->RenderingType(rendering_type_);
+			});
 	}
 }
 
@@ -678,7 +1031,7 @@ void EnvLightingApp::DoUpdateOverlay()
 uint32_t EnvLightingApp::DoUpdate(uint32_t /*pass*/)
 {
 	RenderEngine& re = Context::Instance().RenderFactoryInstance().RenderEngineInstance();
-	re.CurFrameBuffer()->Attached(FrameBuffer::ATT_DepthStencil)->ClearDepthStencil(1.0f, 0);
+	re.CurFrameBuffer()->AttachedDsv()->ClearDepthStencil(1.0f, 0);
 
 	return App3DFramework::URV_NeedFlush | App3DFramework::URV_Finished;
 }

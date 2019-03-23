@@ -169,8 +169,7 @@ namespace KlayGE
 		: fbo_blit_src_(0), fbo_blit_dst_(0),
 			clear_depth_(1), clear_stencil_(0), cur_program_(0),
 			vp_x_(0), vp_y_(0), vp_width_(0), vp_height_(0),
-			cur_fbo_(0),
-			gpu_disjoint_occurred_(false)
+			cur_fbo_(0)
 	{
 		native_shader_fourcc_ = MakeFourCC<'E', 'S', 'S', 'L'>::value;
 		native_shader_version_ = 3;
@@ -191,13 +190,6 @@ namespace KlayGE
 	{
 		static const std::wstring name(L"OpenGL ES Render Engine");
 		return name;
-	}
-
-	void OGLESRenderEngine::UpdateGPUTimestampsFrequency()
-	{
-		GLint disjoint_occurred = 0;
-		glGetIntegerv(GL_GPU_DISJOINT_EXT, &disjoint_occurred);
-		gpu_disjoint_occurred_ = disjoint_occurred ? true : false;
 	}
 
 	// ½¨Á¢äÖÈ¾´°¿Ú
@@ -257,15 +249,14 @@ namespace KlayGE
 		{
 			RenderFactory& rf = Context::Instance().RenderFactoryInstance();
 			win->Attach(FrameBuffer::ATT_DepthStencil,
-				rf.Make2DDepthStencilRenderView(win->Width(), win->Height(), settings.depth_stencil_fmt, 1, 0));
+				rf.Make2DDsv(win->Width(), win->Height(), settings.depth_stencil_fmt, 1, 0));
 		}
 #else
-		win->Attach(FrameBuffer::ATT_Color0,
-			MakeSharedPtr<OGLESScreenColorRenderView>(win->Width(), win->Height(), settings.color_fmt));
+		win->Attach(FrameBuffer::Attachment::Color0,
+			MakeSharedPtr<OGLESScreenRenderTargetView>(win->Width(), win->Height(), settings.color_fmt));
 		if (NumDepthBits(settings.depth_stencil_fmt) > 0)
 		{
-			win->Attach(FrameBuffer::ATT_DepthStencil,
-				MakeSharedPtr<OGLESScreenDepthStencilRenderView>(win->Width(), win->Height(), settings.depth_stencil_fmt));
+			win->Attach(MakeSharedPtr<OGLESScreenDepthStencilView>(win->Width(), win->Height(), settings.depth_stencil_fmt));
 		}
 #endif
 
@@ -1524,6 +1515,7 @@ namespace KlayGE
 		}
 		caps_.uavs_at_every_stage_support = false;	// TODO
 		caps_.rovs_support = false;	// TODO
+		caps_.flexible_srvs_support = false; // TODO
 
 		caps_.gs_support = glloader_GLES_VERSION_3_2() || glloader_GLES_OES_geometry_shader()
 			|| glloader_GLES_EXT_geometry_shader() || glloader_GLES_ANDROID_extension_pack_es31a();
@@ -1604,7 +1596,7 @@ namespace KlayGE
 				vertex_formats.push_back(EF_A2BGR10);
 			}
 
-			this->AssignCapVertexFormats(std::move(vertex_formats));
+			caps_.AssignVertexFormats(std::move(vertex_formats));
 		}
 		{
 			std::vector<ElementFormat> texture_formats =
@@ -1702,7 +1694,7 @@ namespace KlayGE
 					});
 			}
 
-			this->AssignCapTextureFormats(std::move(texture_formats));
+			caps_.AssignTextureFormats(std::move(texture_formats));
 		}
 		{
 			GLint max_samples;
@@ -1775,7 +1767,7 @@ namespace KlayGE
 					});
 			}
 
-			this->AssignCapRenderTargetFormats(std::move(render_target_formats));
+			caps_.AssignRenderTargetFormats(std::move(render_target_formats));
 		}
 	}
 }

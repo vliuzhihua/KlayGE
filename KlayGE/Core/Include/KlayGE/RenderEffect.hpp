@@ -128,24 +128,6 @@ namespace KlayGE
 		REDT_count
 	};
 
-	struct KLAYGE_CORE_API TextureSubresource
-	{
-		TexturePtr tex;
-		uint32_t first_array_index;
-		uint32_t num_items;
-		uint32_t first_level;
-		uint32_t num_levels;
-
-		TextureSubresource()
-		{
-		}
-
-		TextureSubresource(TexturePtr const & t, uint32_t fai, uint32_t ni, uint32_t fl, uint32_t nl)
-			: tex(t), first_array_index(fai), num_items(ni), first_level(fl), num_levels(nl)
-		{
-		}
-	};
-
 	class KLAYGE_CORE_API RenderVariable : boost::noncopyable
 	{
 	public:
@@ -169,9 +151,9 @@ namespace KlayGE
 		virtual RenderVariable& operator=(float4 const & value);
 		virtual RenderVariable& operator=(float4x4 const & value);
 		virtual RenderVariable& operator=(TexturePtr const & value);
-		virtual RenderVariable& operator=(TextureSubresource const & value);
+		virtual RenderVariable& operator=(ShaderResourceViewPtr const & value);
+		virtual RenderVariable& operator=(UnorderedAccessViewPtr const & value);
 		virtual RenderVariable& operator=(SamplerStateObjectPtr const & value);
-		virtual RenderVariable& operator=(GraphicsBufferPtr const & value);
 		virtual RenderVariable& operator=(std::string const & value);
 		virtual RenderVariable& operator=(ShaderDesc const & value);
 		virtual RenderVariable& operator=(std::vector<bool> const & value);
@@ -204,9 +186,9 @@ namespace KlayGE
 		virtual void Value(float4& val) const;
 		virtual void Value(float4x4& val) const;
 		virtual void Value(TexturePtr& val) const;
-		virtual void Value(TextureSubresource& val) const;
+		virtual void Value(ShaderResourceViewPtr& val) const;
+		virtual void Value(UnorderedAccessViewPtr& val) const;
 		virtual void Value(SamplerStateObjectPtr& val) const;
-		virtual void Value(GraphicsBufferPtr& value) const;
 		virtual void Value(std::string& val) const;
 		virtual void Value(ShaderDesc& val) const;
 		virtual void Value(std::vector<bool>& val) const;
@@ -434,7 +416,7 @@ namespace KlayGE
 
 				for (size_t i = 0; i < size_; ++ i)
 				{
-					memcpy(dst, src, sizeof(T));
+					*reinterpret_cast<T*>(dst) = *reinterpret_cast<T const *>(src);
 					src += src_cbuff_desc.stride;
 					dst += dst_cbuff_desc.stride;
 				}
@@ -460,7 +442,7 @@ namespace KlayGE
 				size_ = static_cast<uint32_t>(value.size());
 				for (size_t i = 0; i < value.size(); ++ i)
 				{
-					memcpy(dst, src, sizeof(T));
+					*reinterpret_cast<T*>(dst) = *reinterpret_cast<T const *>(src);
 					src += sizeof(T);
 					dst += cbuff_desc.stride;
 				}
@@ -482,13 +464,11 @@ namespace KlayGE
 				uint8_t const * src = cbuff_desc.cbuff->template VariableInBuff<uint8_t>(cbuff_desc.offset);
 
 				val.resize(size_);
-				uint8_t* dst = reinterpret_cast<uint8_t*>(val.data());
 
 				for (size_t i = 0; i < size_; ++ i)
 				{
-					memcpy(&val[i], src, sizeof(val[i]));
+					val[i] = *reinterpret_cast<T const *>(src);
 					src += cbuff_desc.stride;
-					dst += sizeof(T);
 				}
 			}
 			else
@@ -521,16 +501,34 @@ namespace KlayGE
 	public:
 		std::unique_ptr<RenderVariable> Clone() override;
 
-		virtual RenderVariable& operator=(TexturePtr const & value);
-		virtual RenderVariable& operator=(TextureSubresource const & value);
-		virtual RenderVariable& operator=(std::string const & value);
+		RenderVariable& operator=(TexturePtr const & value) override;
+		RenderVariable& operator=(ShaderResourceViewPtr const & value) override;
+		RenderVariable& operator=(std::string const & value) override;
 
-		virtual void Value(TexturePtr& val) const;
-		virtual void Value(TextureSubresource& val) const;
-		virtual void Value(std::string& val) const;
+		void Value(TexturePtr& val) const override;
+		void Value(ShaderResourceViewPtr& val) const override;
+		void Value(std::string& val) const override;
 
 	protected:
-		mutable TextureSubresource val_;
+		ShaderResourceViewPtr val_;
+		std::string elem_type_;
+	};
+
+	class RenderVariableRwTexture : public RenderVariable
+	{
+	public:
+		std::unique_ptr<RenderVariable> Clone() override;
+
+		virtual RenderVariable& operator=(TexturePtr const & value);
+		RenderVariable& operator=(UnorderedAccessViewPtr const & value) override;
+		RenderVariable& operator=(std::string const & value);
+
+		virtual void Value(TexturePtr& val) const;
+		void Value(UnorderedAccessViewPtr& val) const override;
+		void Value(std::string& val) const override;
+
+	protected:
+		UnorderedAccessViewPtr val_;
 		std::string elem_type_;
 	};
 
@@ -539,14 +537,30 @@ namespace KlayGE
 	public:
 		std::unique_ptr<RenderVariable> Clone() override;
 
-		virtual RenderVariable& operator=(GraphicsBufferPtr const & value);
-		virtual RenderVariable& operator=(std::string const & value);
+		RenderVariable& operator=(ShaderResourceViewPtr const & value) override;
+		RenderVariable& operator=(std::string const & value) override;
 
-		virtual void Value(GraphicsBufferPtr& val) const;
-		virtual void Value(std::string& val) const;
+		void Value(ShaderResourceViewPtr& val) const override;
+		void Value(std::string& val) const override;
 
 	protected:
-		GraphicsBufferPtr val_;
+		ShaderResourceViewPtr val_;
+		std::string elem_type_;
+	};
+
+	class RenderVariableRwBuffer : public RenderVariable
+	{
+	public:
+		std::unique_ptr<RenderVariable> Clone() override;
+
+		RenderVariable& operator=(UnorderedAccessViewPtr const & value) override;
+		RenderVariable& operator=(std::string const & value) override;
+
+		void Value(UnorderedAccessViewPtr& val) const override;
+		void Value(std::string& val) const override;
+
+	protected:
+		UnorderedAccessViewPtr val_;
 		std::string elem_type_;
 	};
 
@@ -555,15 +569,25 @@ namespace KlayGE
 	public:
 		std::unique_ptr<RenderVariable> Clone() override;
 
-		virtual RenderVariable& operator=(GraphicsBufferPtr const & value);
-		virtual RenderVariable& operator=(std::string const & value);
+		RenderVariable& operator=(ShaderResourceViewPtr const & value) override;
 
-		virtual void Value(GraphicsBufferPtr& val) const;
-		virtual void Value(std::string& val) const;
+		void Value(ShaderResourceViewPtr& val) const override;
 
 	protected:
-		GraphicsBufferPtr val_;
-		std::string elem_type_;
+		ShaderResourceViewPtr val_;
+	};
+
+	class RenderVariableRwByteAddressBuffer : public RenderVariable
+	{
+	public:
+		std::unique_ptr<RenderVariable> Clone() override;
+
+		RenderVariable& operator=(UnorderedAccessViewPtr const & value) override;
+
+		void Value(UnorderedAccessViewPtr& val) const override;
+
+	protected:
+		UnorderedAccessViewPtr val_;
 	};
 
 	typedef RenderVariableConcrete<bool> RenderVariableBool;
@@ -640,9 +664,9 @@ namespace KlayGE
 		void StreamOut(std::ostream& os) const;
 #endif
 
-		ShaderObject::ShaderType Type() const
+		ShaderStage Stage() const
 		{
-			return type_;
+			return stage_;
 		}
 
 		ShaderModel Version() const
@@ -656,7 +680,7 @@ namespace KlayGE
 		}
 
 	private:
-		ShaderObject::ShaderType type_;
+		ShaderStage stage_;
 		ShaderModel ver_;
 		std::string str_;
 	};
@@ -728,9 +752,17 @@ namespace KlayGE
 		friend class RenderEffectTemplate;
 
 	public:
-		void Load(ArrayRef<std::string> names);
+		void Open(ArrayRef<std::string> names);
+#if KLAYGE_IS_DEV_PLATFORM
+		void CompileShaders();
+#endif
+		void CreateHwShaders();
 
 		RenderEffectPtr Clone();
+		void CloneInPlace(RenderEffect& dst_effect);
+		void Reclone(RenderEffect& dst_effect);
+
+		bool HWResourceReady() const;
 
 		std::string const & ResName() const;
 		size_t ResNameHash() const;
@@ -790,12 +822,18 @@ namespace KlayGE
 		std::vector<std::unique_ptr<RenderEffectParameter>> params_;
 		std::vector<std::unique_ptr<RenderEffectConstantBuffer>> cbuffers_;
 		std::vector<ShaderObjectPtr> shader_objs_;
+
+		mutable bool hw_res_ready_ = false;
 	};
 
 	class KLAYGE_CORE_API RenderEffectTemplate : boost::noncopyable
 	{
 	public:
-		void Load(ArrayRef<std::string> names, RenderEffect& effect);
+		void Open(ArrayRef<std::string> names, RenderEffect& effect);
+#if KLAYGE_IS_DEV_PLATFORM
+		void CompileShaders(RenderEffect& effect);
+#endif
+		void CreateHwShaders(RenderEffect& effect);
 
 		bool StreamIn(ResIdentifierPtr const & source, RenderEffect& effect);
 #if KLAYGE_IS_DEV_PLATFORM
@@ -882,6 +920,9 @@ namespace KlayGE
 		size_t res_name_hash_;
 #if KLAYGE_IS_DEV_PLATFORM
 		uint64_t timestamp_;
+
+		std::string kfx_name_;
+		bool need_compile_;
 #endif
 
 		std::vector<std::unique_ptr<RenderTechnique>> techniques_;
@@ -901,8 +942,10 @@ namespace KlayGE
 	{
 	public:
 #if KLAYGE_IS_DEV_PLATFORM
-		void Load(RenderEffect& effect, XMLNodePtr const & node, uint32_t tech_index);
+		void Open(RenderEffect& effect, XMLNodePtr const & node, uint32_t tech_index);
+		void CompileShaders(RenderEffect& effect, uint32_t tech_index);
 #endif
+		void CreateHwShaders(RenderEffect& effect, uint32_t tech_index);
 
 		bool StreamIn(RenderEffect& effect, ResIdentifierPtr const & res, uint32_t tech_index);
 #if KLAYGE_IS_DEV_PLATFORM
@@ -953,6 +996,8 @@ namespace KlayGE
 			return is_validate_;
 		}
 
+		bool HWResourceReady(RenderEffect const& effect) const;
+
 		float Weight() const
 		{
 			return weight_;
@@ -992,10 +1037,11 @@ namespace KlayGE
 	{
 	public:
 #if KLAYGE_IS_DEV_PLATFORM
-		void Load(RenderEffect& effect, XMLNodePtr const & node, uint32_t tech_index, uint32_t pass_index,
-			RenderPass const * inherit_pass);
-		void Load(RenderEffect& effect, uint32_t tech_index, uint32_t pass_index, RenderPass const * inherit_pass);
+		void Open(RenderEffect& effect, XMLNodePtr const& node, uint32_t tech_index, uint32_t pass_index, RenderPass const* inherit_pass);
+		void Open(RenderEffect& effect, uint32_t tech_index, uint32_t pass_index, RenderPass const* inherit_pass);
+		void CompileShaders(RenderEffect& effect, uint32_t tech_index, uint32_t pass_index);
 #endif
+		void CreateHwShaders(RenderEffect& effect, uint32_t tech_index, uint32_t pass_index);
 
 		bool StreamIn(RenderEffect& effect, ResIdentifierPtr const & res, uint32_t tech_index, uint32_t pass_index);
 #if KLAYGE_IS_DEV_PLATFORM
@@ -1053,7 +1099,7 @@ namespace KlayGE
 		size_t name_hash_;
 		std::shared_ptr<std::vector<RenderEffectAnnotationPtr>> annotations_;
 		std::shared_ptr<std::vector<std::pair<std::string, std::string>>> macros_;
-		std::array<uint32_t, ShaderObject::ST_NumShaderTypes> shader_desc_ids_;
+		std::array<uint32_t, NumShaderStages> shader_desc_ids_;
 
 		RenderStateObjectPtr render_state_obj_;
 		uint32_t shader_obj_index_;
@@ -1079,6 +1125,7 @@ namespace KlayGE
 #endif
 
 		std::unique_ptr<RenderEffectConstantBuffer> Clone(RenderEffect& src_effect, RenderEffect& dst_effect);
+		void Reclone(RenderEffectConstantBuffer& dst_cbuffer, RenderEffect& src_effect, RenderEffect& dst_effect);
 
 		std::string const & Name() const
 		{
@@ -1261,9 +1308,9 @@ namespace KlayGE
 		RenderEffectConstantBuffer* cbuff_;
 	};
 
-	KLAYGE_CORE_API RenderEffectPtr SyncLoadRenderEffect(std::string const & effect_names);
+	KLAYGE_CORE_API RenderEffectPtr SyncLoadRenderEffect(std::string_view effect_names);
 	KLAYGE_CORE_API RenderEffectPtr SyncLoadRenderEffects(ArrayRef<std::string> effect_names);
-	KLAYGE_CORE_API RenderEffectPtr ASyncLoadRenderEffect(std::string const & effect_name);
+	KLAYGE_CORE_API RenderEffectPtr ASyncLoadRenderEffect(std::string_view effect_name);
 	KLAYGE_CORE_API RenderEffectPtr ASyncLoadRenderEffects(ArrayRef<std::string> effect_names);
 }
 

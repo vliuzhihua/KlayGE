@@ -7,15 +7,15 @@
 #include <KlayGE/InputFactory.hpp>
 #include <KlayGE/RenderEngine.hpp>
 #include <KlayGE/RenderEffect.hpp>
-#include <KlayGE/SceneObject.hpp>
-#include <KlayGE/SceneObjectHelper.hpp>
+#include <KlayGE/SceneNode.hpp>
+#include <KlayGE/SceneNodeHelper.hpp>
 #include <KlayGE/Camera.hpp>
 #include <KlayGE/Mesh.hpp>
 #include <KlayGE/PostProcess.hpp>
 #include <KlayGE/Light.hpp>
 #include <KlayGE/DeferredRenderingLayer.hpp>
 #include <KlayGE/UI.hpp>
-#include <KlayGE/RenderableHelper.hpp>
+#include <KlayGE/Renderable.hpp>
 #include <KlayGE/SceneManager.hpp>
 #include <KlayGE/Window.hpp>
 
@@ -33,15 +33,17 @@ namespace
 	class PlanetMesh : public StaticMesh
 	{
 	public:
-		PlanetMesh(RenderModelPtr const & model, std::wstring const & name)
-			: StaticMesh(model, name)
+		explicit PlanetMesh(std::wstring_view name)
+			: StaticMesh(name)
 		{
 			effect_ = SyncLoadRenderEffect("AtmosphericScattering.fxml");
 			technique_ = effect_->TechniqueByName("PlanetTech");
 		}
 
-		virtual void DoBuildMeshInfo() override
+		void DoBuildMeshInfo(RenderModel const & model) override
 		{
+			KFL_UNUSED(model);
+
 			AABBox const & pos_bb = this->PosBound();
 			*(effect_->ParameterByName("pos_center")) = pos_bb.Center();
 			*(effect_->ParameterByName("pos_extent")) = pos_bb.HalfSize();
@@ -87,15 +89,17 @@ namespace
 	class AtmosphereMesh : public StaticMesh
 	{
 	public:
-		AtmosphereMesh(RenderModelPtr const & model, std::wstring const & name)
-			: StaticMesh(model, name)
+		explicit AtmosphereMesh(std::wstring_view name)
+			: StaticMesh(name)
 		{
 			effect_ = SyncLoadRenderEffect("AtmosphericScattering.fxml");
 			technique_ = effect_->TechniqueByName("AtmosphereTech");
 		}
 
-		virtual void DoBuildMeshInfo() override
+		virtual void DoBuildMeshInfo(RenderModel const & model) override
 		{
+			KFL_UNUSED(model);
+
 			pos_aabb_.Min() *= 1.2f;
 			pos_aabb_.Max() *= 1.2f;
 
@@ -189,15 +193,13 @@ void AtmosphericScatteringApp::OnCreate()
 	light_controller_.AttachCamera(light_ctrl_camera_);
 	light_controller_.Scalers(0.003f, 0.003f);
 
-	RenderModelPtr model_planet = SyncLoadModel("geosphere.meshml", EAH_GPU_Read | EAH_Immutable,
-		CreateModelFactory<RenderModel>(), CreateMeshFactory<PlanetMesh>());
-	planet_ = MakeSharedPtr<SceneObjectHelper>(model_planet->Subrenderable(0), SceneObjectHelper::SOA_Cullable);
-	planet_->AddToSceneManager();
+	planet_model_ = SyncLoadModel("geosphere.glb", EAH_GPU_Read | EAH_Immutable,
+		SceneNode::SOA_Cullable, AddToSceneRootHelper,
+		CreateModelFactory<RenderModel>, CreateMeshFactory<PlanetMesh>);
 
-	RenderModelPtr model_atmosphere = SyncLoadModel("geosphere.meshml", EAH_GPU_Read | EAH_Immutable,
-		CreateModelFactory<RenderModel>(), CreateMeshFactory<AtmosphereMesh>());
-	atmosphere_ = MakeSharedPtr<SceneObjectHelper>(model_atmosphere->Subrenderable(0), SceneObjectHelper::SOA_Cullable);
-	atmosphere_->AddToSceneManager();
+	atmosphere_model_ = SyncLoadModel("geosphere.glb", EAH_GPU_Read | EAH_Immutable,
+		SceneNode::SOA_Cullable, AddToSceneRootHelper,
+		CreateModelFactory<RenderModel>, CreateMeshFactory<AtmosphereMesh>);
 
 	UIManager::Instance().Load(ResLoader::Instance().Open("AtmosphericScattering.uiml"));
 	dialog_param_ = UIManager::Instance().GetDialog("AtmosphericScattering");
@@ -206,26 +208,26 @@ void AtmosphericScatteringApp::OnCreate()
 	id_beta_button_ = dialog_param_->IDFromName("beta_button");
 	id_absorb_button_ = dialog_param_->IDFromName("absorb_button");
 
-	dialog_param_->Control<UISlider>(id_atmosphere_top_)->OnValueChangedEvent().connect(
+	dialog_param_->Control<UISlider>(id_atmosphere_top_)->OnValueChangedEvent().Connect(
 		[this](UISlider const & sender)
 		{
 			this->AtmosphereTopHandler(sender);
 		});
 	this->AtmosphereTopHandler(*(dialog_param_->Control<UISlider>(id_atmosphere_top_)));
 
-	dialog_param_->Control<UISlider>(id_density_)->OnValueChangedEvent().connect(
+	dialog_param_->Control<UISlider>(id_density_)->OnValueChangedEvent().Connect(
 		[this](UISlider const & sender)
 		{
 			this->DensityHandler(sender);
 		});
 	this->DensityHandler(*(dialog_param_->Control<UISlider>(id_density_)));
 
-	dialog_param_->Control<UITexButton>(id_beta_button_)->OnClickedEvent().connect(
+	dialog_param_->Control<UITexButton>(id_beta_button_)->OnClickedEvent().Connect(
 		[this](UITexButton const & sender)
 		{
 			this->ChangeBetaHandler(sender);
 		});
-	dialog_param_->Control<UITexButton>(id_absorb_button_)->OnClickedEvent().connect(
+	dialog_param_->Control<UITexButton>(id_absorb_button_)->OnClickedEvent().Connect(
 		[this](UITexButton const & sender)
 		{
 			this->ChangeAbsorbHandler(sender);
@@ -240,15 +242,14 @@ void AtmosphericScatteringApp::OnCreate()
 	sun_light_->AddToSceneManager();
 
 	sun_light_src_ = MakeSharedPtr<SceneObjectLightSourceProxy>(sun_light_);
-	checked_pointer_cast<SceneObjectLightSourceProxy>(sun_light_src_)->Scaling(0.1f, 0.1f, 0.1f);
-	//sun_light_src_->AddToSceneManager();
+	sun_light_src_->Scaling(0.1f, 0.1f, 0.1f);
 
 	InputEngine& inputEngine(Context::Instance().InputFactoryInstance().InputEngineInstance());
 	InputActionMap actionMap;
 	actionMap.AddActions(actions, actions + std::size(actions));
 
 	action_handler_t input_handler = MakeSharedPtr<input_signal>();
-	input_handler->connect(
+	input_handler->Connect(
 		[this](InputEngine const & sender, InputAction const & action)
 		{
 			this->InputHandler(sender, action);
@@ -267,8 +268,14 @@ void AtmosphericScatteringApp::LoadBeta(Color const & clr)
 {
 	RenderFactory& rf = Context::Instance().RenderFactoryInstance();
 
-	checked_pointer_cast<PlanetMesh>(planet_->GetRenderable())->Beta(clr);
-	checked_pointer_cast<AtmosphereMesh>(atmosphere_->GetRenderable())->Beta(clr);
+	planet_model_->ForEachMesh([clr](Renderable& renderable)
+		{
+			checked_cast<PlanetMesh*>(&renderable)->Beta(clr);
+		});
+	atmosphere_model_->ForEachMesh([clr](Renderable& renderable)
+		{
+			checked_cast<AtmosphereMesh*>(&renderable)->Beta(clr);
+		});
 
 	Color f4_clr = clr / 250.0f;
 
@@ -287,8 +294,14 @@ void AtmosphericScatteringApp::LoadAbsorb(Color const & clr)
 {
 	RenderFactory& rf = Context::Instance().RenderFactoryInstance();
 
-	checked_pointer_cast<PlanetMesh>(planet_->GetRenderable())->Absorb(clr);
-	checked_pointer_cast<AtmosphereMesh>(atmosphere_->GetRenderable())->Absorb(clr);
+	planet_model_->ForEachMesh([clr](Renderable& renderable)
+		{
+			checked_cast<PlanetMesh*>(&renderable)->Absorb(clr);
+		});
+	atmosphere_model_->ForEachMesh([clr](Renderable& renderable)
+		{
+			checked_cast<AtmosphereMesh*>(&renderable)->Absorb(clr);
+		});
 
 	auto const fmt = rf.RenderEngineInstance().DeviceCaps().BestMatchTextureFormat({ EF_ABGR8, EF_ARGB8 });
 	BOOST_ASSERT(fmt != EF_Unknown);
@@ -314,14 +327,23 @@ void AtmosphericScatteringApp::InputHandler(KlayGE::InputEngine const & /*sender
 void AtmosphericScatteringApp::AtmosphereTopHandler(KlayGE::UISlider const & sender)
 {
 	float value = 1 + sender.GetValue() / 1000.0f;
-	checked_pointer_cast<AtmosphereMesh>(atmosphere_->GetRenderable())->AtmosphereTop(value);
+	atmosphere_model_->ForEachMesh([value](Renderable& renderable)
+		{
+			checked_cast<AtmosphereMesh*>(&renderable)->AtmosphereTop(value);
+		});
 }
 
 void AtmosphericScatteringApp::DensityHandler(KlayGE::UISlider const & sender)
 {
 	float value = sender.GetValue() / 100000.0f;
-	checked_pointer_cast<PlanetMesh>(planet_->GetRenderable())->Density(value);
-	checked_pointer_cast<AtmosphereMesh>(atmosphere_->GetRenderable())->Density(value);
+	planet_model_->ForEachMesh([value](Renderable& renderable)
+		{
+			checked_cast<PlanetMesh*>(&renderable)->Density(value);
+		});
+	atmosphere_model_->ForEachMesh([value](Renderable& renderable)
+		{
+			checked_cast<AtmosphereMesh*>(&renderable)->Density(value);
+		});
 }
 
 void AtmosphericScatteringApp::ChangeBetaHandler(KlayGE::UITexButton const & /*sender*/)
@@ -405,8 +427,14 @@ uint32_t AtmosphericScatteringApp::DoUpdate(KlayGE::uint32_t /*pass*/)
 	RenderEngine& re = Context::Instance().RenderFactoryInstance().RenderEngineInstance();
 
 	sun_light_->Direction(light_ctrl_camera_.ForwardVec());
-	checked_pointer_cast<PlanetMesh>(planet_->GetRenderable())->LightDir(-sun_light_->Direction());
-	checked_pointer_cast<AtmosphereMesh>(atmosphere_->GetRenderable())->LightDir(-sun_light_->Direction());
+	planet_model_->ForEachMesh([this](Renderable& renderable)
+		{
+			checked_cast<PlanetMesh*>(&renderable)->LightDir(-sun_light_->Direction());
+		});
+	atmosphere_model_->ForEachMesh([this](Renderable& renderable)
+		{
+			checked_cast<AtmosphereMesh*>(&renderable)->LightDir(-sun_light_->Direction());
+		});
 
 	re.BindFrameBuffer(FrameBufferPtr());
 	Color clear_clr(0.0f, 0.0f, 0.0f, 1);

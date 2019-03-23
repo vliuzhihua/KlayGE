@@ -20,14 +20,14 @@
 #include <array>
 
 #include <KlayGE/RenderableHelper.hpp>
-#include <KlayGE/SceneObjectHelper.hpp>
+#include <KlayGE/SceneNodeHelper.hpp>
 
 namespace KlayGE
 {
-	class KLAYGE_CORE_API InfTerrainRenderable : public RenderableHelper
+	class KLAYGE_CORE_API InfTerrainRenderable : public Renderable
 	{
 	public:
-		InfTerrainRenderable(std::wstring const & name, uint32_t num_grids = 256, float stride = 1, float increate_rate = 1.012f);
+		InfTerrainRenderable(std::wstring_view name, uint32_t num_grids = 256, float stride = 1, float increate_rate = 1.012f);
 		virtual ~InfTerrainRenderable();
 
 		float2 const & XDir() const
@@ -50,13 +50,10 @@ namespace KlayGE
 		float2 x_dir_, y_dir_;
 	};
 
-	class KLAYGE_CORE_API InfTerrainSceneObject : public SceneObjectHelper
+	class KLAYGE_CORE_API InfTerrainSceneObject : public SceneNode
 	{
 	public:
 		InfTerrainSceneObject();
-		virtual ~InfTerrainSceneObject();
-
-		virtual bool MainThreadUpdate(float app_time, float elapsed_time) override;
 
 	protected:
 		float base_level_;
@@ -64,7 +61,7 @@ namespace KlayGE
 	};
 
 
-	class KLAYGE_CORE_API HQTerrainRenderable : public RenderableHelper
+	class KLAYGE_CORE_API HQTerrainRenderable : public Renderable
 	{
 		friend class HQTerrainSceneObject;
 
@@ -108,7 +105,7 @@ namespace KlayGE
 		//    ####################
 		//    ####################
 		//
-		class TileRing
+		class TileRing : boost::noncopyable
 		{
 		public:
 			// hole_width & outer_width are num of tiles
@@ -156,9 +153,6 @@ namespace KlayGE
 			int const hole_width_, outer_width_, ring_width_;
 			int const num_tiles_;
 			float const tile_size_;
-
-			TileRing(TileRing const & rhs);
-			TileRing& operator=(TileRing const & rhs);
 		};
 
 	public:
@@ -246,25 +240,10 @@ namespace KlayGE
 		TexturePtr mask_map_cpu_tex_;
 	};
 
-	class KLAYGE_CORE_API HQTerrainSceneObject : public SceneObjectHelper
+	class KLAYGE_CORE_API HQTerrainSceneObject : public SceneNode
 	{
 	public:
 		explicit HQTerrainSceneObject(RenderablePtr const & renderable);
-		virtual ~HQTerrainSceneObject();
-
-		virtual bool MainThreadUpdate(float app_time, float elapsed_time) override;
-
-		void Tessellation(bool tess);
-		void ShowPatches(bool sp);
-		void ShowTiles(bool st);
-		void Wireframe(bool wf);
-		void DetailNoiseScale(float scale);
-		void TessellatedTriSize(int size);
-
-		void TextureLayer(uint32_t layer, TexturePtr const & tex);
-		void TextureScale(uint32_t layer, float2 const & scale);
-
-		float GetHeight(float x, float z);
 
 	private:
 		bool reset_terrain_;

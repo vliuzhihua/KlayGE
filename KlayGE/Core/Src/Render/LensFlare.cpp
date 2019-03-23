@@ -25,12 +25,12 @@ namespace KlayGE
 	int const SUN_FLARENUM = 6;
 
 	LensFlareRenderable::LensFlareRenderable()
-		: RenderableHelper(L"LensFlare")
+		: Renderable(L"LensFlare")
 	{
 		RenderFactory& rf = Context::Instance().RenderFactoryInstance();
 
-		rl_ = rf.MakeRenderLayout();
-		rl_->TopologyType(RenderLayout::TT_TriangleList);
+		rls_[0] = rf.MakeRenderLayout();
+		rls_[0]->TopologyType(RenderLayout::TT_TriangleList);
 
 		std::vector<float3> vertices;
 		for (int i = 0; i < SUN_FLARENUM; ++ i)
@@ -43,7 +43,7 @@ namespace KlayGE
 
 		GraphicsBufferPtr pos_vb = rf.MakeVertexBuffer(BU_Static, EAH_GPU_Read | EAH_Immutable,
 			static_cast<uint32_t>(vertices.size() * sizeof(vertices[0])), &vertices[0]);
-		rl_->BindVertexStream(pos_vb, VertexElement(VEU_Position, 0, EF_BGR32F));
+		rls_[0]->BindVertexStream(pos_vb, VertexElement(VEU_Position, 0, EF_BGR32F));
 
 		std::vector<uint32_t> indices;
 		for (int i = 0; i < SUN_FLARENUM; ++ i)
@@ -59,7 +59,7 @@ namespace KlayGE
 
 		GraphicsBufferPtr ib = rf.MakeIndexBuffer(BU_Static, EAH_GPU_Read | EAH_Immutable,
 			static_cast<uint32_t>(indices.size() * sizeof(indices[0])), &indices[0]);
-		rl_->BindIndexStream(ib, EF_R32UI);
+		rls_[0]->BindIndexStream(ib, EF_R32UI);
 
 		effect_ = SyncLoadRenderEffect("LensFlare.fxml");
 		simple_forward_tech_ = effect_->TechniqueByName("LensFlare");
@@ -85,11 +85,17 @@ namespace KlayGE
 		*(effect_->ParameterByName("scale")) = static_cast<float>(re.CurFrameBuffer()->Width()) / re.CurFrameBuffer()->Height();
 	}
 
-	
+
 	LensFlareSceneObject::LensFlareSceneObject()
-		: SceneObjectHelper(0)
+		: SceneNode(MakeSharedPtr<LensFlareRenderable>(), 0)
 	{
-		renderable_ = MakeSharedPtr<LensFlareRenderable>();
+		this->OnMainThreadUpdate().Connect([this](float app_time, float elapsed_time)
+			{
+				KFL_UNUSED(app_time);
+				KFL_UNUSED(elapsed_time);
+
+				this->MainThreadUpdateFunc();
+			});
 	}
 
 	void LensFlareSceneObject::Direction(float3 const & dir)
@@ -102,7 +108,7 @@ namespace KlayGE
 		return dir_;
 	}
 
-	bool LensFlareSceneObject::MainThreadUpdate(float /*app_time*/, float /*elapsed_time*/)
+	void LensFlareSceneObject::MainThreadUpdateFunc()
 	{
 		float const FLARE_RENDERANGLE = 0.9f;
 		float const FLARE_SCALEAMOUNT = 0.2f;
@@ -121,7 +127,7 @@ namespace KlayGE
 		// update flare
 		if (angle > FLARE_RENDERANGLE)
 		{
-			lf_visible_ = true;
+			renderables_[0]->Enabled(true);
 
 			// get angle amount by current angle
 			float angle_amount = 1 - (1 - angle) / (1 - FLARE_RENDERANGLE);	// convert angle to percent 
@@ -153,21 +159,11 @@ namespace KlayGE
 				flare_param[flare] = float3(flare_pos.x(), flare_pos.y(), scale_fac);
 			}
 
-			checked_pointer_cast<LensFlareRenderable>(renderable_)->FlareParam(flare_param, alpha_fac);
+			checked_pointer_cast<LensFlareRenderable>(renderables_[0])->FlareParam(flare_param, alpha_fac);
 		}
 		else
 		{
-			lf_visible_ = false;
+			renderables_[0]->Enabled(false);
 		}
-
-		this->Visible(true);
-
-		return false;
-	}
-
-	void LensFlareSceneObject::Pass(PassType type)
-	{
-		SceneObjectHelper::Pass(type);
-		this->Visible(this->LFVisible());
 	}
 }

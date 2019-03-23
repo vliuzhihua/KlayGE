@@ -86,12 +86,12 @@ namespace KlayGE
 #else
 		wnd_ = main_wnd->GetWindow();
 #endif
-		on_exit_size_move_connect_ = main_wnd->OnExitSizeMove().connect(
+		on_exit_size_move_connect_ = main_wnd->OnExitSizeMove().Connect(
 			[this](Window const & win)
 			{
 				this->OnExitSizeMove(win);
 			});
-		on_size_connect_ = main_wnd->OnSize().connect(
+		on_size_connect_ = main_wnd->OnSize().Connect(
 			[this](Window const & win, bool active)
 			{
 				this->OnSize(win, active);
@@ -211,7 +211,7 @@ namespace KlayGE
 
 					d3d12_re.D3DDevice(d3d_device, d3d_cmd_queue, req_feature_levels.MaxSupportedFeatureLevel);
 
-					if (Context::Instance().AppInstance().ConfirmDevice())
+					if (Context::Instance().AppInstance().OnConfirmDevice()())
 					{
 						description_ = adapter_->Description() + L" FL ";
 						std::wstring_view fl_str;
@@ -369,8 +369,8 @@ namespace KlayGE
 
 	D3D12RenderWindow::~D3D12RenderWindow()
 	{
-		on_exit_size_move_connect_.disconnect();
-		on_size_connect_.disconnect();
+		on_exit_size_move_connect_.Disconnect();
+		on_size_connect_.Disconnect();
 
 		this->Destroy();
 	}
@@ -406,9 +406,9 @@ namespace KlayGE
 			cmd_list->ClearState(nullptr);
 		}
 
-		for (size_t i = 0; i < clr_views_.size(); ++ i)
+		for (size_t i = 0; i < rt_views_.size(); ++ i)
 		{
-			clr_views_[i].reset();
+			rt_views_[i].reset();
 		}
 		ds_view_.reset();
 
@@ -664,22 +664,22 @@ namespace KlayGE
 
 		for (size_t i = 0; i < render_targets_.size(); ++ i)
 		{
-			render_target_render_views_[i] = rf.Make2DRenderView(*render_targets_[i], 0, 1, 0);
+			render_target_render_views_[i] = rf.Make2DRtv(render_targets_[i], 0, 1, 0);
 		}
 		if (stereo)
 		{
 			for (size_t i = 0; i < render_targets_.size(); ++ i)
 			{
-				render_target_render_views_right_eye_[i] = rf.Make2DRenderView(*render_targets_[i], 1, 1, 0);
+				render_target_render_views_right_eye_[i] = rf.Make2DRtv(render_targets_[i], 1, 1, 0);
 			}
 		}
-		this->Attach(ATT_Color0, render_target_render_views_[0]);
+		this->Attach(Attachment::Color0, render_target_render_views_[0]);
 		if (depth_stencil_fmt_ != EF_Unknown)
 		{
-			this->Attach(ATT_DepthStencil, rf.Make2DDepthStencilRenderView(*depth_stencil_, 0, 1, 0));
+			this->Attach(rf.Make2DDsv(depth_stencil_, 0, 1, 0));
 			if (stereo)
 			{
-				this->Attach(ATT_DepthStencil, rf.Make2DDepthStencilRenderView(*depth_stencil_, 1, 1, 0));
+				this->Attach(rf.Make2DDsv(depth_stencil_, 1, 1, 0));
 			}
 		}
 	}
@@ -749,7 +749,7 @@ namespace KlayGE
 
 			curr_back_buffer_ = swap_chain_->GetCurrentBackBufferIndex();
 
-			this->Attach(ATT_Color0, render_target_render_views_[curr_back_buffer_]);
+			this->Attach(Attachment::Color0, render_target_render_views_[curr_back_buffer_]);
 		}
 	}
 

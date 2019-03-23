@@ -14,6 +14,7 @@
 //////////////////////////////////////////////////////////////////////////////////
 
 #include <KlayGE/KlayGE.hpp>
+#include <KFL/ErrorHandling.hpp>
 #include <KFL/Util.hpp>
 #include <KFL/Math.hpp>
 #include <KlayGE/RenderEngine.hpp>
@@ -111,25 +112,215 @@ namespace KlayGE
 		return ret;
 	}
 
-	GraphicsBufferPtr RenderFactory::MakeVertexBuffer(BufferUsage usage, uint32_t access_hint, uint32_t size_in_byte, void const * init_data, ElementFormat fmt)
+	GraphicsBufferPtr RenderFactory::MakeVertexBuffer(BufferUsage usage, uint32_t access_hint, uint32_t size_in_byte,
+		void const * init_data, uint32_t structure_byte_stride)
 	{
-		GraphicsBufferPtr ret = this->MakeDelayCreationVertexBuffer(usage, access_hint, size_in_byte, fmt);
+		GraphicsBufferPtr ret = this->MakeDelayCreationVertexBuffer(usage, access_hint, size_in_byte, structure_byte_stride);
 		ret->CreateHWResource(init_data);
 		return ret;
 	}
 
-	GraphicsBufferPtr RenderFactory::MakeIndexBuffer(BufferUsage usage, uint32_t access_hint, uint32_t size_in_byte, void const * init_data, ElementFormat fmt)
+	GraphicsBufferPtr RenderFactory::MakeIndexBuffer(BufferUsage usage, uint32_t access_hint, uint32_t size_in_byte,
+		void const * init_data, uint32_t structure_byte_stride)
 	{
-		GraphicsBufferPtr ret = this->MakeDelayCreationIndexBuffer(usage, access_hint, size_in_byte, fmt);
+		GraphicsBufferPtr ret = this->MakeDelayCreationIndexBuffer(usage, access_hint, size_in_byte, structure_byte_stride);
 		ret->CreateHWResource(init_data);
 		return ret;
 	}
 
-	GraphicsBufferPtr RenderFactory::MakeConstantBuffer(BufferUsage usage, uint32_t access_hint, uint32_t size_in_byte, void const * init_data, ElementFormat fmt)
+	GraphicsBufferPtr RenderFactory::MakeConstantBuffer(BufferUsage usage, uint32_t access_hint, uint32_t size_in_byte,
+		void const * init_data, uint32_t structure_byte_stride)
 	{
-		GraphicsBufferPtr ret = this->MakeDelayCreationConstantBuffer(usage, access_hint, size_in_byte, fmt);
+		GraphicsBufferPtr ret = this->MakeDelayCreationConstantBuffer(usage, access_hint, size_in_byte, structure_byte_stride);
 		ret->CreateHWResource(init_data);
 		return ret;
+	}
+
+	ShaderResourceViewPtr RenderFactory::MakeTextureSrv(TexturePtr const & texture, uint32_t first_array_index, uint32_t array_size,
+		uint32_t first_level, uint32_t num_levels)
+	{
+		return this->MakeTextureSrv(texture, texture->Format(), first_array_index, array_size, first_level, num_levels);
+	}
+
+	ShaderResourceViewPtr RenderFactory::MakeTextureSrv(TexturePtr const & texture)
+	{
+		return this->MakeTextureSrv(texture, texture->Format());
+	}
+
+	ShaderResourceViewPtr RenderFactory::MakeTextureSrv(TexturePtr const & texture, ElementFormat pf)
+	{
+		return this->MakeTextureSrv(texture, pf, 0, texture->ArraySize(), 0, texture->NumMipMaps());
+	}
+
+	ShaderResourceViewPtr RenderFactory::MakeBufferSrv(GraphicsBufferPtr const & gbuffer, ElementFormat pf)
+	{
+		return this->MakeBufferSrv(gbuffer, pf, 0, gbuffer->Size() / NumFormatBytes(pf));
+	}
+
+	RenderTargetViewPtr RenderFactory::Make1DRtv(TexturePtr const & texture, int first_array_index, int array_size, int level)
+	{
+		return this->Make1DRtv(texture, texture->Format(), first_array_index, array_size, level);
+	}
+
+	RenderTargetViewPtr RenderFactory::Make2DRtv(TexturePtr const & texture, int first_array_index, int array_size, int level)
+	{
+		return this->Make2DRtv(texture, texture->Format(), first_array_index, array_size, level);
+	}
+
+	RenderTargetViewPtr RenderFactory::Make2DRtv(TexturePtr const & texture, int array_index, Texture::CubeFaces face, int level)
+	{
+		return this->Make2DRtv(texture, texture->Format(), array_index, face, level);
+	}
+
+	RenderTargetViewPtr RenderFactory::Make2DRtv(TexturePtr const & texture, int array_index, uint32_t slice, int level)
+	{
+		return this->Make2DRtv(texture, texture->Format(), array_index, slice, level);
+	}
+
+	RenderTargetViewPtr RenderFactory::Make3DRtv(TexturePtr const & texture, int array_index, uint32_t first_slice, uint32_t num_slices,
+		int level)
+	{
+		return this->Make3DRtv(texture, texture->Format(), array_index, first_slice, num_slices, level);
+	}
+
+	RenderTargetViewPtr RenderFactory::MakeCubeRtv(TexturePtr const & texture, int array_index, int level)
+	{
+		return this->MakeCubeRtv(texture, texture->Format(), array_index, level);
+	}
+
+	RenderTargetViewPtr RenderFactory::MakeTextureRtv(TexturePtr const & texture, uint32_t level)
+	{
+		switch (texture->Type())
+		{
+		case Texture::TT_1D:
+			return this->Make1DRtv(texture, 0, static_cast<int>(texture->ArraySize()), level);
+
+		case Texture::TT_2D:
+			return this->Make2DRtv(texture, 0, static_cast<int>(texture->ArraySize()), level);
+
+		case Texture::TT_3D:
+			return this->Make3DRtv(texture, 0, 0, texture->Depth(0), level);
+
+		case Texture::TT_Cube:
+			return this->MakeCubeRtv(texture, 0, level);
+
+		default:
+			KFL_UNREACHABLE("Invalid texture type");
+		}
+	}
+
+	RenderTargetViewPtr RenderFactory::MakeBufferRtv(GraphicsBufferPtr const & gbuffer, ElementFormat pf)
+	{
+		return this->MakeBufferRtv(gbuffer, pf, 0, gbuffer->Size() / NumFormatBytes(pf));
+	}
+
+	DepthStencilViewPtr RenderFactory::Make1DDsv(TexturePtr const & texture, int first_array_index, int array_size, int level)
+	{
+		return this->Make1DDsv(texture, texture->Format(), first_array_index, array_size, level);
+	}
+
+	DepthStencilViewPtr RenderFactory::Make2DDsv(TexturePtr const & texture, int first_array_index, int array_size, int level)
+	{
+		return this->Make2DDsv(texture, texture->Format(), first_array_index, array_size, level);
+	}
+
+	DepthStencilViewPtr RenderFactory::Make2DDsv(TexturePtr const & texture, int array_index, Texture::CubeFaces face, int level)
+	{
+		return this->Make2DDsv(texture, texture->Format(), array_index, face, level);
+	}
+
+	DepthStencilViewPtr RenderFactory::Make2DDsv(TexturePtr const & texture, int array_index, uint32_t slice, int level)
+	{
+		return this->Make2DDsv(texture, texture->Format(), array_index, slice, level);
+	}
+
+	DepthStencilViewPtr RenderFactory::Make3DDsv(TexturePtr const & texture, int array_index, uint32_t first_slice, uint32_t num_slices,
+		int level)
+	{
+		return this->Make3DDsv(texture, texture->Format(), array_index, first_slice, num_slices, level);
+	}
+
+	DepthStencilViewPtr RenderFactory::MakeCubeDsv(TexturePtr const & texture, int array_index, int level)
+	{
+		return this->MakeCubeDsv(texture, texture->Format(), array_index, level);
+	}
+
+	DepthStencilViewPtr RenderFactory::MakeTextureDsv(TexturePtr const & texture, uint32_t level)
+	{
+		switch (texture->Type())
+		{
+		case Texture::TT_1D:
+			return this->Make1DDsv(texture, 0, static_cast<int>(texture->ArraySize()), level);
+
+		case Texture::TT_2D:
+			return this->Make2DDsv(texture, 0, static_cast<int>(texture->ArraySize()), level);
+
+		case Texture::TT_3D:
+			return this->Make3DDsv(texture, 0, 0, texture->Depth(0), level);
+
+		case Texture::TT_Cube:
+			return this->MakeCubeDsv(texture, 0, level);
+
+		default:
+			KFL_UNREACHABLE("Invalid texture type");
+		}
+	}
+
+	UnorderedAccessViewPtr RenderFactory::Make1DUav(TexturePtr const & texture, int first_array_index, int array_size, int level)
+	{
+		return this->Make1DUav(texture, texture->Format(), first_array_index, array_size, level);
+	}
+
+	UnorderedAccessViewPtr RenderFactory::Make2DUav(TexturePtr const & texture, int first_array_index, int array_size, int level)
+	{
+		return this->Make2DUav(texture, texture->Format(), first_array_index, array_size, level);
+	}
+
+	UnorderedAccessViewPtr RenderFactory::Make2DUav(TexturePtr const & texture, int array_index, Texture::CubeFaces face, int level)
+	{
+		return this->Make2DUav(texture, texture->Format(), array_index, face, level);
+	}
+
+	UnorderedAccessViewPtr RenderFactory::Make2DUav(TexturePtr const & texture, int array_index, uint32_t slice, int level)
+	{
+		return this->Make2DUav(texture, texture->Format(), array_index, slice, level);
+	}
+
+	UnorderedAccessViewPtr RenderFactory::Make3DUav(TexturePtr const & texture, int array_index, uint32_t first_slice, uint32_t num_slices,
+		int level)
+	{
+		return this->Make3DUav(texture, texture->Format(), array_index, first_slice, num_slices, level);
+	}
+
+	UnorderedAccessViewPtr RenderFactory::MakeCubeUav(TexturePtr const & texture, int array_index, int level)
+	{
+		return this->MakeCubeUav(texture, texture->Format(), array_index, level);
+	}
+
+	UnorderedAccessViewPtr RenderFactory::MakeTextureUav(TexturePtr const & texture, uint32_t level)
+	{
+		switch (texture->Type())
+		{
+		case Texture::TT_1D:
+			return this->Make1DUav(texture, 0, texture->ArraySize(), level);
+
+		case Texture::TT_2D:
+			return this->Make2DUav(texture, 0, texture->ArraySize(), level);
+
+		case Texture::TT_3D:
+			return this->Make3DUav(texture, 0, 0, texture->Depth(0), level);
+
+		case Texture::TT_Cube:
+			return this->MakeCubeUav(texture, 0, level);
+
+		default:
+			KFL_UNREACHABLE("Invalid texture type");
+		}
+	}
+
+	UnorderedAccessViewPtr RenderFactory::MakeBufferUav(GraphicsBufferPtr const & gbuffer, ElementFormat pf)
+	{
+		return this->MakeBufferUav(gbuffer, pf, 0, gbuffer->Size() / NumFormatBytes(pf));
 	}
 
 	RenderStateObjectPtr RenderFactory::MakeRenderStateObject(RasterizerStateDesc const & rs_desc, DepthStencilStateDesc const & dss_desc,

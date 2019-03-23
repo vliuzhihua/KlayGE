@@ -23,18 +23,11 @@
 #include <KFL/CXX17/string_view.hpp>
 #include <KFL/Timer.hpp>
 #include <KlayGE/Input.hpp>
+#include <KlayGE/Signal.hpp>
 
 #include <array>
+#include <map>
 
-#if defined(KLAYGE_COMPILER_CLANGC2)
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wunused-parameter" // Ignore unused parameter 'sp'
-#pragma clang diagnostic ignored "-Wunused-variable" // Ignore unused variable (mpl_assertion_in_line_xxx) in boost
-#endif
-#include <boost/signals2.hpp>
-#if defined(KLAYGE_COMPILER_CLANGC2)
-#pragma clang diagnostic pop
-#endif
 #include <KFL/CXX17/any.hpp>
 
 namespace KlayGE
@@ -757,7 +750,7 @@ namespace KlayGE
 		void SetText(std::wstring const & strText);
 
 	public:
-		typedef boost::signals2::signal<void(UIButton const & sender)> ClickedEvent;
+		typedef Signal::Signal<void(UIButton const & sender)> ClickedEvent;
 		ClickedEvent& OnClickedEvent()
 		{
 			return clicked_event_;
@@ -810,7 +803,7 @@ namespace KlayGE
 		void SetTexture(TexturePtr const & tex);
 
 	public:
-		typedef boost::signals2::signal<void(UITexButton const & sender)> ClickedEvent;
+		typedef Signal::Signal<void(UITexButton const& sender)> ClickedEvent;
 		ClickedEvent& OnClickedEvent()
 		{
 			return clicked_event_;
@@ -873,7 +866,7 @@ namespace KlayGE
 		void SetText(std::wstring const & strText);
 
 	public:
-		typedef boost::signals2::signal<void(UICheckBox const & sender)> ChangedEvent;
+		typedef Signal::Signal<void(UICheckBox const& sender)> ChangedEvent;
 		ChangedEvent& OnChangedEvent()
 		{
 			return changed_event_;
@@ -951,7 +944,7 @@ namespace KlayGE
 		void SetText(std::wstring const & strText);
 
 	public:
-		typedef boost::signals2::signal<void(UIRadioButton const & sender)> ChangedEvent;
+		typedef Signal::Signal<void(UIRadioButton const& sender)> ChangedEvent;
 		ChangedEvent& OnChangedEvent()
 		{
 			return changed_event_;
@@ -1026,7 +1019,7 @@ namespace KlayGE
 		void SetRange(int nMin, int nMax);
 
 	public:
-		typedef boost::signals2::signal<void(UISlider const & sender)> ValueChangedEvent;
+		typedef Signal::Signal<void(UISlider const& sender)> ValueChangedEvent;
 		ValueChangedEvent& OnValueChangedEvent()
 		{
 			return value_changed_event_;
@@ -1228,7 +1221,7 @@ namespace KlayGE
 		void SelectItem(int nNewIndex);
 
 	public:
-		typedef boost::signals2::signal<void(UIListBox const & sender)> SelectionEvent;
+		typedef Signal::Signal<void(UIListBox const& sender)> SelectionEvent;
 		SelectionEvent& OnSelectionEvent()
 		{
 			return selection_event_;
@@ -1355,7 +1348,7 @@ namespace KlayGE
 		}
 
 	public:
-		typedef boost::signals2::signal<void(UIComboBox const & sender)> SelectionChangedEvent;
+		typedef Signal::Signal<void(UIComboBox const& sender)> SelectionChangedEvent;
 		SelectionChangedEvent& OnSelectionChangedEvent()
 		{
 			return selection_changed_event_;
@@ -1515,7 +1508,7 @@ namespace KlayGE
 		}
 
 	public:
-		typedef boost::signals2::signal<void(UIEditBox const & sender)> EditBoxEvent;
+		typedef Signal::Signal<void(UIEditBox const& sender)> EditBoxEvent;
 		EditBoxEvent& OnChangedEvent()
 		{
 			return changed_event_;
@@ -1563,7 +1556,7 @@ namespace KlayGE
 		// Mouse-specific
 		bool mouse_drag_;       // True to indicate drag in progress
 
-		boost::signals2::connection on_char_connect_;
+		Signal::Connection on_char_connect_;
 
 		// Static
 		static bool hide_caret_;   // If true, we don't render the caret.

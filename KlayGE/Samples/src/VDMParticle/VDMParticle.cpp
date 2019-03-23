@@ -7,9 +7,9 @@
 #include <KlayGE/Font.hpp>
 #include <KlayGE/RenderMaterial.hpp>
 #include <KlayGE/Renderable.hpp>
-#include <KlayGE/RenderableHelper.hpp>
 #include <KlayGE/RenderEngine.hpp>
 #include <KlayGE/RenderEffect.hpp>
+#include <KlayGE/RenderView.hpp>
 #include <KlayGE/FrameBuffer.hpp>
 #include <KlayGE/SceneManager.hpp>
 #include <KlayGE/Context.hpp>
@@ -18,7 +18,7 @@
 #include <KlayGE/Mesh.hpp>
 #include <KlayGE/Mesh.hpp>
 #include <KlayGE/Texture.hpp>
-#include <KlayGE/SceneObjectHelper.hpp>
+#include <KlayGE/SceneNodeHelper.hpp>
 #include <KlayGE/PostProcess.hpp>
 #include <KlayGE/Light.hpp>
 #include <KlayGE/Camera.hpp>
@@ -41,16 +41,16 @@ namespace
 	class ForwardMesh : public StaticMesh
 	{
 	public:
-		ForwardMesh(RenderModelPtr const & model, std::wstring const & name)
-			: StaticMesh(model, name)
+		explicit ForwardMesh(std::wstring_view name)
+			: StaticMesh(name)
 		{
 			effect_ = SyncLoadRenderEffect("VDMParticle.fxml");
 			technique_ = effect_->TechniqueByName("Mesh");
 		}
 
-		void DoBuildMeshInfo() override
+		void DoBuildMeshInfo(RenderModel const & model) override
 		{
-			StaticMesh::DoBuildMeshInfo();
+			StaticMesh::DoBuildMeshInfo(model);
 
 			*(effect_->ParameterByName("albedo_tex")) = textures_[RenderMaterial::TS_Albedo];
 			*(effect_->ParameterByName("metalness_tex")) = textures_[RenderMaterial::TS_Metalness];
@@ -88,11 +88,12 @@ namespace
 			App3DFramework const & app = Context::Instance().AppInstance();
 
 			*(effect_->ParameterByName("mvp")) = model_mat_ * app.ActiveCamera().ViewProjMatrix();
-			*(effect_->ParameterByName("eye_pos")) = MathLib::transform_coord(app.ActiveCamera().EyePos(), inv_model_mat_);
+			*(effect_->ParameterByName("model")) = model_mat_;
+			*(effect_->ParameterByName("eye_pos")) = app.ActiveCamera().EyePos();
 
 			auto const & light_src = Context::Instance().SceneManagerInstance().GetLight(0);
 
-			*(effect_->ParameterByName("light_pos")) = MathLib::transform_coord(light_src->Position(), inv_model_mat_);
+			*(effect_->ParameterByName("light_pos")) = light_src->Position();
 			*(effect_->ParameterByName("light_color")) = light_src->Color();
 			*(effect_->ParameterByName("light_falloff")) = light_src->Falloff();
 		}
@@ -128,16 +129,16 @@ VDMParticleApp::VDMParticleApp()
 					particle_rendering_type_(PRT_FullRes)
 {
 	ResLoader::Instance().AddPath("../../Samples/media/VDMParticle");
-}
 
-bool VDMParticleApp::ConfirmDevice() const
-{
-	RenderDeviceCaps const & caps = Context::Instance().RenderFactoryInstance().RenderEngineInstance().DeviceCaps();
-	if ((caps.max_simultaneous_rts < 3) || !caps.depth_texture_support || caps.pack_to_rgba_required)
-	{
-		return false;
-	}
-	return true;
+	this->OnConfirmDevice().Connect([]
+		{
+			RenderDeviceCaps const & caps = Context::Instance().RenderFactoryInstance().RenderEngineInstance().DeviceCaps();
+			if ((caps.max_simultaneous_rts < 3) || !caps.depth_texture_support || caps.pack_to_rgba_required)
+			{
+				return false;
+			}
+			return true;
+		});
 }
 
 void VDMParticleApp::OnCreate()
@@ -145,21 +146,20 @@ void VDMParticleApp::OnCreate()
 	RenderFactory& rf = Context::Instance().RenderFactoryInstance();
 	RenderEngine& re = rf.RenderEngineInstance();
 
-	RenderablePtr robot_model = ASyncLoadModel("attack_droid.meshml", EAH_GPU_Read | EAH_Immutable,
-		CreateModelFactory<RenderModel>(), CreateMeshFactory<ForwardMesh>());
-	SceneObjectPtr robot = MakeSharedPtr<SceneObjectHelper>(robot_model, SceneObject::SOA_Cullable);
-	robot->ModelMatrix(MathLib::translation(0.0f, 0.0f, -2.0f));
-	scene_objs_.push_back(robot);
+	auto robot_model = ASyncLoadModel("attack_droid.glb", EAH_GPU_Read | EAH_Immutable,
+		SceneNode::SOA_Cullable,
+		[](RenderModel& model)
+		{
+			model.RootNode()->TransformToParent(model.RootNode()->TransformToParent() * MathLib::translation(0.0f, 0.0f, -2.0f));
+			AddToSceneRootHelper(model);
+		},
+		CreateModelFactory<RenderModel>, CreateMeshFactory<ForwardMesh>);
+	scene_objs_.push_back(robot_model->RootNode());
 
-	RenderablePtr room_model = ASyncLoadModel("sponza_crytek.meshml", EAH_GPU_Read | EAH_Immutable,
-		CreateModelFactory<RenderModel>(), CreateMeshFactory<ForwardMesh>());
-	SceneObjectPtr room = MakeSharedPtr<SceneObjectHelper>(room_model, SceneObject::SOA_Cullable);
-	scene_objs_.push_back(room);
-
-	for (auto& so : scene_objs_)
-	{
-		so->AddToSceneManager();
-	}
+	auto room_model = ASyncLoadModel("Sponza/sponza.glb", EAH_GPU_Read | EAH_Immutable,
+		SceneNode::SOA_Cullable, AddToSceneRootHelper,
+		CreateModelFactory<RenderModel>, CreateMeshFactory<ForwardMesh>);
+	scene_objs_.push_back(room_model->RootNode());
 
 	font_ = SyncLoadFont("gkai00mp.kfont");
 
@@ -179,10 +179,10 @@ void VDMParticleApp::OnCreate()
 	ps_ = SyncLoadParticleSystem(ResLoader::Instance().Locate("Fire.psml"));
 	ps_->Gravity(0.5f);
 	ps_->MediaDensity(0.5f);
-	ps_->AddToSceneManager();
+	Context::Instance().SceneManagerInstance().SceneRootNode().AddChild(ps_);
 
 	float const SCALE = 6;
-	ps_->ModelMatrix(MathLib::scaling(SCALE, SCALE, SCALE));
+	ps_->TransformToParent(MathLib::scaling(SCALE, SCALE, SCALE));
 	ps_->Emitter(0)->ModelMatrix(MathLib::translation(light_->Position() / SCALE));
 
 	scene_fb_ = rf.MakeFrameBuffer();
@@ -199,7 +199,7 @@ void VDMParticleApp::OnCreate()
 	actionMap.AddActions(actions, actions + std::size(actions));
 
 	action_handler_t input_handler = MakeSharedPtr<input_signal>();
-	input_handler->connect(
+	input_handler->Connect(
 		[this](InputEngine const & sender, InputAction const & action)
 		{
 			this->InputHandler(sender, action);
@@ -213,12 +213,12 @@ void VDMParticleApp::OnCreate()
 	id_particle_rendering_type_combo_ = dialog_->IDFromName("ParticleRenderingTypeCombo");
 	id_ctrl_camera_ = dialog_->IDFromName("CtrlCamera");
 
-	dialog_->Control<UIComboBox>(id_particle_rendering_type_combo_)->OnSelectionChangedEvent().connect(
+	dialog_->Control<UIComboBox>(id_particle_rendering_type_combo_)->OnSelectionChangedEvent().Connect(
 		[this](UIComboBox const & sender)
 		{
 			this->ParticleRenderingTypeChangedHandler(sender);
 		});
-	dialog_->Control<UICheckBox>(id_ctrl_camera_)->OnChangedEvent().connect(
+	dialog_->Control<UICheckBox>(id_ctrl_camera_)->OnChangedEvent().Connect(
 		[this](UICheckBox const & sender)
 		{
 			this->CtrlCameraHandler(sender);
@@ -268,8 +268,8 @@ void VDMParticleApp::OnResize(uint32_t width, uint32_t height)
 	depth_to_linear_pp_->InputPin(0, scene_ds_tex_);
 	depth_to_linear_pp_->OutputPin(0, scene_depth_tex_);
 
-	scene_fb_->Attach(FrameBuffer::ATT_Color0, rf.Make2DRenderView(*scene_tex_, 0, 1, 0));
-	scene_fb_->Attach(FrameBuffer::ATT_DepthStencil, rf.Make2DDepthStencilRenderView(*scene_ds_tex_, 0, 1, 0));
+	scene_fb_->Attach(FrameBuffer::Attachment::Color0, rf.Make2DRtv(scene_tex_, 0, 1, 0));
+	scene_fb_->Attach(rf.Make2DDsv(scene_ds_tex_, 0, 1, 0));
 
 	if (ps_)
 	{
@@ -285,25 +285,25 @@ void VDMParticleApp::OnResize(uint32_t width, uint32_t height)
 		{
 			low_res_color_texs_.push_back(rf.MakeTexture2D(w, h, 1, 1, fmt, 1, 0, EAH_GPU_Read | EAH_GPU_Write));
 			low_res_max_ds_texs_.push_back(rf.MakeTexture2D(w, h, 1, 1, EF_D24S8, 1, 0, EAH_GPU_Read | EAH_GPU_Write));
-			low_res_max_ds_views_.push_back(rf.Make2DDepthStencilRenderView(*low_res_max_ds_texs_.back(), 0, 1, 0));
+			low_res_max_ds_views_.push_back(rf.Make2DDsv(low_res_max_ds_texs_.back(), 0, 1, 0));
 			w /= 2;
 			h /= 2;
 		}
 	}
 
 	
-	half_res_fb_->Attach(FrameBuffer::ATT_Color0, rf.Make2DRenderView(*low_res_color_texs_[0], 0, 1, 0));
-	half_res_fb_->Attach(FrameBuffer::ATT_DepthStencil, low_res_max_ds_views_[0]);
+	half_res_fb_->Attach(FrameBuffer::Attachment::Color0, rf.Make2DRtv(low_res_color_texs_[0], 0, 1, 0));
+	half_res_fb_->Attach(low_res_max_ds_views_[0]);
 
-	quarter_res_fb_->Attach(FrameBuffer::ATT_Color0, rf.Make2DRenderView(*low_res_color_texs_[1], 0, 1, 0));
-	quarter_res_fb_->Attach(FrameBuffer::ATT_DepthStencil, low_res_max_ds_views_[1]);
+	quarter_res_fb_->Attach(FrameBuffer::Attachment::Color0, rf.Make2DRtv(low_res_color_texs_[1], 0, 1, 0));
+	quarter_res_fb_->Attach(low_res_max_ds_views_[1]);
 
 	vdm_transition_tex_ = rf.MakeTexture2D(width / 4, height / 4, 1, 1, EF_GR16F, 1, 0, EAH_GPU_Read | EAH_GPU_Write);
 	vdm_count_tex_ = rf.MakeTexture2D(width / 4, height / 4, 1, 1, EF_GR16F, 1, 0, EAH_GPU_Read | EAH_GPU_Write);
-	vdm_quarter_res_fb_->Attach(FrameBuffer::ATT_Color0, rf.Make2DRenderView(*low_res_color_texs_[1], 0, 1, 0));
-	vdm_quarter_res_fb_->Attach(FrameBuffer::ATT_Color1, rf.Make2DRenderView(*vdm_transition_tex_, 0, 1, 0));
-	vdm_quarter_res_fb_->Attach(FrameBuffer::ATT_Color2, rf.Make2DRenderView(*vdm_count_tex_, 0, 1, 0));
-	vdm_quarter_res_fb_->Attach(FrameBuffer::ATT_DepthStencil, low_res_max_ds_views_[1]);
+	vdm_quarter_res_fb_->Attach(FrameBuffer::Attachment::Color0, rf.Make2DRtv(low_res_color_texs_[1], 0, 1, 0));
+	vdm_quarter_res_fb_->Attach(FrameBuffer::Attachment::Color1, rf.Make2DRtv(vdm_transition_tex_, 0, 1, 0));
+	vdm_quarter_res_fb_->Attach(FrameBuffer::Attachment::Color2, rf.Make2DRtv(vdm_count_tex_, 0, 1, 0));
+	vdm_quarter_res_fb_->Attach(low_res_max_ds_views_[1]);
 
 	copy_pp_->InputPin(0, scene_tex_);
 	copy_to_depth_pp_->InputPin(0, scene_ds_tex_);
@@ -372,12 +372,9 @@ uint32_t VDMParticleApp::DoUpdate(uint32_t pass)
 	case 0:
 		{
 			re.BindFrameBuffer(scene_fb_);
-			re.CurFrameBuffer()->Attached(FrameBuffer::ATT_DepthStencil)->ClearDepthStencil(1, 0);
+			re.CurFrameBuffer()->AttachedDsv()->ClearDepthStencil(1, 0);
 
-			Camera const & camera = this->ActiveCamera();
-			float q = camera.FarPlane() / (camera.FarPlane() - camera.NearPlane());
-			float4 near_q_far(this->ActiveCamera().NearPlane() * q, q, camera.FarPlane(), 1 / camera.FarPlane());
-			depth_to_linear_pp_->SetParam(0, near_q_far);
+			depth_to_linear_pp_->SetParam(0, this->ActiveCamera().NearQFarParam());
 
 			Color clear_clr(0.2f, 0.4f, 0.6f, 1);
 			if (Context::Instance().Config().graphics_cfg.gamma)
@@ -430,7 +427,7 @@ uint32_t VDMParticleApp::DoUpdate(uint32_t pass)
 						static_cast<float>((h + 1) & ~1) / h));
 					depth_to_max_pp_->InputPin(0, input_tex);
 					depth_to_max_pp_->OutputPin(0, low_res_color_texs_[i]);
-					depth_to_max_pp_->OutputFrameBuffer()->Attach(FrameBuffer::ATT_DepthStencil, low_res_max_ds_views_[i]);
+					depth_to_max_pp_->OutputFrameBuffer()->Attach(low_res_max_ds_views_[i]);
 					depth_to_max_pp_->Apply();
 				}
 
@@ -438,19 +435,19 @@ uint32_t VDMParticleApp::DoUpdate(uint32_t pass)
 				{
 				case PRT_NaiveHalfRes:
 					re.BindFrameBuffer(half_res_fb_);
-					re.CurFrameBuffer()->Attached(FrameBuffer::ATT_Color0)->ClearColor(Color(0, 0, 0, 0));
+					re.CurFrameBuffer()->AttachedRtv(FrameBuffer::Attachment::Color0)->ClearColor(Color(0, 0, 0, 0));
 					break;
 
 				case PRT_NaiveQuarterRes:
 					re.BindFrameBuffer(quarter_res_fb_);
-					re.CurFrameBuffer()->Attached(FrameBuffer::ATT_Color0)->ClearColor(Color(0, 0, 0, 0));
+					re.CurFrameBuffer()->AttachedRtv(FrameBuffer::Attachment::Color0)->ClearColor(Color(0, 0, 0, 0));
 					break;
 
 				case PRT_VDMQuarterRes:
 					re.BindFrameBuffer(vdm_quarter_res_fb_);
-					re.CurFrameBuffer()->Attached(FrameBuffer::ATT_Color0)->ClearColor(Color(0, 0, 0, 0));
-					re.CurFrameBuffer()->Attached(FrameBuffer::ATT_Color1)->ClearColor(Color(0, 0, 0, 0));
-					re.CurFrameBuffer()->Attached(FrameBuffer::ATT_Color2)->ClearColor(Color(0, 0, 0, 0));
+					re.CurFrameBuffer()->AttachedRtv(FrameBuffer::Attachment::Color0)->ClearColor(Color(0, 0, 0, 0));
+					re.CurFrameBuffer()->AttachedRtv(FrameBuffer::Attachment::Color1)->ClearColor(Color(0, 0, 0, 0));
+					re.CurFrameBuffer()->AttachedRtv(FrameBuffer::Attachment::Color2)->ClearColor(Color(0, 0, 0, 0));
 					break;
 
 				default:
@@ -466,7 +463,7 @@ uint32_t VDMParticleApp::DoUpdate(uint32_t pass)
 		ps_->Visible(false);
 
 		re.BindFrameBuffer(FrameBufferPtr());
-		re.CurFrameBuffer()->Attached(FrameBuffer::ATT_DepthStencil)->ClearDepthStencil(1, 0);
+		re.CurFrameBuffer()->AttachedDsv()->ClearDepthStencil(1, 0);
 
 		copy_pp_->Apply();
 

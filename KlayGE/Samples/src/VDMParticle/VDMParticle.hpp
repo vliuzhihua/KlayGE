@@ -19,8 +19,6 @@ class VDMParticleApp : public KlayGE::App3DFramework
 public:
 	VDMParticleApp();
 
-	bool ConfirmDevice() const override;
-
 private:
 	void OnCreate();
 	void OnResize(KlayGE::uint32_t width, KlayGE::uint32_t height);
@@ -34,7 +32,7 @@ private:
 
 	KlayGE::FontPtr font_;
 	
-	std::vector<KlayGE::SceneObjectPtr> scene_objs_;
+	std::vector<KlayGE::SceneNodePtr> scene_objs_;
 	KlayGE::LightSourcePtr light_;
 
 	KlayGE::ParticleEmitterPtr particle_emitter_;
@@ -54,7 +52,7 @@ private:
 
 	std::vector<KlayGE::TexturePtr> low_res_color_texs_;
 	std::vector<KlayGE::TexturePtr> low_res_max_ds_texs_;
-	std::vector<KlayGE::RenderViewPtr> low_res_max_ds_views_;
+	std::vector<KlayGE::DepthStencilViewPtr> low_res_max_ds_views_;
 
 	KlayGE::FrameBufferPtr half_res_fb_;
 

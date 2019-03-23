@@ -36,11 +36,11 @@
 
 namespace KlayGE
 {
-	class KLAYGE_CORE_API PostProcess : public RenderableHelper
+	class KLAYGE_CORE_API PostProcess : public Renderable
 	{
 	public:
-		PostProcess(std::wstring const & name, bool volumetric);
-		PostProcess(std::wstring const & name, bool volumetric,
+		PostProcess(std::wstring_view name, bool volumetric);
+		PostProcess(std::wstring_view name, bool volumetric,
 			ArrayRef<std::string> param_names,
 			ArrayRef<std::string> input_pin_names,
 			ArrayRef<std::string> output_pin_names,
@@ -117,6 +117,7 @@ namespace KlayGE
 		virtual uint32_t InputPinByName(std::string_view name) const;
 		virtual std::string const & InputPinName(uint32_t index) const;
 		virtual void InputPin(uint32_t index, TexturePtr const & tex);
+		virtual void InputPin(uint32_t index, ShaderResourceViewPtr const & tex);
 		virtual TexturePtr const & InputPin(uint32_t index) const;
 
 		virtual uint32_t NumOutputPins() const;
@@ -176,7 +177,7 @@ namespace KlayGE
 		uint32_t cs_pixel_per_thread_y_;
 		uint32_t cs_pixel_per_thread_z_;
 
-		std::vector<std::pair<std::string, TexturePtr>> input_pins_;
+		std::vector<std::pair<std::string, ShaderResourceViewPtr>> input_pins_;
 		std::vector<std::pair<std::string, TexturePtr>> output_pins_;
 		uint32_t num_bind_output_;
 		std::vector<std::pair<std::string, RenderEffectParameter*>> params_;
@@ -191,8 +192,8 @@ namespace KlayGE
 		RenderEffectParameter* inv_width_height_ep_;
 	};
 
-	KLAYGE_CORE_API PostProcessPtr SyncLoadPostProcess(std::string const & ppml_name, std::string const & pp_name);
-	KLAYGE_CORE_API PostProcessPtr ASyncLoadPostProcess(std::string const & ppml_name, std::string const & pp_name);
+	KLAYGE_CORE_API PostProcessPtr SyncLoadPostProcess(std::string_view ppml_name, std::string_view pp_name);
+	KLAYGE_CORE_API PostProcessPtr ASyncLoadPostProcess(std::string_view ppml_name, std::string_view pp_name);
 
 
 	class KLAYGE_CORE_API PostProcessChain : public PostProcess

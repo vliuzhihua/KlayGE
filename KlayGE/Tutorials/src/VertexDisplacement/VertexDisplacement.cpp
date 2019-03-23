@@ -12,7 +12,7 @@
 #include <KlayGE/Context.hpp>
 #include <KlayGE/ResLoader.hpp>
 #include <KlayGE/RenderSettings.hpp>
-#include <KlayGE/SceneObjectHelper.hpp>
+#include <KlayGE/SceneNodeHelper.hpp>
 #include <KlayGE/UI.hpp>
 #include <KlayGE/Camera.hpp>
 
@@ -68,22 +68,6 @@ namespace
 		}
 	};
 
-	class FlagObject : public SceneObjectHelper
-	{
-	public:
-		FlagObject(int length_segs, int width_segs)
-			: SceneObjectHelper(SOA_Cullable)
-		{
-			renderable_ = MakeSharedPtr<FlagRenderable>(length_segs, width_segs);
-		}
-
-		virtual bool MainThreadUpdate(float app_time, float /*elapsed_time*/) override
-		{
-			checked_pointer_cast<FlagRenderable>(renderable_)->SetAngle(app_time / 0.4f);
-			return false;
-		}
-	};
-
 
 	enum
 	{
@@ -116,8 +100,14 @@ void VertexDisplacement::OnCreate()
 {
 	font_ = SyncLoadFont("gkai00mp.kfont");
 
-	flag_ = MakeSharedPtr<FlagObject>(8, 6);
-	flag_->AddToSceneManager();
+	flag_ = MakeSharedPtr<SceneNode>(MakeSharedPtr<FlagRenderable>(8, 6), SceneNode::SOA_Cullable);
+	flag_->OnMainThreadUpdate().Connect([this](float app_time, float elapsed_time)
+		{
+			KFL_UNUSED(elapsed_time);
+
+			checked_pointer_cast<FlagRenderable>(flag_->GetRenderable(0))->SetAngle(app_time / 0.4f);
+		});
+	Context::Instance().SceneManagerInstance().SceneRootNode().AddChild(flag_);
 
 	this->LookAt(float3(0, 0, -10), float3(0, 0, 0));
 	this->Proj(0.1f, 20.0f);
@@ -130,7 +120,7 @@ void VertexDisplacement::OnCreate()
 	actionMap.AddActions(actions, actions + std::size(actions));
 
 	action_handler_t input_handler = MakeSharedPtr<input_signal>();
-	input_handler->connect(
+	input_handler->Connect(
 		[this](InputEngine const & sender, InputAction const & action)
 		{
 			this->InputHandler(sender, action);

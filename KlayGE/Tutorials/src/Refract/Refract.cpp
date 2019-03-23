@@ -7,15 +7,16 @@
 #include <KlayGE/Renderable.hpp>
 #include <KlayGE/RenderEngine.hpp>
 #include <KlayGE/RenderEffect.hpp>
+#include <KlayGE/RenderView.hpp>
 #include <KlayGE/FrameBuffer.hpp>
 #include <KlayGE/SceneManager.hpp>
 #include <KlayGE/Context.hpp>
 #include <KlayGE/ResLoader.hpp>
 #include <KlayGE/Texture.hpp>
-#include <KlayGE/RenderableHelper.hpp>
 #include <KlayGE/RenderSettings.hpp>
 #include <KlayGE/Mesh.hpp>
-#include <KlayGE/SceneObjectHelper.hpp>
+#include <KlayGE/SceneNodeHelper.hpp>
+#include <KlayGE/SkyBox.hpp>
 #include <KlayGE/Camera.hpp>
 #include <KlayGE/UI.hpp>
 #include <KlayGE/PostProcess.hpp>
@@ -37,8 +38,8 @@ namespace
 	class RefractorRenderable : public StaticMesh
 	{
 	public:
-		RefractorRenderable(RenderModelPtr model, std::wstring const & /*name*/)
-			: StaticMesh(model, L"Refractor")
+		explicit RefractorRenderable(std::wstring_view name)
+			: StaticMesh(name)
 		{
 			effect_ = SyncLoadRenderEffect("Refract.fxml");
 			front_face_tech_ = effect_->TechniqueByName("Refract");
@@ -49,8 +50,10 @@ namespace
 			*(effect_->ParameterByName("eta_ratio")) = float3(1 / 1.1f, 1 / 1.11f, 1 / 1.12f);
 		}
 
-		virtual void DoBuildMeshInfo() override
+		void DoBuildMeshInfo(RenderModel const & model) override
 		{
+			KFL_UNUSED(model);
+
 			AABBox const & pos_bb = this->PosBound();
 			*(effect_->ParameterByName("pos_center")) = pos_bb.Center();
 			*(effect_->ParameterByName("pos_extent")) = pos_bb.HalfSize();
@@ -124,26 +127,6 @@ namespace
 		RenderTechnique* front_face_tech_;
 	};
 
-	class RefractorObject : public SceneObjectHelper
-	{
-	public:
-		RefractorObject(TexturePtr const & y_cube, TexturePtr const & c_cube)
-			: SceneObjectHelper(SOA_Cullable)
-		{
-			renderable_ = SyncLoadModel("teapot.meshml", EAH_GPU_Read | EAH_Immutable, CreateModelFactory<RenderModel>(), CreateMeshFactory<RefractorRenderable>())->Subrenderable(0);
-			checked_pointer_cast<RefractorRenderable>(renderable_)->CompressedCubeMap(y_cube, c_cube);
-		}
-
-		void BackFaceTexture(TexturePtr const & bf_tex)
-		{
-			checked_pointer_cast<RefractorRenderable>(renderable_)->BackFaceTexture(bf_tex);
-		}
-		void BackFaceDepthTexture(TexturePtr const & bf_tex)
-		{
-			checked_pointer_cast<RefractorRenderable>(renderable_)->BackFaceDepthTexture(bf_tex);
-		}
-	};
-
 	enum
 	{
 		Exit,
@@ -178,12 +161,18 @@ void Refract::OnCreate()
 	y_cube_map_ = SyncLoadTexture("uffizi_cross_filtered_y.dds", EAH_GPU_Read | EAH_Immutable);
 	c_cube_map_ = SyncLoadTexture("uffizi_cross_filtered_c.dds", EAH_GPU_Read | EAH_Immutable);
 
-	refractor_ = MakeSharedPtr<RefractorObject>(y_cube_map_, c_cube_map_);
-	refractor_->AddToSceneManager();
+	refractor_model_ = SyncLoadModel("teapot.glb", EAH_GPU_Read | EAH_Immutable,
+		SceneNode::SOA_Cullable, nullptr,
+		CreateModelFactory<RenderModel>, CreateMeshFactory<RefractorRenderable>);
 
-	sky_box_ = MakeSharedPtr<SceneObjectSkyBox>(0);
-	checked_pointer_cast<SceneObjectSkyBox>(sky_box_)->CompressedCubeMap(y_cube_map_, c_cube_map_);
-	sky_box_->AddToSceneManager();
+	refractor_ = MakeSharedPtr<SceneNode>(refractor_model_->Mesh(0), SceneNode::SOA_Cullable);
+	Context::Instance().SceneManagerInstance().SceneRootNode().AddChild(refractor_);
+
+	checked_pointer_cast<RefractorRenderable>(refractor_->GetRenderable())->CompressedCubeMap(y_cube_map_, c_cube_map_);
+
+	sky_box_ = MakeSharedPtr<SceneNode>(MakeSharedPtr<RenderableSkyBox>(), SceneNode::SOA_NotCastShadow);
+	checked_pointer_cast<RenderableSkyBox>(sky_box_->GetRenderable())->CompressedCubeMap(y_cube_map_, c_cube_map_);
+	Context::Instance().SceneManagerInstance().SceneRootNode().AddChild(sky_box_);
 
 	RenderFactory& rf = Context::Instance().RenderFactoryInstance();
 	RenderEngine& re = rf.RenderEngineInstance();
@@ -199,7 +188,7 @@ void Refract::OnCreate()
 	actionMap.AddActions(actions, actions + std::size(actions));
 
 	action_handler_t input_handler = MakeSharedPtr<input_signal>();
-	input_handler->connect(
+	input_handler->Connect(
 		[this](InputEngine const & sender, InputAction const & action)
 		{
 			this->InputHandler(sender, action);
@@ -228,17 +217,17 @@ void Refract::OnResize(uint32_t width, uint32_t height)
 	ContextCfg const & cfg = Context::Instance().Config();
 	RenderDeviceCaps const & caps = rf.RenderEngineInstance().DeviceCaps();
 
-	RenderViewPtr backface_ds_view;
+	DepthStencilViewPtr backface_ds_view;
 	if (depth_texture_support_)
 	{
 		auto const ds_fmt = caps.BestMatchTextureRenderTargetFormat({ cfg.graphics_cfg.depth_stencil_fmt, EF_D16 }, 1, 0);
 		BOOST_ASSERT(ds_fmt != EF_Unknown);
 		backface_ds_tex_ = rf.MakeTexture2D(width, height, 1, 1, ds_fmt, 1, 0, EAH_GPU_Read | EAH_GPU_Write);
-		backface_ds_view = rf.Make2DDepthStencilRenderView(*backface_ds_tex_, 0, 1, 0);
+		backface_ds_view = rf.Make2DDsv(backface_ds_tex_, 0, 1, 0);
 	}
 	else
 	{
-		backface_ds_view = rf.Make2DDepthStencilRenderView(width, height, EF_D16, 1, 0);
+		backface_ds_view = rf.Make2DDsv(width, height, EF_D16, 1, 0);
 	}
 
 	auto const depth_fmt = caps.BestMatchTextureRenderTargetFormat(
@@ -250,8 +239,8 @@ void Refract::OnResize(uint32_t width, uint32_t height)
 	BOOST_ASSERT(normal_fmt != EF_Unknown);
 	backface_tex_ = rf.MakeTexture2D(width, height, 1, 1, normal_fmt, 1, 0, EAH_GPU_Read | EAH_GPU_Write);
 
-	backface_buffer_->Attach(FrameBuffer::ATT_Color0, rf.Make2DRenderView(*backface_tex_, 0, 1, 0));
-	backface_buffer_->Attach(FrameBuffer::ATT_DepthStencil, backface_ds_view);
+	backface_buffer_->Attach(FrameBuffer::Attachment::Color0, rf.Make2DRtv(backface_tex_, 0, 1, 0));
+	backface_buffer_->Attach(backface_ds_view);
 
 	if (depth_texture_support_)
 	{
@@ -261,8 +250,8 @@ void Refract::OnResize(uint32_t width, uint32_t height)
 	}
 	else
 	{
-		backface_depth_buffer_->Attach(FrameBuffer::ATT_Color0, rf.Make2DRenderView(*backface_depth_tex_, 0, 1, 0));
-		backface_depth_buffer_->Attach(FrameBuffer::ATT_DepthStencil, backface_ds_view);
+		backface_depth_buffer_->Attach(FrameBuffer::Attachment::Color0, rf.Make2DRtv(backface_depth_tex_, 0, 1, 0));
+		backface_depth_buffer_->Attach(backface_ds_view);
 	}
 
 	UIManager::Instance().SettleCtrls();
@@ -301,9 +290,9 @@ uint32_t Refract::DoUpdate(uint32_t pass)
 		{
 			// Pass 0: Render backface's normal and depth
 			re.BindFrameBuffer(backface_buffer_);
-			re.CurFrameBuffer()->Attached(FrameBuffer::ATT_DepthStencil)->ClearDepth(0.0f);
+			re.CurFrameBuffer()->AttachedDsv()->ClearDepth(0.0f);
 
-			checked_pointer_cast<RefractorObject>(refractor_)->Pass(PT_TransparencyBackGBufferMRT);
+			checked_pointer_cast<RefractorRenderable>(refractor_->GetRenderable())->Pass(PT_TransparencyBackGBufferMRT);
 			sky_box_->Visible(false);
 			return App3DFramework::URV_NeedFlush;
 		}
@@ -311,9 +300,9 @@ uint32_t Refract::DoUpdate(uint32_t pass)
 		{
 			// Pass 0: Render backface's depth
 			re.BindFrameBuffer(backface_depth_buffer_);
-			re.CurFrameBuffer()->Attached(FrameBuffer::ATT_DepthStencil)->ClearDepth(0.0f);
+			re.CurFrameBuffer()->AttachedDsv()->ClearDepth(0.0f);
 
-			checked_pointer_cast<RefractorObject>(refractor_)->Pass(PT_GenShadowMap);
+			checked_pointer_cast<RefractorRenderable>(refractor_->GetRenderable())->Pass(PT_GenShadowMap);
 			sky_box_->Visible(false);
 			return App3DFramework::URV_NeedFlush;
 		}
@@ -321,19 +310,16 @@ uint32_t Refract::DoUpdate(uint32_t pass)
 	case 1:
 		if (depth_texture_support_)
 		{
-			Camera& camera = this->ActiveCamera();
-			float q = camera.FarPlane() / (camera.FarPlane() - camera.NearPlane());
-			float4 near_q_far(camera.NearPlane() * q, q, camera.FarPlane(), 1 / camera.FarPlane());
-			depth_to_linear_pp_->SetParam(0, near_q_far);
+			depth_to_linear_pp_->SetParam(0, this->ActiveCamera().NearQFarParam());
 			depth_to_linear_pp_->Apply();
 		
 			// Pass 1: Render front face
 			re.BindFrameBuffer(FrameBufferPtr());
-			re.CurFrameBuffer()->Attached(FrameBuffer::ATT_DepthStencil)->ClearDepth(1.0f);
+			re.CurFrameBuffer()->AttachedDsv()->ClearDepth(1.0f);
 
-			checked_pointer_cast<RefractorObject>(refractor_)->Pass(PT_TransparencyFrontShading);
-			checked_pointer_cast<RefractorObject>(refractor_)->BackFaceTexture(backface_tex_);
-			checked_pointer_cast<RefractorObject>(refractor_)->BackFaceDepthTexture(backface_depth_tex_);
+			checked_pointer_cast<RefractorRenderable>(refractor_->GetRenderable())->Pass(PT_TransparencyFrontShading);
+			checked_pointer_cast<RefractorRenderable>(refractor_->GetRenderable())->BackFaceTexture(backface_tex_);
+			checked_pointer_cast<RefractorRenderable>(refractor_->GetRenderable())->BackFaceDepthTexture(backface_depth_tex_);
 
 			sky_box_->Visible(true);
 			return App3DFramework::URV_NeedFlush | App3DFramework::URV_Finished;
@@ -343,7 +329,7 @@ uint32_t Refract::DoUpdate(uint32_t pass)
 			// Pass 1: Render backface's normal and depth
 			re.BindFrameBuffer(backface_buffer_);
 
-			checked_pointer_cast<RefractorObject>(refractor_)->Pass(PT_TransparencyBackGBufferMRT);
+			checked_pointer_cast<RefractorRenderable>(refractor_->GetRenderable())->Pass(PT_TransparencyBackGBufferMRT);
 			sky_box_->Visible(false);
 			return App3DFramework::URV_NeedFlush;
 		}
@@ -353,11 +339,11 @@ uint32_t Refract::DoUpdate(uint32_t pass)
 		
 		// Pass 2: Render front face
 		re.BindFrameBuffer(FrameBufferPtr());
-		re.CurFrameBuffer()->Attached(FrameBuffer::ATT_DepthStencil)->ClearDepth(1.0f);
+		re.CurFrameBuffer()->AttachedDsv()->ClearDepth(1.0f);
 
-		checked_pointer_cast<RefractorObject>(refractor_)->Pass(PT_TransparencyFrontShading);
-		checked_pointer_cast<RefractorObject>(refractor_)->BackFaceTexture(backface_tex_);
-		checked_pointer_cast<RefractorObject>(refractor_)->BackFaceDepthTexture(backface_depth_tex_);
+		checked_pointer_cast<RefractorRenderable>(refractor_->GetRenderable())->Pass(PT_TransparencyFrontShading);
+		checked_pointer_cast<RefractorRenderable>(refractor_->GetRenderable())->BackFaceTexture(backface_tex_);
+		checked_pointer_cast<RefractorRenderable>(refractor_->GetRenderable())->BackFaceDepthTexture(backface_depth_tex_);
 
 		sky_box_->Visible(true);
 		return App3DFramework::URV_NeedFlush | App3DFramework::URV_Finished;

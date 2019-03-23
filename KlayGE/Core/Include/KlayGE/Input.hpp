@@ -37,28 +37,15 @@
 
 #include <KFL/Vector.hpp>
 #include <KFL/Timer.hpp>
+#include <KlayGE/Signal.hpp>
 
 #if defined(KLAYGE_COMPILER_GCC)
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wstrict-aliasing" // Ignore aliasing in flat_tree.hpp
-#elif defined(KLAYGE_COMPILER_CLANGC2)
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wunused-parameter" // Ignore unused parameter in boost
 #endif
 #include <boost/container/flat_map.hpp>
 #if defined(KLAYGE_COMPILER_GCC)
 #pragma GCC diagnostic pop
-#elif defined(KLAYGE_COMPILER_CLANGC2)
-#pragma clang diagnostic pop
-#endif
-#if defined(KLAYGE_COMPILER_CLANGC2)
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wunused-parameter" // Ignore unused parameter in boost
-#pragma clang diagnostic ignored "-Wunused-variable" // Ignore unused variable (mpl_assertion_in_line_xxx) in boost
-#endif
-#include <boost/signals2.hpp>
-#if defined(KLAYGE_COMPILER_CLANGC2)
-#pragma clang diagnostic pop
 #endif
 
 #include <vector>
@@ -373,7 +360,7 @@ namespace KlayGE
 		boost::container::flat_map<uint16_t, uint16_t> actionMap_;
 	};
 
-	typedef boost::signals2::signal<void(InputEngine const & sender, InputAction const & action)> input_signal;
+	typedef Signal::Signal<void(InputEngine const& sender, InputAction const& action)> input_signal;
 	typedef std::shared_ptr<input_signal> action_handler_t;
 	typedef boost::container::flat_map<uint32_t, InputActionMap> action_maps_t;
 

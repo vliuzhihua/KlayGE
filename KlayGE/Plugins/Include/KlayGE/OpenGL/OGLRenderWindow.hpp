@@ -19,17 +19,8 @@
 #pragma once
 
 #include <KlayGE/PreDeclare.hpp>
+#include <KlayGE/Signal.hpp>
 #include <KlayGE/OpenGL/OGLFrameBuffer.hpp>
-
-#if defined(KLAYGE_COMPILER_CLANGC2)
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wunused-parameter" // Ignore unused parameter 'sp'
-#pragma clang diagnostic ignored "-Wunused-variable" // Ignore unused variable (mpl_assertion_in_line_xxx) in boost
-#endif
-#include <boost/signals2.hpp>
-#if defined(KLAYGE_COMPILER_CLANGC2)
-#pragma clang diagnostic pop
-#endif
 
 namespace KlayGE
 {
@@ -71,7 +62,6 @@ namespace KlayGE
 		::Display* x_display_;
 		::Window x_window_;
 		::GLXContext x_context_;
-		::GLXFBConfig* fbc_;
 #endif
 
 		bool	isFullScreen_;
@@ -80,8 +70,8 @@ namespace KlayGE
 
 		std::wstring			description_;
 
-		boost::signals2::connection on_exit_size_move_connect_;
-		boost::signals2::connection on_size_connect_;
+		Signal::Connection on_exit_size_move_connect_;
+		Signal::Connection on_size_connect_;
 	};
 }
 

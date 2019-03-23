@@ -11,7 +11,7 @@
 #include <KlayGE/ResLoader.hpp>
 #include <KlayGE/RenderSettings.hpp>
 #include <KlayGE/Mesh.hpp>
-#include <KlayGE/SceneObjectHelper.hpp>
+#include <KlayGE/SceneNodeHelper.hpp>
 #include <KlayGE/PostProcess.hpp>
 #include <KlayGE/InfTerrain.hpp>
 #include <KlayGE/LensFlare.hpp>
@@ -152,9 +152,8 @@ namespace
 					Camera const & camera = app.ActiveCamera();
 					*(effect_->ParameterByName("proj")) = camera.ProjMatrix();
 					*(effect_->ParameterByName("inv_proj")) = camera.InverseProjMatrix();
-					float q = camera.FarPlane() / (camera.FarPlane() - camera.NearPlane());
-					float3 near_q_far(camera.NearPlane() * q, q, camera.FarPlane());
-					*(effect_->ParameterByName("near_q_far")) = near_q_far;
+					float4 const near_q_far = camera.NearQFarParam();
+					*(effect_->ParameterByName("near_q_far")) = float3(near_q_far.x(), near_q_far.y(), near_q_far.z());
 					*(effect_->ParameterByName("ray_length")) = camera.FarPlane() - camera.NearPlane();
 					*(effect_->ParameterByName("min_samples")) = static_cast<int32_t>(20);
 					*(effect_->ParameterByName("max_samples")) = static_cast<int32_t>(30);
@@ -177,9 +176,8 @@ namespace
 				{
 					App3DFramework const & app = Context::Instance().AppInstance();
 					Camera const & camera = app.ActiveCamera();
-					float q = camera.FarPlane() / (camera.FarPlane() - camera.NearPlane());
-					float3 near_q_far(camera.NearPlane() * q, q, camera.FarPlane());
-					*(effect_->ParameterByName("near_q_far")) = near_q_far;
+					float4 const near_q_far = camera.NearQFarParam();
+					*(effect_->ParameterByName("near_q_far")) = float3(near_q_far.x(), near_q_far.y(), near_q_far.z());
 					*(effect_->ParameterByName("inv_view")) = camera.InverseViewMatrix();
 				}
 				*reflection_tex_param_ = reflection_tex_;
@@ -205,7 +203,7 @@ namespace
 			base_level_ = 0;
 			strength_ = 10;
 
-			renderable_ = MakeSharedPtr<RenderOcean>(base_level_, strength_);
+			this->AddRenderable(MakeSharedPtr<RenderOcean>(base_level_, strength_));
 
 			ocean_plane_ = MathLib::from_point_normal(float3(0, base_level_, 0), float3(0, 1, 0));
 			reflect_mat_ = MathLib::reflect(ocean_plane_);
@@ -237,52 +235,24 @@ namespace
 
 			use_tex_array_ = re.DeviceCaps().max_texture_array_length >= ocean_param_.num_frames;
 
-			checked_pointer_cast<RenderOcean>(renderable_)->PatchLength(ocean_param_.patch_length);
+			checked_pointer_cast<RenderOcean>(renderables_[0])->PatchLength(ocean_param_.patch_length);
 
-			Texture::TextureType disp_type;
-			uint32_t disp_width = 0, disp_height = 0, disp_depth;
-			uint32_t disp_num_mipmaps = 1;
-			uint32_t disp_array_size = 0;
-			ElementFormat disp_format;
-			std::vector<ElementInitData> disp_init_data;
-			std::vector<uint8_t> disp_data_block;
-			if (!ResLoader::Instance().Locate("OceanDisplacement.dds").empty())
-			{
-				LoadTexture("OceanDisplacement.dds", disp_type, disp_width, disp_height, disp_depth, disp_num_mipmaps, disp_array_size,
-					disp_format, disp_init_data, disp_data_block);
-			}
-
-			Texture::TextureType grad_type;
-			uint32_t grad_width = 0, grad_height = 0, grad_depth;
-			uint32_t grad_num_mipmaps = 1;
-			uint32_t grad_array_size = 0;
-			ElementFormat grad_format;
-			std::vector<ElementInitData> grad_init_data;
-			std::vector<uint8_t> grad_data_block;
-			if (!ResLoader::Instance().Locate("OceanGradient.dds").empty())
-			{
-				LoadTexture("OceanGradient.dds", grad_type, grad_width, grad_height, grad_depth, grad_num_mipmaps, grad_array_size,
-					grad_format, grad_init_data, grad_data_block);
-			}
-			
-			Texture::TextureType disp_param_type;
-			uint32_t disp_param_width = 0, disp_param_height = 0, disp_param_depth;
-			uint32_t disp_param_num_mipmaps = 1;
-			uint32_t disp_param_array_size = 0;
-			ElementFormat disp_param_format;
-			std::vector<ElementInitData> disp_param_init_data;
-			std::vector<uint8_t> disp_param_data_block;
-			if (!ResLoader::Instance().Locate("OceanDisplacementParam.dds").empty())
-			{
-				LoadTexture("OceanDisplacementParam.dds", disp_param_type, disp_param_width, disp_param_height, disp_param_depth, disp_param_num_mipmaps, disp_param_array_size,
-					disp_param_format, disp_param_init_data, disp_param_data_block);
-			}
+			TexturePtr disp_tex = LoadSoftwareTexture("OceanDisplacement.dds");
+			TexturePtr grad_tex = LoadSoftwareTexture("OceanGradient.dds");
+			TexturePtr disp_param_tex = LoadSoftwareTexture("OceanDisplacementParam.dds");
 
 			bool use_load_tex;
-			if ((disp_array_size == ocean_param_.num_frames) && (disp_width == static_cast<uint32_t>(ocean_param_.dmap_dim)) && (disp_height == disp_width)
-				&& (grad_array_size == ocean_param_.num_frames) && (grad_width == static_cast<uint32_t>(ocean_param_.dmap_dim)) && (grad_height == grad_width)
-				&& (disp_param_width == ocean_param_.num_frames) && (disp_param_height >= 2))
+			if (disp_tex && grad_tex, disp_param_tex
+				&& (disp_tex->ArraySize() == ocean_param_.num_frames)
+				&& (disp_tex->Width(0) == static_cast<uint32_t>(ocean_param_.dmap_dim))
+				&& (disp_tex->Height(0) == disp_tex->Width(0))
+				&& (grad_tex->ArraySize() == ocean_param_.num_frames)
+				&& (grad_tex->Width(0) == static_cast<uint32_t>(ocean_param_.dmap_dim))
+				&& (grad_tex->Height(0) == grad_tex->Width(0))
+				&& (disp_param_tex->Width(0) == ocean_param_.num_frames)
+				&& (disp_param_tex->Height(0) >= 2))
 			{
+				auto const & disp_param_init_data = checked_cast<SoftwareTexture*>(disp_param_tex.get())->SubresourceData();
 				float4 const * row0 = static_cast<float4 const *>(disp_param_init_data[0].data);
 				float4 const * row1 = row0 + disp_param_init_data[0].row_pitch / sizeof(float4);
 				displacement_params_.resize(ocean_param_.num_frames * 2);
@@ -307,8 +277,8 @@ namespace
 				ArrayRef<ElementInitData> gid;
 				if (use_load_tex)
 				{
-					did = disp_init_data;
-					gid = grad_init_data;
+					did = checked_cast<SoftwareTexture*>(disp_tex.get())->SubresourceData();
+					gid = checked_cast<SoftwareTexture*>(grad_tex.get())->SubresourceData();
 				}
 
 				displacement_tex_array_ = rf.MakeTexture2D(ocean_param_.dmap_dim, ocean_param_.dmap_dim,
@@ -326,8 +296,8 @@ namespace
 				}
 				gradient_tex_array_->BuildMipSubLevels();
 
-				checked_pointer_cast<RenderOcean>(renderable_)->DisplacementMapArray(displacement_tex_array_);
-				checked_pointer_cast<RenderOcean>(renderable_)->GradientMapArray(gradient_tex_array_);
+				checked_pointer_cast<RenderOcean>(renderables_[0])->DisplacementMapArray(displacement_tex_array_);
+				checked_pointer_cast<RenderOcean>(renderables_[0])->GradientMapArray(gradient_tex_array_);
 			}
 			else
 			{
@@ -341,7 +311,8 @@ namespace
 					ArrayRef<ElementInitData> did;
 					if (use_load_tex)
 					{
-						did = disp_init_data[i * disp_num_mipmaps];
+						auto const & disp_init_data = checked_cast<SoftwareTexture*>(disp_tex.get())->SubresourceData();
+						did = disp_init_data[i * disp_tex->NumMipMaps()];
 					}
 
 					gradient_tex_[i] = rf.MakeTexture2D(ocean_param_.dmap_dim, ocean_param_.dmap_dim,
@@ -351,11 +322,13 @@ namespace
 
 					if (use_load_tex)
 					{
+						auto const & grad_init_data = checked_cast<SoftwareTexture*>(grad_tex.get())->SubresourceData();
+
 						TexturePtr gta;
 						if (EF_GR8 == fmt)
 						{
 							gta = rf.MakeTexture2D(ocean_param_.dmap_dim, ocean_param_.dmap_dim,
-								1, 1, fmt, 1, 0, EAH_CPU_Read | EAH_CPU_Write, grad_init_data[i * grad_num_mipmaps]);
+								1, 1, fmt, 1, 0, EAH_CPU_Read | EAH_CPU_Write, grad_init_data[i * grad_tex->NumMipMaps()]);
 						}
 						else
 						{
@@ -363,10 +336,10 @@ namespace
 								1, 1, fmt, 1, 0, EAH_CPU_Read | EAH_CPU_Write);
 
 							Texture::Mapper mapper(*gta, 0, 0, TMA_Write_Only, 0, 0, ocean_param_.dmap_dim, ocean_param_.dmap_dim);
-							ElementInitData* gid = &grad_init_data[i * grad_num_mipmaps];
-							uint8_t const * src = static_cast<uint8_t const *>(gid->data);
+							ElementInitData const & gid = grad_init_data[i * grad_tex->NumMipMaps()];
+							uint8_t const * src = static_cast<uint8_t const *>(gid.data);
 							uint8_t* dst = mapper.Pointer<uint8_t>();
-							uint32_t const src_pitch = gid->row_pitch;
+							uint32_t const src_pitch = gid.row_pitch;
 							uint32_t const dst_pitch = mapper.RowPitch();
 							for (int y = 0; y < ocean_param_.dmap_dim; ++ y)
 							{
@@ -388,6 +361,13 @@ namespace
 					gradient_tex_[i]->BuildMipSubLevels();
 				}
 			}
+
+			this->OnMainThreadUpdate().Connect([this](float app_time, float elapsed_time)
+				{
+					KFL_UNUSED(elapsed_time);
+
+					this->MainThreadUpdateFunc(app_time);
+				});
 		}
 
 		Plane const & OceanPlane() const
@@ -395,7 +375,7 @@ namespace
 			return ocean_plane_;
 		}
 
-		virtual bool MainThreadUpdate(float app_time, float elapsed_time) override
+		void MainThreadUpdateFunc(float app_time)
 		{
 			if (dirty_)
 			{
@@ -404,33 +384,29 @@ namespace
 				dirty_ = false;
 			}
 
-			InfTerrainSceneObject::MainThreadUpdate(app_time, elapsed_time);
-
 			float t = app_time * ocean_param_.time_scale / ocean_param_.time_peroid;
 			float frame = (t - floor(t)) * ocean_param_.num_frames;
 			int frame0 = static_cast<int>(frame);
 			int frame1 = frame0 + 1;
-			checked_pointer_cast<RenderOcean>(renderable_)->InterpolateFrac(frame - frame0);
+			checked_pointer_cast<RenderOcean>(renderables_[0])->InterpolateFrac(frame - frame0);
 			frame0 %= ocean_param_.num_frames;
 			frame1 %= ocean_param_.num_frames;
 			if (use_tex_array_)
 			{
-				checked_pointer_cast<RenderOcean>(renderable_)->Frames(int2(frame0, frame1));
+				checked_pointer_cast<RenderOcean>(renderables_[0])->Frames(int2(frame0, frame1));
 			}
 			else
 			{
-				checked_pointer_cast<RenderOcean>(renderable_)->DisplacementMap(displacement_tex_[frame0], displacement_tex_[frame1]);
-				checked_pointer_cast<RenderOcean>(renderable_)->GradientMap(gradient_tex_[frame0], gradient_tex_[frame1]);
+				checked_pointer_cast<RenderOcean>(renderables_[0])->DisplacementMap(displacement_tex_[frame0], displacement_tex_[frame1]);
+				checked_pointer_cast<RenderOcean>(renderables_[0])->GradientMap(gradient_tex_[frame0], gradient_tex_[frame1]);
 			}
-			checked_pointer_cast<RenderOcean>(renderable_)->DisplacementParam(displacement_params_[frame0], displacement_params_[frame1],
+			checked_pointer_cast<RenderOcean>(renderables_[0])->DisplacementParam(displacement_params_[frame0], displacement_params_[frame1],
 				displacement_params_[ocean_param_.num_frames + frame0], displacement_params_[ocean_param_.num_frames + frame1]);
-
-			return false;
 		}
 
 		void ReflectionTex(TexturePtr const & tex)
 		{
-			checked_pointer_cast<RenderOcean>(renderable_)->ReflectionTex(tex);
+			checked_pointer_cast<RenderOcean>(renderables_[0])->ReflectionTex(tex);
 		}
 
 		void ReflectViewParams(float3& reflect_eye, float3& reflect_at, float3& reflect_up,
@@ -546,20 +522,10 @@ namespace
 			}
 		}
 
-		void SkylightTex(TexturePtr const & y_cube, TexturePtr const & c_cube)
-		{
-			checked_pointer_cast<RenderOcean>(renderable_)->SkylightTex(y_cube, c_cube);
-		}
-
-		void FogColor(Color const & fog_color)
-		{
-			checked_pointer_cast<RenderOcean>(renderable_)->FogColor(fog_color);
-		}
-
 	private:
 		void GenWaveTextures()
 		{
-			checked_pointer_cast<RenderOcean>(renderable_)->PatchLength(ocean_param_.patch_length);
+			checked_pointer_cast<RenderOcean>(renderables_[0])->PatchLength(ocean_param_.patch_length);
 
 			ocean_simulator_->Parameters(ocean_param_);
 
@@ -675,7 +641,10 @@ namespace
 			param_init_data.data = &disp_params[0];
 			param_init_data.row_pitch = ocean_param_.num_frames * sizeof(float4);
 			param_init_data.slice_pitch = param_init_data.row_pitch * 2;
-			SaveTexture(PREFIX + "OceanDisplacementParam.dds", Texture::TT_2D, ocean_param_.num_frames, 2, 1, 1, 1, EF_ABGR32F, param_init_data);
+			TexturePtr ocean_displacement_param_tex = MakeSharedPtr<SoftwareTexture>(Texture::TT_2D, ocean_param_.num_frames, 2, 1,
+				1, 1, EF_ABGR32F, true);
+			ocean_displacement_param_tex->CreateHWResource(param_init_data, nullptr);
+			SaveTexture(ocean_displacement_param_tex, PREFIX + "OceanDisplacementParam.dds");
 
 			if (use_tex_array_)
 			{
@@ -718,9 +687,11 @@ namespace
 						}
 					}
 
-					SaveTexture(PREFIX + "OceanDisplacement.dds", Texture::TT_2D,
+					TexturePtr ocean_displacement_tex = MakeSharedPtr<SoftwareTexture>(Texture::TT_2D,
 						ocean_param_.dmap_dim, ocean_param_.dmap_dim, 1, 1, ocean_param_.num_frames,
-						displacement_tex_[0]->Format(), disp_init_data);
+						displacement_tex_[0]->Format(), true);
+					ocean_displacement_tex->CreateHWResource(disp_init_data, nullptr);
+					SaveTexture(ocean_displacement_tex, PREFIX + "OceanDisplacement.dds");
 				}
 
 				{
@@ -750,9 +721,11 @@ namespace
 						}
 					}
 
-					SaveTexture(PREFIX + "OceanGradient.dds", Texture::TT_2D,
+					TexturePtr ocean_gradient_tex = MakeSharedPtr<SoftwareTexture>(Texture::TT_2D,
 						ocean_param_.dmap_dim, ocean_param_.dmap_dim, 1, 1, ocean_param_.num_frames,
-						gradient_tex_[0]->Format(), grad_init_data);
+						gradient_tex_[0]->Format(), true);
+					ocean_gradient_tex->CreateHWResource(grad_init_data, nullptr);
+					SaveTexture(ocean_gradient_tex, PREFIX + "OceanGradient.dds");
 				}
 			}
 		}
@@ -789,21 +762,6 @@ namespace
 		void FogColor(Color const & clr)
 		{
 			*(effect_->ParameterByName("fog_color")) = float3(clr.r(), clr.g(), clr.b());
-		}
-	};
-
-	class SceneObjectFoggySkyBox : public SceneObjectSkyBox
-	{
-	public:
-		explicit SceneObjectFoggySkyBox(uint32_t attrib = 0)
-			: SceneObjectSkyBox(attrib)
-		{
-			renderable_ = MakeSharedPtr<RenderableFoggySkyBox>();
-		}
-
-		void FogColor(Color const & clr)
-		{
-			checked_pointer_cast<RenderableFoggySkyBox>(renderable_)->FogColor(clr);
 		}
 	};
 
@@ -867,34 +825,33 @@ void OceanApp::OnCreate()
 		fog_color.b() = MathLib::srgb_to_linear(fog_color.b());
 	}
 
-	HQTerrainSceneObjectPtr terrain = MakeSharedPtr<HQTerrainSceneObject>(MakeSharedPtr<ProceduralTerrain>());
-	terrain->TextureLayer(0, ASyncLoadTexture("RealSand40BoH.dds", EAH_GPU_Read | EAH_Immutable));
-	terrain->TextureLayer(1, ASyncLoadTexture("snow_DM.dds", EAH_GPU_Read | EAH_Immutable));
-	terrain->TextureLayer(2, ASyncLoadTexture("GrassGreenTexture0002.dds", EAH_GPU_Read | EAH_Immutable));
-	terrain->TextureLayer(3, ASyncLoadTexture("Dirt.dds", EAH_GPU_Read | EAH_Immutable));
-	terrain->TextureScale(0, float2(7, 7));
-	terrain->TextureScale(1, float2(1, 1));
-	terrain->TextureScale(2, float2(3, 3));
-	terrain->TextureScale(3, float2(1, 1));
-	terrain_ = terrain;
-	terrain_->AddToSceneManager();
+	auto terrain_renderable = MakeSharedPtr<ProceduralTerrain>();
+	terrain_ = MakeSharedPtr<HQTerrainSceneObject>(terrain_renderable);
+	terrain_renderable->TextureLayer(0, ASyncLoadTexture("RealSand40BoH.dds", EAH_GPU_Read | EAH_Immutable));
+	terrain_renderable->TextureLayer(1, ASyncLoadTexture("snow_DM.dds", EAH_GPU_Read | EAH_Immutable));
+	terrain_renderable->TextureLayer(2, ASyncLoadTexture("GrassGreenTexture0002.dds", EAH_GPU_Read | EAH_Immutable));
+	terrain_renderable->TextureLayer(3, ASyncLoadTexture("Dirt.dds", EAH_GPU_Read | EAH_Immutable));
+	terrain_renderable->TextureScale(0, float2(7, 7));
+	terrain_renderable->TextureScale(1, float2(1, 1));
+	terrain_renderable->TextureScale(2, float2(3, 3));
+	terrain_renderable->TextureScale(3, float2(1, 1));
+	Context::Instance().SceneManagerInstance().SceneRootNode().AddChild(terrain_);
 
 	ocean_ = MakeSharedPtr<OceanObject>();
-	ocean_->AddToSceneManager();
-	checked_pointer_cast<OceanObject>(ocean_)->SkylightTex(y_cube, c_cube);
-	checked_pointer_cast<OceanObject>(ocean_)->FogColor(fog_color);
+	Context::Instance().SceneManagerInstance().SceneRootNode().AddChild(ocean_);
+	checked_pointer_cast<RenderOcean>(ocean_->GetRenderable())->SkylightTex(y_cube, c_cube);
+	checked_pointer_cast<RenderOcean>(ocean_->GetRenderable())->FogColor(fog_color);
 
-	checked_pointer_cast<ProceduralTerrain>(terrain_->GetRenderable())
-		->ReflectionPlane(checked_pointer_cast<OceanObject>(ocean_)->OceanPlane());
+	terrain_renderable->ReflectionPlane(checked_pointer_cast<OceanObject>(ocean_)->OceanPlane());
 
-	sky_box_ = MakeSharedPtr<SceneObjectFoggySkyBox>();
-	checked_pointer_cast<SceneObjectFoggySkyBox>(sky_box_)->CompressedCubeMap(y_cube, c_cube);
-	checked_pointer_cast<SceneObjectFoggySkyBox>(sky_box_)->FogColor(fog_color);
-	sky_box_->AddToSceneManager();
+	sky_box_ = MakeSharedPtr<SceneNode>(MakeSharedPtr<RenderableFoggySkyBox>(), SceneNode::SOA_NotCastShadow);
+	checked_pointer_cast<RenderableFoggySkyBox>(sky_box_->GetRenderable())->CompressedCubeMap(y_cube, c_cube);
+	checked_pointer_cast<RenderableFoggySkyBox>(sky_box_->GetRenderable())->FogColor(fog_color);
+	Context::Instance().SceneManagerInstance().SceneRootNode().AddChild(sky_box_);
 
 	sun_flare_ = MakeSharedPtr<LensFlareSceneObject>();
 	checked_pointer_cast<LensFlareSceneObject>(sun_flare_)->Direction(float3(-0.267835f, 0.0517653f, 0.960315f));
-	sun_flare_->AddToSceneManager();
+	Context::Instance().SceneManagerInstance().SceneRootNode().AddChild(sun_flare_);
 
 	fog_pp_ = SyncLoadPostProcess("Fog.ppml", "fog");
 	fog_pp_->SetParam(1, float3(fog_color.r(), fog_color.g(), fog_color.b()));
@@ -917,7 +874,7 @@ void OceanApp::OnCreate()
 	actionMap.AddActions(actions, actions + std::size(actions));
 
 	action_handler_t input_handler = MakeSharedPtr<input_signal>();
-	input_handler->connect(
+	input_handler->Connect(
 		[this](InputEngine const & sender, InputAction const & action)
 		{
 			this->InputHandler(sender, action);
@@ -945,69 +902,69 @@ void OceanApp::OnCreate()
 	id_light_shaft_ = dialog_params_->IDFromName("LightShaft");
 	id_fps_camera_ = dialog_params_->IDFromName("FPSCamera");
 
-	dialog_params_->Control<UISlider>(id_dmap_dim_slider_)->OnValueChangedEvent().connect(
+	dialog_params_->Control<UISlider>(id_dmap_dim_slider_)->OnValueChangedEvent().Connect(
 		[this](UISlider const & sender)
 		{
 			this->DMapDimChangedHandler(sender);
 		});
 	this->DMapDimChangedHandler(*dialog_params_->Control<UISlider>(id_dmap_dim_slider_));
 
-	dialog_params_->Control<UISlider>(id_patch_length_slider_)->OnValueChangedEvent().connect(
+	dialog_params_->Control<UISlider>(id_patch_length_slider_)->OnValueChangedEvent().Connect(
 		[this](UISlider const & sender)
 		{
 			this->PatchLengthChangedHandler(sender);
 		});
 	this->PatchLengthChangedHandler(*dialog_params_->Control<UISlider>(id_patch_length_slider_));
 
-	dialog_params_->Control<UISlider>(id_time_scale_slider_)->OnValueChangedEvent().connect(
+	dialog_params_->Control<UISlider>(id_time_scale_slider_)->OnValueChangedEvent().Connect(
 		[this](UISlider const & sender)
 		{
 			this->TimeScaleChangedHandler(sender);
 		});
 	this->TimeScaleChangedHandler(*dialog_params_->Control<UISlider>(id_time_scale_slider_));
 
-	dialog_params_->Control<UISlider>(id_wave_amplitude_slider_)->OnValueChangedEvent().connect(
+	dialog_params_->Control<UISlider>(id_wave_amplitude_slider_)->OnValueChangedEvent().Connect(
 		[this](UISlider const & sender)
 		{
 			this->WaveAmplitudeChangedHandler(sender);
 		});
 	this->WaveAmplitudeChangedHandler(*dialog_params_->Control<UISlider>(id_wave_amplitude_slider_));
 
-	dialog_params_->Control<UISlider>(id_wind_speed_x_slider_)->OnValueChangedEvent().connect(
+	dialog_params_->Control<UISlider>(id_wind_speed_x_slider_)->OnValueChangedEvent().Connect(
 		[this](UISlider const & sender)
 		{
 			this->WindSpeedXChangedHandler(sender);
 		});
 	this->WindSpeedXChangedHandler(*dialog_params_->Control<UISlider>(id_wind_speed_x_slider_));
 
-	dialog_params_->Control<UISlider>(id_wind_speed_y_slider_)->OnValueChangedEvent().connect(
+	dialog_params_->Control<UISlider>(id_wind_speed_y_slider_)->OnValueChangedEvent().Connect(
 		[this](UISlider const & sender)
 		{
 			this->WindSpeedYChangedHandler(sender);
 		});
 	this->WindSpeedYChangedHandler(*dialog_params_->Control<UISlider>(id_wind_speed_y_slider_));
 
-	dialog_params_->Control<UISlider>(id_wind_dependency_slider_)->OnValueChangedEvent().connect(
+	dialog_params_->Control<UISlider>(id_wind_dependency_slider_)->OnValueChangedEvent().Connect(
 		[this](UISlider const & sender)
 		{
 			this->WindDependencyChangedHandler(sender);
 		});
 	this->WindDependencyChangedHandler(*dialog_params_->Control<UISlider>(id_wind_dependency_slider_));
 
-	dialog_params_->Control<UISlider>(id_choppy_scale_slider_)->OnValueChangedEvent().connect(
+	dialog_params_->Control<UISlider>(id_choppy_scale_slider_)->OnValueChangedEvent().Connect(
 		[this](UISlider const & sender)
 		{
 			this->ChoppyScaleChangedHandler(sender);
 		});
 	this->ChoppyScaleChangedHandler(*dialog_params_->Control<UISlider>(id_choppy_scale_slider_));
 
-	dialog_params_->Control<UICheckBox>(id_light_shaft_)->OnChangedEvent().connect(
+	dialog_params_->Control<UICheckBox>(id_light_shaft_)->OnChangedEvent().Connect(
 		[this](UICheckBox const & sender)
 		{
 			this->LightShaftHandler(sender);
 		});
 
-	dialog_params_->Control<UICheckBox>(id_fps_camera_)->OnChangedEvent().connect(
+	dialog_params_->Control<UICheckBox>(id_fps_camera_)->OnChangedEvent().Connect(
 		[this](UICheckBox const & sender)
 		{
 			this->FPSCameraHandler(sender);
@@ -1029,8 +986,8 @@ void OceanApp::OnResize(uint32_t width, uint32_t height)
 		deferred_rendering_->ShadingTex(1)->Format(), 1, 0, EAH_GPU_Read | EAH_GPU_Write);
 	reflection_ds_tex_ = rf.MakeTexture2D(width / 2, height / 2, 1, 1,
 		EF_D16, 1, 0, EAH_GPU_Read | EAH_GPU_Write);
-	reflection_fb_->Attach(FrameBuffer::ATT_Color0, rf.Make2DRenderView(*reflection_tex_, 0, 1, 0));
-	reflection_fb_->Attach(FrameBuffer::ATT_DepthStencil, rf.Make2DDepthStencilRenderView(*reflection_ds_tex_, 0, 1, 0));
+	reflection_fb_->Attach(FrameBuffer::Attachment::Color0, rf.Make2DRtv(reflection_tex_, 0, 1, 0));
+	reflection_fb_->Attach(rf.Make2DDsv(reflection_ds_tex_, 0, 1, 0));
 
 	deferred_rendering_->SetupViewport(0, reflection_fb_,
 		VPAM_NoTransparencyBack | VPAM_NoTransparencyFront | VPAM_NoSimpleForward | VPAM_NoGI | VPAM_NoSSVO);

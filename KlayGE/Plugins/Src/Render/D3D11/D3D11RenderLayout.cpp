@@ -85,7 +85,7 @@ namespace KlayGE
 		if (!vertex_elems_.empty())
 		{
 			D3D11ShaderObject const & shader = *checked_cast<D3D11ShaderObject const *>(so);
-			auto const signature = shader.VSSignature();
+			auto const signature = shader.VsSignature();
 
 			for (auto const & il : input_layouts_)
 			{
@@ -95,13 +95,13 @@ namespace KlayGE
 				}
 			}
 
-			auto& vs_code = *shader.VSCode();
+			auto vs_code = shader.VsCode();
 			RenderFactory& rf = Context::Instance().RenderFactoryInstance();
 			D3D11RenderEngine& re = *checked_cast<D3D11RenderEngine*>(&rf.RenderEngineInstance());
 			ID3D11Device* d3d_device = re.D3DDevice();
 			ID3D11InputLayout* ia;
 			TIFHR(d3d_device->CreateInputLayout(&vertex_elems_[0], static_cast<UINT>(vertex_elems_.size()),
-				&vs_code[0], vs_code.size(), &ia));
+				vs_code.data(), vs_code.size(), &ia));
 			ID3D11InputLayoutPtr new_layout = MakeCOMPtr(ia);
 			input_layouts_.emplace_back(signature, new_layout);
 			return new_layout.get();

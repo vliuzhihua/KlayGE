@@ -158,9 +158,10 @@ namespace KlayGE
 		}
 		else
 		{
-			OGLRenderEngine& re = *checked_cast<OGLRenderEngine*>(&Context::Instance().RenderFactoryInstance().RenderEngineInstance());
 			if (!IsCompressedFormat(format_) && (glloader_GL_ARB_texture_rg() || (4 == NumComponents(format_))))
 			{
+				OGLRenderEngine& re = *checked_cast<OGLRenderEngine*>(&Context::Instance().RenderFactoryInstance().RenderEngineInstance());
+
 				GLuint fbo_src, fbo_dst;
 				re.GetFBOForBlit(fbo_src, fbo_dst);
 
@@ -264,6 +265,7 @@ namespace KlayGE
 		slice_pitch = row_pitch * h;
 
 		uint8_t* p;
+		GLintptr const subres_offset = array_index * mipmap_start_offset_.back() + mipmap_start_offset_[level];
 		OGLRenderEngine& re = *checked_cast<OGLRenderEngine*>(&Context::Instance().RenderFactoryInstance().RenderEngineInstance());
 		switch (tma)
 		{
@@ -279,7 +281,7 @@ namespace KlayGE
 				re.BindBuffer(GL_PIXEL_PACK_BUFFER, pbo_);
 
 				re.BindTexture(0, target_type_, texture_);
-				glGetTexImage(target_type_, level, gl_format, gl_type, nullptr);
+				glGetTexImage(target_type_, level, gl_format, gl_type, reinterpret_cast<GLvoid*>(subres_offset));
 
 				p = static_cast<uint8_t*>(glMapBuffer(GL_PIXEL_PACK_BUFFER, GL_READ_ONLY));
 			}
@@ -297,7 +299,7 @@ namespace KlayGE
 			KFL_UNREACHABLE("Invalid texture map access mode");
 		}
 
-		p += array_index * mipmap_start_offset_.back() + mipmap_start_offset_[level];
+		p += subres_offset;
 		data = p + ((z_offset * d + y_offset) * w + x_offset) * texel_size;
 	}
 

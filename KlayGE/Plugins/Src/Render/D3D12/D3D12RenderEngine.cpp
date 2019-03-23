@@ -70,8 +70,7 @@ namespace KlayGE
 	// ¹¹Ôìº¯Êý
 	/////////////////////////////////////////////////////////////////////////////////
 	D3D12RenderEngine::D3D12RenderEngine()
-		: inv_timestamp_freq_(0),
-			render_cmd_fence_val_(0), res_cmd_fence_val_(0)
+		: render_cmd_fence_val_(0), res_cmd_fence_val_(0)
 	{
 		UINT dxgi_factory_flags = 0;
 
@@ -90,7 +89,7 @@ namespace KlayGE
 #endif
 
 		native_shader_fourcc_ = MakeFourCC<'D', 'X', 'B', 'C'>::value;
-		native_shader_version_ = 5;
+		native_shader_version_ = 6;
 
 		IDXGIFactory4* gi_factory_4;
 		TIFHR(D3D12InterfaceLoader::Instance().CreateDXGIFactory2(dxgi_factory_flags,
@@ -156,19 +155,6 @@ namespace KlayGE
 
 		this->ResetRenderCmd();
 		this->ClearTempObjs();
-	}
-
-	void D3D12RenderEngine::UpdateGPUTimestampsFrequency()
-	{
-		inv_timestamp_freq_ = 0;
-		if (d3d_render_cmd_queue_)
-		{
-			UINT64 freq;
-			if (SUCCEEDED(d3d_render_cmd_queue_->GetTimestampFrequency(&freq)))
-			{
-				inv_timestamp_freq_ = 1.0 / freq;
-			}
-		}
 	}
 
 	IDXGIFactory4* D3D12RenderEngine::DXGIFactory4() const
@@ -252,14 +238,22 @@ namespace KlayGE
 		{
 		case D3D_FEATURE_LEVEL_12_1:
 		case D3D_FEATURE_LEVEL_12_0:
+			shader_profiles_[static_cast<uint32_t>(ShaderStage::Vertex)] = "vs_5_1";
+			shader_profiles_[static_cast<uint32_t>(ShaderStage::Pixel)] = "ps_5_1";
+			shader_profiles_[static_cast<uint32_t>(ShaderStage::Geometry)] = "gs_5_1";
+			shader_profiles_[static_cast<uint32_t>(ShaderStage::Compute)] = "cs_5_1";
+			shader_profiles_[static_cast<uint32_t>(ShaderStage::Hull)] = "hs_5_1";
+			shader_profiles_[static_cast<uint32_t>(ShaderStage::Domain)] = "ds_5_1";
+			break;
+
 		case D3D_FEATURE_LEVEL_11_1:
 		case D3D_FEATURE_LEVEL_11_0:
-			vs_profile_ = "vs_5_1";
-			ps_profile_ = "ps_5_1";
-			gs_profile_ = "gs_5_1";
-			cs_profile_ = "cs_5_1";
-			hs_profile_ = "hs_5_1";
-			ds_profile_ = "ds_5_1";
+			shader_profiles_[static_cast<uint32_t>(ShaderStage::Vertex)] = "vs_5_0";
+			shader_profiles_[static_cast<uint32_t>(ShaderStage::Pixel)] = "ps_5_0";
+			shader_profiles_[static_cast<uint32_t>(ShaderStage::Geometry)] = "gs_5_0";
+			shader_profiles_[static_cast<uint32_t>(ShaderStage::Compute)] = "cs_5_0";
+			shader_profiles_[static_cast<uint32_t>(ShaderStage::Hull)] = "hs_5_0";
+			shader_profiles_[static_cast<uint32_t>(ShaderStage::Domain)] = "ds_5_0";
 			break;
 
 		default:
@@ -549,19 +543,23 @@ namespace KlayGE
 			std::vector<D3D12_STREAM_OUTPUT_BUFFER_VIEW> sobv(num_buffs);
 			for (uint32_t i = 0; i < num_buffs; ++ i)
 			{
-				D3D12GraphicsBufferPtr d3d12_buf = checked_pointer_cast<D3D12GraphicsBuffer>(rl->GetVertexStream(i));
+				auto d3d12_buf = checked_pointer_cast<D3D12GraphicsBuffer>(rl->GetVertexStream(i));
 
 				so_buffs_[i] = d3d12_buf;
+				d3d12_buf->ResetInitCount(0);
 				sobv[i].BufferLocation = d3d12_buf->GPUVirtualAddress();
 				sobv[i].SizeInBytes = d3d12_buf->Size();
 				sobv[i].BufferFilledSizeLocation = sobv[i].BufferLocation + d3d12_buf->CounterOffset();
 			}
 
-			d3d_render_cmd_list_->SOSetTargets(0, static_cast<UINT>(num_buffs), &sobv[0]);
+			d3d_render_cmd_list_->SOSetTargets(0, static_cast<UINT>(num_buffs), sobv.data());
 		}
-		else if (so_buffs_.size() > 0)
+		else if (!so_buffs_.empty())
 		{
-			d3d_render_cmd_list_->SOSetTargets(0, 0, nullptr);
+			num_buffs = static_cast<uint32_t>(so_buffs_.size());
+			std::vector<D3D12_STREAM_OUTPUT_BUFFER_VIEW> sobv(num_buffs);
+			memset(sobv.data(), 0, num_buffs * sizeof(D3D12_STREAM_OUTPUT_BUFFER_VIEW));
+			d3d_render_cmd_list_->SOSetTargets(0, num_buffs, sobv.data());
 
 			so_buffs_.clear();
 		}
@@ -626,24 +624,24 @@ namespace KlayGE
 		if (num_handles > 0)
 		{
 			size_t hash_val = 0;
-			for (uint32_t i = 0; i < ShaderObject::ST_NumShaderTypes; ++ i)
+			for (uint32_t i = 0; i < NumShaderStages; ++i)
 			{
-				ShaderObject::ShaderType st = static_cast<ShaderObject::ShaderType>(i);
-				HashCombine(hash_val, st);
-				HashCombine(hash_val, d3d12_so.SRVs(st).size());
-				if (!d3d12_so.SRVs(st).empty())
+				ShaderStage const stage = static_cast<ShaderStage>(i);
+				HashCombine(hash_val, stage);
+				HashCombine(hash_val, d3d12_so.SRVs(stage).size());
+				if (!d3d12_so.SRVs(stage).empty())
 				{
-					HashRange(hash_val, d3d12_so.SRVs(st).begin(), d3d12_so.SRVs(st).end());
+					HashRange(hash_val, d3d12_so.SRVs(stage).begin(), d3d12_so.SRVs(stage).end());
 				}
 			}
-			for (uint32_t i = 0; i < ShaderObject::ST_NumShaderTypes; ++ i)
+			for (uint32_t i = 0; i < NumShaderStages; ++i)
 			{
-				ShaderObject::ShaderType st = static_cast<ShaderObject::ShaderType>(i);
-				HashCombine(hash_val, st);
-				HashCombine(hash_val, d3d12_so.UAVs(st).size());
-				if (!d3d12_so.UAVs(st).empty())
+				ShaderStage const stage = static_cast<ShaderStage>(i);
+				HashCombine(hash_val, stage);
+				HashCombine(hash_val, d3d12_so.UAVs(stage).size());
+				if (!d3d12_so.UAVs(stage).empty())
 				{
-					HashRange(hash_val, d3d12_so.UAVs(st).begin(), d3d12_so.UAVs(st).end());
+					HashRange(hash_val, d3d12_so.UAVs(stage).begin(), d3d12_so.UAVs(stage).end());
 				}
 			}
 
@@ -669,10 +667,10 @@ namespace KlayGE
 		this->SetDescriptorHeaps(MakeArrayRef(heaps.data(), num_heaps));
 
 		uint32_t root_param_index = 0;
-		for (uint32_t i = 0; i < ShaderObject::ST_NumShaderTypes; ++ i)
+		for (uint32_t i = 0; i < NumShaderStages; ++i)
 		{
-			ShaderObject::ShaderType st = static_cast<ShaderObject::ShaderType>(i);
-			auto const & cbuffers = d3d12_so.CBuffers(st);
+			ShaderStage const stage = static_cast<ShaderStage>(i);
+			auto const & cbuffers = d3d12_so.CBuffers(stage);
 			if (!cbuffers.empty())
 			{
 				for (auto cbuffer : cbuffers)
@@ -687,7 +685,7 @@ namespace KlayGE
 						gpu_vaddr = 0;
 					}
 
-					if (st != ShaderObject::ST_ComputeShader)
+					if (stage != ShaderStage::Compute)
 					{
 						d3d_render_cmd_list_->SetGraphicsRootConstantBufferView(root_param_index, gpu_vaddr);
 					}
@@ -710,13 +708,13 @@ namespace KlayGE
 			D3D12_CPU_DESCRIPTOR_HANDLE cpu_cbv_srv_uav_handle = cbv_srv_uav_heap->GetCPUDescriptorHandleForHeapStart();
 			D3D12_GPU_DESCRIPTOR_HANDLE gpu_cbv_srv_uav_handle = cbv_srv_uav_heap->GetGPUDescriptorHandleForHeapStart();
 
-			for (uint32_t i = 0; i < ShaderObject::ST_NumShaderTypes; ++ i)
+			for (uint32_t i = 0; i < NumShaderStages; ++i)
 			{
-				ShaderObject::ShaderType const st = static_cast<ShaderObject::ShaderType>(i);
-				auto const & srvs = d3d12_so.SRVs(st);
+				ShaderStage const stage = static_cast<ShaderStage>(i);
+				auto const & srvs = d3d12_so.SRVs(stage);
 				if (!srvs.empty())
 				{
-					if (st != ShaderObject::ST_ComputeShader)
+					if (stage != ShaderStage::Compute)
 					{
 						d3d_render_cmd_list_->SetGraphicsRootDescriptorTable(root_param_index, gpu_cbv_srv_uav_handle);
 					}
@@ -746,13 +744,13 @@ namespace KlayGE
 					++ root_param_index;
 				}
 			}
-			for (uint32_t i = 0; i < ShaderObject::ST_NumShaderTypes; ++ i)
+			for (uint32_t i = 0; i < NumShaderStages; ++i)
 			{
-				ShaderObject::ShaderType const st = static_cast<ShaderObject::ShaderType>(i);
-				auto const & uavs = d3d12_so.UAVs(st);
+				ShaderStage const stage = static_cast<ShaderStage>(i);
+				auto const & uavs = d3d12_so.UAVs(stage);
 				if (!uavs.empty())
 				{
-					if (st != ShaderObject::ST_ComputeShader)
+					if (stage != ShaderStage::Compute)
 					{
 						d3d_render_cmd_list_->SetGraphicsRootDescriptorTable(root_param_index, gpu_cbv_srv_uav_handle);
 					}
@@ -788,13 +786,13 @@ namespace KlayGE
 		{
 			D3D12_GPU_DESCRIPTOR_HANDLE gpu_sampler_handle = sampler_heap->GetGPUDescriptorHandleForHeapStart();
 
-			for (uint32_t i = 0; i < ShaderObject::ST_NumShaderTypes; ++ i)
+			for (uint32_t i = 0; i < NumShaderStages; ++ i)
 			{
-				ShaderObject::ShaderType const st = static_cast<ShaderObject::ShaderType>(i);
-				auto const & samplers = d3d12_so.Samplers(st);
+				ShaderStage const stage = static_cast<ShaderStage>(i);
+				auto const & samplers = d3d12_so.Samplers(stage);
 				if (!samplers.empty())
 				{
-					if (st != ShaderObject::ST_ComputeShader)
+					if (stage != ShaderStage::Compute)
 					{
 						d3d_render_cmd_list_->SetGraphicsRootDescriptorTable(root_param_index, gpu_sampler_handle);
 					}
@@ -1176,8 +1174,6 @@ namespace KlayGE
 		case D3D_FEATURE_LEVEL_12_0:
 		case D3D_FEATURE_LEVEL_11_1:
 		case D3D_FEATURE_LEVEL_11_0:
-			caps_.max_shader_model
-				= (d3d_feature_level_ >= D3D_FEATURE_LEVEL_12_0) ? ShaderModel(5, 1) : ShaderModel(5, 0);
 			caps_.max_texture_width = caps_.max_texture_height = D3D12_REQ_TEXTURE2D_U_OR_V_DIMENSION;
 			caps_.max_texture_depth = D3D12_REQ_TEXTURE3D_U_V_OR_W_DIMENSION;
 			caps_.max_texture_cube_size = D3D12_REQ_TEXTURECUBE_DIMENSION;
@@ -1197,6 +1193,7 @@ namespace KlayGE
 			KFL_UNREACHABLE("Invalid feature level");
 		}
 
+		caps_.max_shader_model = (d3d_feature_level_ >= D3D_FEATURE_LEVEL_12_0) ? ShaderModel(5, 1) : ShaderModel(5, 0);
 		{
 			D3D12_FEATURE_DATA_ARCHITECTURE arch_feature;
 			arch_feature.NodeIndex = 0;
@@ -1220,6 +1217,7 @@ namespace KlayGE
 		caps_.explicit_multi_sample_support = true;
 		caps_.load_from_buffer_support = true;
 		caps_.uavs_at_every_stage_support = (d3d_feature_level_ >= D3D_FEATURE_LEVEL_11_1);
+		caps_.flexible_srvs_support = true;
 		caps_.gs_support = true;
 		caps_.hs_support = true;
 		caps_.ds_support = true;
@@ -1442,10 +1440,10 @@ namespace KlayGE
 			}
 		}
 
-		this->AssignCapVertexFormats(std::move(vertex_formats));
-		this->AssignCapTextureFormats(std::move(texture_formats));
-		this->AssignCapRenderTargetFormats(std::move(render_target_formats));
-		this->AssignCapUavFormats(std::move(uav_formats));
+		caps_.AssignVertexFormats(std::move(vertex_formats));
+		caps_.AssignTextureFormats(std::move(texture_formats));
+		caps_.AssignRenderTargetFormats(std::move(render_target_formats));
+		caps_.AssignUavFormats(std::move(uav_formats));
 	}
 
 	void D3D12RenderEngine::StereoscopicForLCDShutter(int32_t eye)
@@ -1458,10 +1456,10 @@ namespace KlayGE
 		{
 		case SM_DXGI:
 			{
-				D3D12RenderTargetRenderView* rtv = checked_cast<D3D12RenderTargetRenderView*>(
-					(0 == eye) ? win->D3DBackBufferRTV().get() : win->D3DBackBufferRightEyeRTV().get());
+				D3D12RenderTargetView* rtv = checked_cast<D3D12RenderTargetView*>(
+					(0 == eye) ? win->D3DBackBufferRtv().get() : win->D3DBackBufferRightEyeRtv().get());
 
-				D3D12_CPU_DESCRIPTOR_HANDLE rt_handle = rtv->D3DRenderTargetView()->Handle();
+				D3D12_CPU_DESCRIPTOR_HANDLE rt_handle = rtv->RetrieveD3DRenderTargetView()->Handle();
 				d3d_render_cmd_list_->OMSetRenderTargets(1, &rt_handle, false, nullptr);
 
 				D3D12_VIEWPORT vp;
@@ -1668,7 +1666,7 @@ namespace KlayGE
 	}
 
 	ID3D12RootSignaturePtr const & D3D12RenderEngine::CreateRootSignature(
-			std::array<uint32_t, ShaderObject::ST_NumShaderTypes * 4> const & num,
+			std::array<uint32_t, NumShaderStages * 4> const & num,
 			bool has_vs, bool has_stream_output)
 	{
 		ID3D12RootSignaturePtr ret;
@@ -1681,39 +1679,39 @@ namespace KlayGE
 		if (iter == root_signatures_.end())
 		{
 			uint32_t num_cbv = 0;
-			for (uint32_t i = 0; i < ShaderObject::ST_NumShaderTypes; ++ i)
+			for (uint32_t i = 0; i < NumShaderStages; ++ i)
 			{
 				num_cbv += num[i * 4 + 0];
 			}
 
 			std::vector<D3D12_ROOT_PARAMETER> root_params;
 			std::vector<D3D12_DESCRIPTOR_RANGE> ranges;
-			ranges.reserve(num_cbv + ShaderObject::ST_NumShaderTypes * 3);
-			for (uint32_t i = 0; i < ShaderObject::ST_NumShaderTypes; ++ i)
+			ranges.reserve(num_cbv + NumShaderStages * 3);
+			for (uint32_t i = 0; i < NumShaderStages; ++i)
 			{
 				if (num[i * 4 + 0] != 0)
 				{
 					D3D12_ROOT_PARAMETER root_param;
 					root_param.ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
-					switch (i)
+					switch (static_cast<ShaderStage>(i))
 					{
-					case ShaderObject::ST_VertexShader:
+					case ShaderStage::Vertex:
 						root_param.ShaderVisibility = D3D12_SHADER_VISIBILITY_VERTEX;
 						break;
 
-					case ShaderObject::ST_PixelShader:
+					case ShaderStage::Pixel:
 						root_param.ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
 						break;
 
-					case ShaderObject::ST_GeometryShader:
+					case ShaderStage::Geometry:
 						root_param.ShaderVisibility = D3D12_SHADER_VISIBILITY_GEOMETRY;
 						break;
 
-					case ShaderObject::ST_HullShader:
+					case ShaderStage::Hull:
 						root_param.ShaderVisibility = D3D12_SHADER_VISIBILITY_HULL;
 						break;
 
-					case ShaderObject::ST_DomainShader:
+					case ShaderStage::Domain:
 						root_param.ShaderVisibility = D3D12_SHADER_VISIBILITY_DOMAIN;
 						break;
 
@@ -1729,7 +1727,7 @@ namespace KlayGE
 					}
 				}
 			}
-			for (uint32_t i = 0; i < ShaderObject::ST_NumShaderTypes; ++ i)
+			for (uint32_t i = 0; i < NumShaderStages; ++i)
 			{
 				if (num[i * 4 + 1] != 0)
 				{
@@ -1743,25 +1741,25 @@ namespace KlayGE
 
 					D3D12_ROOT_PARAMETER root_param;
 					root_param.ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
-					switch (i)
+					switch (static_cast<ShaderStage>(i))
 					{
-					case ShaderObject::ST_VertexShader:
+					case ShaderStage::Vertex:
 						root_param.ShaderVisibility = D3D12_SHADER_VISIBILITY_VERTEX;
 						break;
 
-					case ShaderObject::ST_PixelShader:
+					case ShaderStage::Pixel:
 						root_param.ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
 						break;
 
-					case ShaderObject::ST_GeometryShader:
+					case ShaderStage::Geometry:
 						root_param.ShaderVisibility = D3D12_SHADER_VISIBILITY_GEOMETRY;
 						break;
 
-					case ShaderObject::ST_HullShader:
+					case ShaderStage::Hull:
 						root_param.ShaderVisibility = D3D12_SHADER_VISIBILITY_HULL;
 						break;
 
-					case ShaderObject::ST_DomainShader:
+					case ShaderStage::Domain:
 						root_param.ShaderVisibility = D3D12_SHADER_VISIBILITY_DOMAIN;
 						break;
 
@@ -1774,7 +1772,7 @@ namespace KlayGE
 					root_params.push_back(root_param);
 				}
 			}
-			for (uint32_t i = 0; i < ShaderObject::ST_NumShaderTypes; ++ i)
+			for (uint32_t i = 0; i < NumShaderStages; ++i)
 			{
 				if (num[i * 4 + 2] != 0)
 				{
@@ -1788,25 +1786,25 @@ namespace KlayGE
 
 					D3D12_ROOT_PARAMETER root_param;
 					root_param.ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
-					switch (i)
+					switch (static_cast<ShaderStage>(i))
 					{
-					case ShaderObject::ST_VertexShader:
+					case ShaderStage::Vertex:
 						root_param.ShaderVisibility = D3D12_SHADER_VISIBILITY_VERTEX;
 						break;
 
-					case ShaderObject::ST_PixelShader:
+					case ShaderStage::Pixel:
 						root_param.ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
 						break;
 
-					case ShaderObject::ST_GeometryShader:
+					case ShaderStage::Geometry:
 						root_param.ShaderVisibility = D3D12_SHADER_VISIBILITY_GEOMETRY;
 						break;
 
-					case ShaderObject::ST_HullShader:
+					case ShaderStage::Hull:
 						root_param.ShaderVisibility = D3D12_SHADER_VISIBILITY_HULL;
 						break;
 
-					case ShaderObject::ST_DomainShader:
+					case ShaderStage::Domain:
 						root_param.ShaderVisibility = D3D12_SHADER_VISIBILITY_DOMAIN;
 						break;
 
@@ -1819,7 +1817,7 @@ namespace KlayGE
 					root_params.push_back(root_param);
 				}
 			}
-			for (uint32_t i = 0; i < ShaderObject::ST_NumShaderTypes; ++ i)
+			for (uint32_t i = 0; i < NumShaderStages; ++i)
 			{
 				if (num[i * 4 + 3] != 0)
 				{
@@ -1833,25 +1831,25 @@ namespace KlayGE
 
 					D3D12_ROOT_PARAMETER root_param;
 					root_param.ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
-					switch (i)
+					switch (static_cast<ShaderStage>(i))
 					{
-					case ShaderObject::ST_VertexShader:
+					case ShaderStage::Vertex:
 						root_param.ShaderVisibility = D3D12_SHADER_VISIBILITY_VERTEX;
 						break;
 
-					case ShaderObject::ST_PixelShader:
+					case ShaderStage::Pixel:
 						root_param.ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
 						break;
 
-					case ShaderObject::ST_GeometryShader:
+					case ShaderStage::Geometry:
 						root_param.ShaderVisibility = D3D12_SHADER_VISIBILITY_GEOMETRY;
 						break;
 
-					case ShaderObject::ST_HullShader:
+					case ShaderStage::Hull:
 						root_param.ShaderVisibility = D3D12_SHADER_VISIBILITY_HULL;
 						break;
 
-					case ShaderObject::ST_DomainShader:
+					case ShaderStage::Domain:
 						root_param.ShaderVisibility = D3D12_SHADER_VISIBILITY_DOMAIN;
 						break;
 

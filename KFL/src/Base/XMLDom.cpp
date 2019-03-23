@@ -34,17 +34,27 @@
 
 #include <string>
 
-#if defined(KLAYGE_COMPILER_CLANGC2)
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wunused-variable" // Ignore mpl_assertion_in_line_xxx
-#endif
 #include <boost/lexical_cast.hpp>
-#if defined(KLAYGE_COMPILER_CLANGC2)
-#pragma clang diagnostic pop
-#endif
 
 #include <rapidxml.hpp>
+#if defined(KLAYGE_COMPILER_MSVC)
+#pragma warning(push)
+#pragma warning(disable: 4100) // 'flags': unreferenced formal parameter
+#elif defined(KLAYGE_COMPILER_GCC)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-parameter" // Ignore unused parameter 'flags'
+#elif defined(KLAYGE_COMPILER_CLANG)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wunused-parameter" // Ignore unused parameter 'flags'
+#endif
 #include <rapidxml_print.hpp>
+#if defined(KLAYGE_COMPILER_MSVC)
+#pragma warning(pop)
+#elif defined(KLAYGE_COMPILER_GCC)
+#pragma GCC diagnostic pop
+#elif defined(KLAYGE_COMPILER_CLANG)
+#pragma clang diagnostic pop
+#endif
 
 #include <KFL/XMLDom.hpp>
 
@@ -102,7 +112,8 @@ namespace KlayGE
 
 	XMLAttributePtr XMLDocument::AllocAttribString(std::string_view name, std::string_view value)
 	{
-		return MakeSharedPtr<XMLAttribute>(*doc_, name, value);
+		return MakeSharedPtr<XMLAttribute>(*doc_, std::string_view(doc_->allocate_string(name.data(), name.size()), name.size()),
+			std::string_view(doc_->allocate_string(value.data(), value.size()), value.size()));
 	}
 
 	void XMLDocument::RootNode(XMLNodePtr const & new_node)

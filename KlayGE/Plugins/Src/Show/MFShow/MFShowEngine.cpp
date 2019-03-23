@@ -47,30 +47,16 @@
 #include "TinyMFMediaEngine.hpp"
 #endif
 #include <KlayGE/SALWrapper.hpp>
-#if defined(KLAYGE_COMPILER_CLANGC2)
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wmicrosoft-enum-value" // Ignore int enum
-#endif
 #include <dxgi1_6.h>
-#if defined(KLAYGE_COMPILER_CLANGC2)
-#pragma clang diagnostic pop
-#endif
 #if defined(KLAYGE_COMPILER_GCC)
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wsign-compare" // Ignore comparison between int and uint
-#elif defined(KLAYGE_COMPILER_CLANGC2)
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wmicrosoft-const-init" // Ignore const init (a Microsoft extension)
-#pragma clang diagnostic ignored "-Wmicrosoft-enum-value" // Ignore int enum
-#pragma clang diagnostic ignored "-Wsign-compare" // Ignore comparison between int and uint
 #endif
 #include <d3d11_4.h>
 #if defined(KLAYGE_COMPILER_GCC)
 #pragma GCC diagnostic pop
-#elif defined(KLAYGE_COMPILER_CLANGC2)
-#pragma clang diagnostic pop
 #endif
-#if defined(KLAYGE_COMPILER_GCC) || defined(KLAYGE_COMPILER_CLANGC2)
+#if defined(KLAYGE_COMPILER_GCC)
 #undef __out
 #endif
 
@@ -168,6 +154,10 @@ namespace KlayGE
 			::MessageBoxW(nullptr, L"Can't load mfplat.dll", L"Error", MB_OK);
 		}
 
+#if defined(KLAYGE_COMPILER_GCC) && (KLAYGE_COMPILER_VERSION >= 80)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wcast-function-type"
+#endif
 		if (mod_dxgi_ != nullptr)
 		{
 			DynamicCreateDXGIFactory1_ = reinterpret_cast<CreateDXGIFactory1Func>(::GetProcAddress(mod_dxgi_, "CreateDXGIFactory1"));
@@ -184,6 +174,9 @@ namespace KlayGE
 			DynamicMFCreateAttributes_ = reinterpret_cast<MFCreateAttributesFunc>(::GetProcAddress(mod_mfplat_, "MFCreateAttributes"));
 			DynamicMFShutdown_ = reinterpret_cast<MFShutdownFunc>(::GetProcAddress(mod_mfplat_, "MFShutdown"));
 		}
+#if defined(KLAYGE_COMPILER_GCC) && (KLAYGE_COMPILER_VERSION >= 80)
+#pragma GCC diagnostic pop
+#endif
 #else
 		DynamicCreateDXGIFactory1_ = ::CreateDXGIFactory1;
 		DynamicD3D11CreateDevice_ = ::D3D11CreateDevice;

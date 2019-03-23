@@ -6,15 +6,16 @@
 #include <KlayGE/Renderable.hpp>
 #include <KlayGE/RenderEngine.hpp>
 #include <KlayGE/RenderEffect.hpp>
+#include <KlayGE/RenderView.hpp>
 #include <KlayGE/FrameBuffer.hpp>
 #include <KlayGE/SceneManager.hpp>
 #include <KlayGE/Context.hpp>
 #include <KlayGE/ResLoader.hpp>
 #include <KlayGE/Texture.hpp>
-#include <KlayGE/RenderableHelper.hpp>
 #include <KlayGE/RenderSettings.hpp>
 #include <KlayGE/Mesh.hpp>
-#include <KlayGE/SceneObjectHelper.hpp>
+#include <KlayGE/SceneNodeHelper.hpp>
+#include <KlayGE/SkyBox.hpp>
 #include <KlayGE/Camera.hpp>
 #include <KlayGE/UI.hpp>
 #include <KlayGE/PostProcess.hpp>
@@ -38,8 +39,8 @@ namespace
 	class MetalRenderable : public StaticMesh
 	{
 	public:
-		MetalRenderable(RenderModelPtr const & model, std::wstring const & /*name*/)
-			: StaticMesh(model, L"Metal")
+		explicit MetalRenderable(std::wstring_view name)
+			: StaticMesh(name)
 		{
 			effect_ = SyncLoadRenderEffect("Metalness.fxml");
 			technique_ = effect_->TechniqueByName("PBFittingPrefiltered");
@@ -60,8 +61,10 @@ namespace
 			}
 		}
 
-		virtual void DoBuildMeshInfo() override
+		void DoBuildMeshInfo(RenderModel const & model) override
 		{
+			KFL_UNUSED(model);
+
 			AABBox const & pos_bb = this->PosBound();
 			*(effect_->ParameterByName("pos_center")) = pos_bb.Center();
 			*(effect_->ParameterByName("pos_extent")) = pos_bb.HalfSize();
@@ -88,25 +91,6 @@ namespace
 			*(effect_->ParameterByName("model")) = model_mat_;
 			*(effect_->ParameterByName("mvp")) = mvp;
 			*(effect_->ParameterByName("eye_pos")) = camera.EyePos();
-		}
-	};
-
-	class MetalObject : public SceneObjectHelper
-	{
-	public:
-		explicit MetalObject(std::string const & model_name)
-			: SceneObjectHelper(SOA_Cullable)
-		{
-			renderable_ = SyncLoadModel(model_name, EAH_GPU_Read | EAH_Immutable,
-				CreateModelFactory<RenderModel>(), CreateMeshFactory<MetalRenderable>());
-		}
-
-		void Material(float3 const & albedo, float metalness, float glossiness)
-		{
-			for (uint32_t i = 0; i < renderable_->NumSubrenderables(); ++ i)
-			{
-				checked_pointer_cast<MetalRenderable>(renderable_->Subrenderable(i))->Material(albedo, metalness, glossiness);
-			}
 		}
 	};
 
@@ -152,30 +136,56 @@ void MetalnessApp::OnCreate()
 	ambient_light->SkylightTex(y_cube_map, c_cube_map);
 	ambient_light->AddToSceneManager();
 
-	uint32_t spheres_row = 10;
-	uint32_t spheres_column = 10;
-	spheres_.resize(spheres_row * spheres_column);
+	sphere_group_ = MakeSharedPtr<SceneNode>(SceneNode::SOA_Cullable);
+	Context::Instance().SceneManagerInstance().SceneRootNode().AddChild(sphere_group_);
+
+	sphere_group_->OnMainThreadUpdate().Connect([this](float app_time, float elapsed_time)
+		{
+			KFL_UNUSED(app_time);
+			KFL_UNUSED(elapsed_time);
+
+			auto& re = Context::Instance().RenderFactoryInstance().RenderEngineInstance();
+			auto const & camera = *re.CurFrameBuffer()->GetViewport()->camera;
+
+			sphere_group_->TransformToParent(camera.InverseViewMatrix());
+		});
+
+	auto sphere_model_unique = SyncLoadModel("sphere_high.glb", EAH_GPU_Read | EAH_Immutable,
+		SceneNode::SOA_Cullable, nullptr,
+		CreateModelFactory<RenderModel>, CreateMeshFactory<MetalRenderable>);
+
+	uint32_t const spheres_row = 10;
+	uint32_t const spheres_column = 10;
 	for (uint32_t i = 0; i < spheres_row; ++ i)
 	{
 		for (uint32_t j = 0; j < spheres_column; ++ j)
 		{
-			spheres_[i * spheres_column + j] = MakeSharedPtr<MetalObject>("sphere_high.meshml");
-			checked_pointer_cast<MetalObject>(spheres_[i * spheres_column + j])->Material(albedo_,
-				(i + 1.0f) / spheres_row, j / (spheres_column - 1.0f));
-			spheres_[i * spheres_column + j]->ModelMatrix(MathLib::scaling(1.3f, 1.3f, 1.3f)
-				* MathLib::translation((-static_cast<float>(spheres_row / 2) + i + 0.5f) * 0.08f, 0.0f,
-					(-static_cast<float>(spheres_column / 2) + j + 0.5f) * 0.08f));
-			spheres_[i * spheres_column + j]->AddToSceneManager();
+			auto sphere_model = sphere_model_unique->Clone(CreateModelFactory<RenderModel>, CreateMeshFactory<MetalRenderable>);
+			this->Material(*sphere_model, albedo_, (i + 1.0f) / spheres_row, j / (spheres_column - 1.0f));
+
+			sphere_model->RootNode()->TransformToParent(MathLib::translation(
+				(-static_cast<float>(spheres_column / 2) + j + 0.5f) * 0.06f,
+				-(-static_cast<float>(spheres_row / 2) + i + 0.5f) * 0.06f,
+				0.8f));
+			sphere_group_->AddChild(sphere_model->RootNode());
 		}
 	}
 
-	single_object_ = MakeSharedPtr<MetalObject>("helmet_armet_2.meshml");
-	single_object_->ModelMatrix(MathLib::scaling(2.0f, 2.0f, 2.0f));
-	single_object_->AddToSceneManager();
+	single_object_ = MakeSharedPtr<SceneNode>(SceneNode::SOA_Cullable);
+	single_object_->TransformToParent(MathLib::scaling(2.0f, 2.0f, 2.0f));
+	Context::Instance().SceneManagerInstance().SceneRootNode().AddChild(single_object_);
+	single_model_ = ASyncLoadModel("helmet_armet_2.3ds", EAH_GPU_Read | EAH_Immutable,
+		SceneNode::SOA_Cullable,
+		[this](RenderModel& model)
+		{
+			this->Material(model, albedo_, metalness_, glossiness_);
+			AddToSceneHelper(*single_object_, model);
+		},
+		CreateModelFactory<RenderModel>, CreateMeshFactory<MetalRenderable>);
 
-	sky_box_ = MakeSharedPtr<SceneObjectSkyBox>(0);
-	checked_pointer_cast<SceneObjectSkyBox>(sky_box_)->CompressedCubeMap(y_cube_map, c_cube_map);
-	sky_box_->AddToSceneManager();
+	sky_box_ = MakeSharedPtr<SceneNode>(MakeSharedPtr<RenderableSkyBox>(), SceneNode::SOA_NotCastShadow);
+	checked_pointer_cast<RenderableSkyBox>(sky_box_->GetRenderable())->CompressedCubeMap(y_cube_map, c_cube_map);
+	Context::Instance().SceneManagerInstance().SceneRootNode().AddChild(sky_box_);
 
 	this->LookAt(float3(0.0f, 0.3f, -0.9f), float3(0, 0, 0));
 	this->Proj(0.05f, 100);
@@ -188,7 +198,7 @@ void MetalnessApp::OnCreate()
 	actionMap.AddActions(actions, actions + std::size(actions));
 
 	action_handler_t input_handler = MakeSharedPtr<input_signal>();
-	input_handler->connect(
+	input_handler->Connect(
 		[this](InputEngine const & sender, InputAction const & action)
 		{
 			this->InputHandler(sender, action);
@@ -204,19 +214,19 @@ void MetalnessApp::OnCreate()
 	id_metalness_static_ = dialog_->IDFromName("MetalnessStatic");
 	id_metalness_ = dialog_->IDFromName("MetalnessSlider");
 
-	dialog_->Control<UICheckBox>(id_single_object_)->OnChangedEvent().connect(
+	dialog_->Control<UICheckBox>(id_single_object_)->OnChangedEvent().Connect(
 		[this](UICheckBox const & sender)
 		{
 			this->SingleObjectHandler(sender);
 		});
 	this->SingleObjectHandler(*dialog_->Control<UICheckBox>(id_single_object_));
-	dialog_->Control<UISlider>(id_glossiness_)->OnValueChangedEvent().connect(
+	dialog_->Control<UISlider>(id_glossiness_)->OnValueChangedEvent().Connect(
 		[this](UISlider const & sender)
 		{
 			this->GlossinessChangedHandler(sender);
 		});
 	this->GlossinessChangedHandler(*dialog_->Control<UISlider>(id_glossiness_));
-	dialog_->Control<UISlider>(id_metalness_)->OnValueChangedEvent().connect(
+	dialog_->Control<UISlider>(id_metalness_)->OnValueChangedEvent().Connect(
 		[this](UISlider const & sender)
 		{
 			this->MetalnessChangedHandler(sender);
@@ -247,10 +257,7 @@ void MetalnessApp::SingleObjectHandler(UICheckBox const & sender)
 	dialog_->Control<UISlider>(id_glossiness_)->SetEnabled(single_sphere_mode);
 	dialog_->Control<UISlider>(id_metalness_)->SetEnabled(single_sphere_mode);
 
-	for (size_t i = 0; i < spheres_.size(); ++ i)
-	{
-		spheres_[i]->Visible(!single_sphere_mode);
-	}
+	sphere_group_->Visible(!single_sphere_mode);
 	single_object_->Visible(single_sphere_mode);
 }
 
@@ -262,7 +269,7 @@ void MetalnessApp::GlossinessChangedHandler(UISlider const & sender)
 	stream << L"Glossiness: " << glossiness_;
 	dialog_->Control<UIStatic>(id_glossiness_static_)->SetText(stream.str());
 
-	checked_pointer_cast<MetalObject>(single_object_)->Material(albedo_, metalness_, glossiness_);
+	this->Material(*single_model_, albedo_, metalness_, glossiness_);
 }
 
 void MetalnessApp::MetalnessChangedHandler(UISlider const & sender)
@@ -273,7 +280,15 @@ void MetalnessApp::MetalnessChangedHandler(UISlider const & sender)
 	stream << L"Metalness: " << metalness_;
 	dialog_->Control<UIStatic>(id_metalness_static_)->SetText(stream.str());
 
-	checked_pointer_cast<MetalObject>(single_object_)->Material(albedo_, metalness_, glossiness_);
+	this->Material(*single_model_, albedo_, metalness_, glossiness_);
+}
+
+void MetalnessApp::Material(RenderModel const & model, float3 const & albedo, float metalness, float glossiness)
+{
+	for (uint32_t i = 0; i < model.NumMeshes(); ++ i)
+	{
+		checked_pointer_cast<MetalRenderable>(model.Mesh(i))->Material(albedo, metalness, glossiness);
+	}
 }
 
 void MetalnessApp::DoUpdateOverlay()
@@ -291,7 +306,7 @@ void MetalnessApp::DoUpdateOverlay()
 uint32_t MetalnessApp::DoUpdate(uint32_t /*pass*/)
 {
 	RenderEngine& re = Context::Instance().RenderFactoryInstance().RenderEngineInstance();
-	re.CurFrameBuffer()->Attached(FrameBuffer::ATT_DepthStencil)->ClearDepthStencil(1.0f, 0);
+	re.CurFrameBuffer()->AttachedDsv()->ClearDepthStencil(1.0f, 0);
 
 	return App3DFramework::URV_NeedFlush | App3DFramework::URV_Finished;
 }

@@ -7,10 +7,13 @@
 #include <KlayGE/RenderFactory.hpp>
 #include <KlayGE/RenderEngine.hpp>
 #include <KlayGE/RenderEffect.hpp>
+#include <KlayGE/RenderView.hpp>
 #include <KlayGE/FrameBuffer.hpp>
 #include <KlayGE/GraphicsBuffer.hpp>
 #include <KFL/Math.hpp>
-#include <KlayGE/SceneObjectHelper.hpp>
+#include <KlayGE/SceneManager.hpp>
+#include <KlayGE/SceneNodeHelper.hpp>
+#include <KlayGE/SkyBox.hpp>
 #include <KlayGE/RenderStateObject.hpp>
 #include <KlayGE/Query.hpp>
 #include <KlayGE/Light.hpp>
@@ -202,25 +205,11 @@ namespace
 		TexturePtr caustics_map_;
 	};
 
-	class PlaneObject : public SceneObjectHelper
-	{
-	public:
-		PlaneObject(float length, float width)
-			: SceneObjectHelper(MakeSharedPtr<ReceivePlane>(length, width), SOA_Moveable)
-		{
-		}
-
-		void CausticsPass(uint32_t pass)
-		{
-			checked_pointer_cast<ReceivePlane>(renderable_)->CausticsPass(pass);
-		}
-	};
-
 	class RefractMesh : public StaticMesh
 	{
 	public:
-		RefractMesh(RenderModelPtr const & model, std::wstring const & name)
-			: StaticMesh(model, name)
+		explicit RefractMesh(std::wstring_view name)
+			: StaticMesh(name)
 		{
 			scene_effect_ = SyncLoadRenderEffect("Scene.fxml");
 			depth_wodt_tech_f_ = scene_effect_->TechniqueByName("DepthTexWODTFront");
@@ -378,60 +367,11 @@ namespace
 		TexturePtr env_cube_;
 	};
 
-	class RefractModel : public RenderModel
-	{
-	public:
-		explicit RefractModel(std::wstring const & name)
-			: RenderModel(name)
-		{
-		}
-
-		void BindLight(LightSourcePtr const & light)
-		{
-			for (auto const & mesh : subrenderables_)
-			{
-				checked_pointer_cast<RefractMesh>(mesh)->BindLight(light);
-			}
-		}
-
-		void SceneTexture(TexturePtr const & scene_texture)
-		{
-			for (auto const & mesh : subrenderables_)
-			{
-				checked_pointer_cast<RefractMesh>(mesh)->SceneTexture(scene_texture);
-			}
-		}
-
-		void ModelMatrix(float4x4 const & model)
-		{
-			for (auto const & mesh : subrenderables_)
-			{
-				checked_pointer_cast<RefractMesh>(mesh)->ModelMatrix(model);
-			}
-		}
-
-		void SetEnvCube(TexturePtr const & texture)
-		{
-			for (auto const & mesh : subrenderables_)
-			{
-				checked_pointer_cast<RefractMesh>(mesh)->SetEnvCube(texture);
-			}
-		}
-
-		void CausticsPass(uint32_t pass)
-		{
-			for (auto const & mesh : subrenderables_)
-			{
-				checked_pointer_cast<RefractMesh>(mesh)->CausticsPass(pass);
-			}
-		}
-	};
-
-	class CausticsGrid : public RenderableHelper
+	class CausticsGrid : public Renderable
 	{
 	public:
 		CausticsGrid()
-			: RenderableHelper(L"CausticsGrid")
+			: Renderable(L"CausticsGrid")
 		{
 			RenderFactory& rf = Context::Instance().RenderFactoryInstance();
 			
@@ -444,17 +384,17 @@ namespace
 				}
 			}
 
-			rl_ = rf.MakeRenderLayout();
+			rls_[0] = rf.MakeRenderLayout();
 
 			effect_ = SyncLoadRenderEffect("Caustics.fxml");
 			*(effect_->ParameterByName("pt_texture")) = ASyncLoadTexture("point.dds", EAH_GPU_Read | EAH_Immutable);
 			if (use_gs)
 			{
-				rl_->TopologyType(RenderLayout::TT_PointList);
+				rls_[0]->TopologyType(RenderLayout::TT_PointList);
 
 				GraphicsBufferPtr point_vb = rf.MakeVertexBuffer(BU_Static, EAH_GPU_Read | EAH_Immutable,
 					static_cast<uint32_t>(xys.size() * sizeof(xys[0])), &xys[0]);
-				rl_->BindVertexStream(point_vb, VertexElement(VEU_Position, 0, EF_GR32F));
+				rls_[0]->BindVertexStream(point_vb, VertexElement(VEU_Position, 0, EF_GR32F));
 
 				single_caustics_pass_ = effect_->TechniqueByName("GenSingleFaceCausticsMapWithGS");
 				BOOST_ASSERT(single_caustics_pass_->Validate());
@@ -463,11 +403,11 @@ namespace
 			}
 			else
 			{
-				rl_->TopologyType(RenderLayout::TT_TriangleStrip);
+				rls_[0]->TopologyType(RenderLayout::TT_TriangleStrip);
 
 				GraphicsBufferPtr point_vb = rf.MakeVertexBuffer(BU_Static, EAH_GPU_Read | EAH_Immutable,
 					static_cast<uint32_t>(xys.size() * sizeof(xys[0])), &xys[0]);
-				rl_->BindVertexStream(point_vb, VertexElement(VEU_Position, 0, EF_GR32F), RenderLayout::ST_Instance, 1);
+				rls_[0]->BindVertexStream(point_vb, VertexElement(VEU_Position, 0, EF_GR32F), RenderLayout::ST_Instance, 1);
 
 				float2 texs[] =
 				{
@@ -483,11 +423,11 @@ namespace
 				};
 
 				GraphicsBufferPtr tex_vb = rf.MakeVertexBuffer(BU_Static, EAH_GPU_Read | EAH_Immutable, sizeof(texs), texs);
-				rl_->BindVertexStream(tex_vb, VertexElement(VEU_TextureCoord, 0, EF_GR32F),
+				rls_[0]->BindVertexStream(tex_vb, VertexElement(VEU_TextureCoord, 0, EF_GR32F),
 					RenderLayout::ST_Geometry, static_cast<uint32_t>(xys.size()));
 
 				GraphicsBufferPtr ib = rf.MakeIndexBuffer(BU_Static, EAH_GPU_Read | EAH_Immutable, sizeof(indices), indices);
-				rl_->BindIndexStream(ib, EF_R16UI);
+				rls_[0]->BindIndexStream(ib, EF_R16UI);
 
 				single_caustics_pass_ = effect_->TechniqueByName("GenSingleFaceCausticsMap");
 				BOOST_ASSERT(single_caustics_pass_->Validate());
@@ -628,48 +568,60 @@ void CausticsMapApp::OnCreate()
 	dummy_light_env_->Position(float3(0.0f, 20.0f, 0.0f));
 
 	light_proxy_ = MakeSharedPtr<SceneObjectLightSourceProxy>(light_);
-	light_proxy_->AddToSceneManager();
+	Context::Instance().SceneManagerInstance().SceneRootNode().AddChild(light_proxy_->RootNode());
 
 	//Input Bind
 	InputEngine& ie(Context::Instance().InputFactoryInstance().InputEngineInstance());
 	InputActionMap action_map;
 	action_map.AddActions(actions, actions + std::size(actions));
 	action_handler_t input_handler = MakeSharedPtr<input_signal>();
-	input_handler->connect(
+	input_handler->Connect(
 		[this](InputEngine const & sender, InputAction const & action)
 		{
 			this->InputHandler(sender, action);
 		});
 	ie.ActionMap(action_map, input_handler);
 
-	//Model
-	plane_object_ = MakeSharedPtr<PlaneObject>(50.f, 50.f);
-	plane_object_->AddToSceneManager();
+	// Model
+	plane_renderable_ = MakeSharedPtr<ReceivePlane>(50.0f, 50.0f);
+	plane_obj_ = MakeSharedPtr<SceneNode>(plane_renderable_, SceneNode::SOA_Moveable);
+	Context::Instance().SceneManagerInstance().SceneRootNode().AddChild(plane_obj_);
 
-	RenderablePtr model_sphere = ASyncLoadModel("sphere_high.meshml", EAH_GPU_Read | EAH_Immutable,
-		CreateModelFactory<RefractModel>(), CreateMeshFactory<RefractMesh>());
-	sphere_ = MakeSharedPtr<SceneObjectHelper>(model_sphere, SceneObjectHelper::SOA_Cullable);
-	sphere_->ModelMatrix(MathLib::scaling(200.0f, 200.0f, 200.0f) * MathLib::translation(0.0f, 10.0f, 0.0f));
-	sphere_->AddToSceneManager();
-	sphere_->Visible(false);
+	sphere_obj_ = MakeSharedPtr<SceneNode>(SceneNode::SOA_Cullable);
+	sphere_obj_->TransformToParent(MathLib::scaling(200.0f, 200.0f, 200.0f) * MathLib::translation(0.0f, 10.0f, 0.0f));
+	sphere_obj_->Visible(false);
+	Context::Instance().SceneManagerInstance().SceneRootNode().AddChild(sphere_obj_);
+	sphere_model_ = ASyncLoadModel("sphere_high.glb", EAH_GPU_Read | EAH_Immutable,
+		SceneNode::SOA_Cullable,
+		[this](RenderModel& model)
+		{
+			AddToSceneHelper(*sphere_obj_, model);
+		},
+		CreateModelFactory<RenderModel>, CreateMeshFactory<RefractMesh>);
 
-	RenderablePtr model_bunny = ASyncLoadModel("bunny.meshml", EAH_GPU_Read | EAH_Immutable,
-		CreateModelFactory<RefractModel>(), CreateMeshFactory<RefractMesh>());
-	bunny_ = MakeSharedPtr<SceneObjectHelper>(model_bunny, SceneObjectHelper::SOA_Cullable);
-	bunny_->ModelMatrix(MathLib::scaling(320.0f, 320.0f, 320.0f) * MathLib::translation(3.0f, 2.0f, 0.0f));
-	bunny_->AddToSceneManager();
-	bunny_->Visible(false);
+	bunny_obj_ = MakeSharedPtr<SceneNode>(SceneNode::SOA_Cullable);
+	bunny_obj_->TransformToParent(MathLib::scaling(320.0f, 320.0f, 320.0f) * MathLib::translation(3.0f, 2.0f, 0.0f));
+	bunny_obj_->Visible(false);
+	Context::Instance().SceneManagerInstance().SceneRootNode().AddChild(bunny_obj_);
+	bunny_model_ = ASyncLoadModel("bunny.glb", EAH_GPU_Read | EAH_Immutable,
+		SceneNode::SOA_Cullable,
+		[this](RenderModel& model)
+		{
+			AddToSceneHelper(*bunny_obj_, model);
+		},
+		CreateModelFactory<RenderModel>, CreateMeshFactory<RefractMesh>);
 
-	refract_obj_ = sphere_;
+	refract_obj_ = sphere_obj_;
+	refract_model_ = sphere_model_;
 
 	caustics_grid_ = MakeSharedPtr<CausticsGrid>();
 
-	//Sky Box
+	// Sky Box
 	y_cube_map_ = ASyncLoadTexture("uffizi_cross_filtered_y.dds", EAH_GPU_Read | EAH_Immutable);
 	c_cube_map_ = ASyncLoadTexture("uffizi_cross_filtered_c.dds", EAH_GPU_Read | EAH_Immutable);
-	sky_box_ = MakeSharedPtr<SceneObjectSkyBox>(0);
-	checked_pointer_cast<SceneObjectSkyBox>(sky_box_)->CompressedCubeMap(y_cube_map_, c_cube_map_);
-	sky_box_->AddToSceneManager();
+	sky_box_ = MakeSharedPtr<SceneNode>(MakeSharedPtr<RenderableSkyBox>(), SceneNode::SOA_NotCastShadow);
+	checked_pointer_cast<RenderableSkyBox>(sky_box_->GetRenderable())->CompressedCubeMap(y_cube_map_, c_cube_map_);
+	Context::Instance().SceneManagerInstance().SceneRootNode().AddChild(sky_box_);
 
 	copy_pp_ = SyncLoadPostProcess("Copy.ppml", "Copy");
 	if (depth_texture_support_)
@@ -703,9 +655,9 @@ void CausticsMapApp::InitBuffer()
 		caps.pack_to_rgba_required ? MakeArrayRef({ EF_ABGR8, EF_ARGB8 }) : MakeArrayRef({ EF_R16F, EF_R32F }), 1, 0);
 	BOOST_ASSERT(depth_fmt != EF_Unknown);
 
-	RenderViewPtr refract_obj_ds_view_f;
-	RenderViewPtr refract_obj_ds_view_b;
-	RenderViewPtr background_ds_view;
+	DepthStencilViewPtr refract_obj_ds_view_f;
+	DepthStencilViewPtr refract_obj_ds_view_b;
+	DepthStencilViewPtr background_ds_view;
 	if (depth_texture_support_)
 	{
 		auto const ds_fmt = caps.BestMatchRenderTargetFormat({ EF_D24S8, EF_D16 }, 1, 0);
@@ -715,15 +667,15 @@ void CausticsMapApp::InitBuffer()
 		refract_obj_ds_tex_b_ = rf.MakeTexture2D(CAUSTICS_GRID_SIZE, CAUSTICS_GRID_SIZE, 1, 1, ds_fmt, 1, 0, EAH_GPU_Read | EAH_GPU_Write);
 		background_ds_tex_ = rf.MakeTexture2D(CAUSTICS_GRID_SIZE, CAUSTICS_GRID_SIZE, 1, 1, ds_fmt, 1, 0, EAH_GPU_Read | EAH_GPU_Write);
 
-		refract_obj_ds_view_f = rf.Make2DDepthStencilRenderView(*refract_obj_ds_tex_f_, 0, 1, 0);
-		refract_obj_ds_view_b = rf.Make2DDepthStencilRenderView(*refract_obj_ds_tex_b_, 0, 1, 0);
-		background_ds_view = rf.Make2DDepthStencilRenderView(*background_ds_tex_, 0, 1, 0);
+		refract_obj_ds_view_f = rf.Make2DDsv(refract_obj_ds_tex_f_, 0, 1, 0);
+		refract_obj_ds_view_b = rf.Make2DDsv(refract_obj_ds_tex_b_, 0, 1, 0);
+		background_ds_view = rf.Make2DDsv(background_ds_tex_, 0, 1, 0);
 	}
 	else
 	{
-		refract_obj_ds_view_f = rf.Make2DDepthStencilRenderView(CAUSTICS_GRID_SIZE, CAUSTICS_GRID_SIZE, EF_D16, 1, 0);
-		refract_obj_ds_view_b = rf.Make2DDepthStencilRenderView(CAUSTICS_GRID_SIZE, CAUSTICS_GRID_SIZE, EF_D16, 1, 0);
-		background_ds_view = rf.Make2DDepthStencilRenderView(CAUSTICS_GRID_SIZE, CAUSTICS_GRID_SIZE, EF_D16, 1, 0);
+		refract_obj_ds_view_f = rf.Make2DDsv(CAUSTICS_GRID_SIZE, CAUSTICS_GRID_SIZE, EF_D16, 1, 0);
+		refract_obj_ds_view_b = rf.Make2DDsv(CAUSTICS_GRID_SIZE, CAUSTICS_GRID_SIZE, EF_D16, 1, 0);
+		background_ds_view = rf.Make2DDsv(CAUSTICS_GRID_SIZE, CAUSTICS_GRID_SIZE, EF_D16, 1, 0);
 	}
 
 	refract_obj_N_texture_f_ = rf.MakeTexture2D(CAUSTICS_GRID_SIZE, CAUSTICS_GRID_SIZE, 1, 1, normal_fmt, 1, 0, EAH_GPU_Read | EAH_GPU_Write);
@@ -733,24 +685,24 @@ void CausticsMapApp::InitBuffer()
 	background_depth_tex_ = rf.MakeTexture2D(CAUSTICS_GRID_SIZE, CAUSTICS_GRID_SIZE, 1, 1, depth_fmt, 1, 0, EAH_GPU_Read | EAH_GPU_Write);
 
 	background_fb_ = rf.MakeFrameBuffer();
-	background_fb_->Attach(FrameBuffer::ATT_Color0, rf.Make2DRenderView(*background_depth_tex_, 0, 1, 0));
-	background_fb_->Attach(FrameBuffer::ATT_DepthStencil, background_ds_view);
+	background_fb_->Attach(FrameBuffer::Attachment::Color0, rf.Make2DRtv(background_depth_tex_, 0, 1, 0));
+	background_fb_->Attach(background_ds_view);
 
 	refract_obj_fb_d_f_ = rf.MakeFrameBuffer();
-	refract_obj_fb_d_f_->Attach(FrameBuffer::ATT_Color0, rf.Make2DRenderView(*refract_obj_depth_tex_f_, 0, 1, 0));
-	refract_obj_fb_d_f_->Attach(FrameBuffer::ATT_DepthStencil, refract_obj_ds_view_f);
+	refract_obj_fb_d_f_->Attach(FrameBuffer::Attachment::Color0, rf.Make2DRtv(refract_obj_depth_tex_f_, 0, 1, 0));
+	refract_obj_fb_d_f_->Attach(refract_obj_ds_view_f);
 
 	refract_obj_fb_d_b_ = rf.MakeFrameBuffer();
-	refract_obj_fb_d_b_->Attach(FrameBuffer::ATT_Color0, rf.Make2DRenderView(*refract_obj_depth_tex_b_, 0, 1, 0));
-	refract_obj_fb_d_b_->Attach(FrameBuffer::ATT_DepthStencil, refract_obj_ds_view_b);
+	refract_obj_fb_d_b_->Attach(FrameBuffer::Attachment::Color0, rf.Make2DRtv(refract_obj_depth_tex_b_, 0, 1, 0));
+	refract_obj_fb_d_b_->Attach(refract_obj_ds_view_b);
 
 	refract_obj_fb_f_ = rf.MakeFrameBuffer();
-	refract_obj_fb_f_->Attach(FrameBuffer::ATT_Color0, rf.Make2DRenderView(*refract_obj_N_texture_f_, 0, 1, 0));
-	refract_obj_fb_f_->Attach(FrameBuffer::ATT_DepthStencil, refract_obj_ds_view_f);
+	refract_obj_fb_f_->Attach(FrameBuffer::Attachment::Color0, rf.Make2DRtv(refract_obj_N_texture_f_, 0, 1, 0));
+	refract_obj_fb_f_->Attach(refract_obj_ds_view_f);
 	
 	refract_obj_fb_b_ = rf.MakeFrameBuffer();
-	refract_obj_fb_b_->Attach(FrameBuffer::ATT_Color0, rf.Make2DRenderView(*refract_obj_N_texture_b_, 0, 1, 0));
-	refract_obj_fb_b_->Attach(FrameBuffer::ATT_DepthStencil, refract_obj_ds_view_b);
+	refract_obj_fb_b_->Attach(FrameBuffer::Attachment::Color0, rf.Make2DRtv(refract_obj_N_texture_b_, 0, 1, 0));
+	refract_obj_fb_b_->Attach(refract_obj_ds_view_b);
 
 	auto const fmt = caps.BestMatchTextureRenderTargetFormat(
 		caps.fp_color_support ? MakeArrayRef({ EF_B10G11R11F, EF_ABGR16F }) : MakeArrayRef({ EF_ABGR8, EF_ARGB8 }), 1, 0);
@@ -758,7 +710,7 @@ void CausticsMapApp::InitBuffer()
 	caustics_texture_ = rf.MakeTexture2D(CAUSTICS_GRID_SIZE, CAUSTICS_GRID_SIZE, 1, 1, fmt, 1, 0, EAH_GPU_Read | EAH_GPU_Write);
 	caustics_texture_filtered_ = rf.MakeTexture2D(CAUSTICS_GRID_SIZE, CAUSTICS_GRID_SIZE, 1, 1, caustics_texture_->Format(), 1, 0, EAH_GPU_Read | EAH_GPU_Write);
 	caustics_fb_ = rf.MakeFrameBuffer();
-	caustics_fb_->Attach(FrameBuffer::ATT_Color0, rf.Make2DRenderView(*caustics_texture_, 0, 1, 0));
+	caustics_fb_->Attach(FrameBuffer::Attachment::Color0, rf.Make2DRtv(caustics_texture_, 0, 1, 0));
 
 	scene_fb_ = rf.MakeFrameBuffer();
 	scene_fb_->GetViewport()->camera = re.DefaultFrameBuffer()->GetViewport()->camera;
@@ -771,14 +723,14 @@ void CausticsMapApp::InitEnvCube()
 	RenderDeviceCaps const & caps = re.DeviceCaps();
 
 	auto const ds_fmt = caps.BestMatchRenderTargetFormat({ EF_D24S8, EF_D16 }, 1, 0);
-	RenderViewPtr depth_view = rf.Make2DDepthStencilRenderView(ENV_CUBE_MAP_SIZE, ENV_CUBE_MAP_SIZE, ds_fmt, 1, 0);
+	auto depth_view = rf.Make2DDsv(ENV_CUBE_MAP_SIZE, ENV_CUBE_MAP_SIZE, ds_fmt, 1, 0);
 	env_cube_buffer_ = rf.MakeFrameBuffer();
 	auto const fmt = caps.BestMatchTextureRenderTargetFormat(
 		caps.fp_color_support ? MakeArrayRef({ EF_B10G11R11F, EF_ABGR16F }) : MakeArrayRef({ EF_ABGR8, EF_ARGB8 }), 1, 0);
 	BOOST_ASSERT(fmt != EF_Unknown);
 	env_tex_ = rf.MakeTexture2D(ENV_CUBE_MAP_SIZE, ENV_CUBE_MAP_SIZE, 1, 1, fmt, 1, 0, EAH_GPU_Read | EAH_GPU_Write);
-	env_cube_buffer_->Attach(FrameBuffer::ATT_Color0, rf.Make2DRenderView(*env_tex_, 0, 1, 0));
-	env_cube_buffer_->Attach(FrameBuffer::ATT_DepthStencil, depth_view);
+	env_cube_buffer_->Attach(FrameBuffer::Attachment::Color0, rf.Make2DRtv(env_tex_, 0, 1, 0));
+	env_cube_buffer_->Attach(depth_view);
 
 	env_cube_tex_ = rf.MakeTextureCube(ENV_CUBE_MAP_SIZE, 1, 1, env_tex_->Format(), 1, 0, EAH_GPU_Read | EAH_GPU_Write);
 
@@ -799,14 +751,14 @@ void CausticsMapApp::InitCubeSM()
 
 	auto const ds_fmt = caps.BestMatchRenderTargetFormat({ EF_D24S8, EF_D16 }, 1, 0);
 	BOOST_ASSERT(ds_fmt != EF_Unknown);
-	RenderViewPtr depth_view = rf.Make2DDepthStencilRenderView(SHADOW_MAP_SIZE, SHADOW_MAP_SIZE, ds_fmt, 1, 0);
+	auto depth_view = rf.Make2DDsv(SHADOW_MAP_SIZE, SHADOW_MAP_SIZE, ds_fmt, 1, 0);
 	shadow_cube_buffer_ = rf.MakeFrameBuffer();
 	auto const fmt = caps.BestMatchTextureRenderTargetFormat(
 		caps.pack_to_rgba_required ? MakeArrayRef({ EF_ABGR8, EF_ARGB8 }) : MakeArrayRef({ EF_R16F, EF_R32F }), 1, 0);
 	BOOST_ASSERT(fmt != EF_Unknown);
 	shadow_tex_ = rf.MakeTexture2D(SHADOW_MAP_SIZE, SHADOW_MAP_SIZE, 1, 1, fmt, 1, 0, EAH_GPU_Read | EAH_GPU_Write);
-	shadow_cube_buffer_->Attach(FrameBuffer::ATT_Color0, rf.Make2DRenderView(*shadow_tex_, 0, 1, 0));
-	shadow_cube_buffer_->Attach(FrameBuffer::ATT_DepthStencil, depth_view);
+	shadow_cube_buffer_->Attach(FrameBuffer::Attachment::Color0, rf.Make2DRtv(shadow_tex_, 0, 1, 0));
+	shadow_cube_buffer_->Attach(depth_view);
 
 	shadow_cube_tex_ = rf.MakeTextureCube(SHADOW_MAP_SIZE, 1, 1, shadow_tex_->Format(), 1, 0, EAH_GPU_Read | EAH_GPU_Write);
 
@@ -826,7 +778,7 @@ void CausticsMapApp::InitUI()
 
 	int ui_id = 0;
 	ui_id = dialog_->IDFromName("Light_Density_Slider");
-	dialog_->Control<UISlider>(ui_id)->OnValueChangedEvent().connect(
+	dialog_->Control<UISlider>(ui_id)->OnValueChangedEvent().Connect(
 		[this](UISlider const & sender)
 		{
 			this->LightDensityHandler(sender);
@@ -834,7 +786,7 @@ void CausticsMapApp::InitUI()
 	LightDensityHandler(*(dialog_->Control<UISlider>(ui_id)));
 
 	ui_id = dialog_->IDFromName("Refraction_Index_Slider");
-	dialog_->Control<UISlider>(ui_id)->OnValueChangedEvent().connect(
+	dialog_->Control<UISlider>(ui_id)->OnValueChangedEvent().Connect(
 		[this](UISlider const & sender)
 		{
 			this->RefractIndexHandler(sender);
@@ -842,7 +794,7 @@ void CausticsMapApp::InitUI()
 	RefractIndexHandler(*(dialog_->Control<UISlider>(ui_id)));
 
 	ui_id = dialog_->IDFromName("Point_Size_Slider");
-	dialog_->Control<UISlider>(ui_id)->OnValueChangedEvent().connect(
+	dialog_->Control<UISlider>(ui_id)->OnValueChangedEvent().Connect(
 		[this](UISlider const & sender)
 		{
 			this->PointSizeHandler(sender);
@@ -850,7 +802,7 @@ void CausticsMapApp::InitUI()
 	PointSizeHandler(*(dialog_->Control<UISlider>(ui_id)));
 
 	ui_id = dialog_->IDFromName("Dual_Caustics_Checkbox");
-	dialog_->Control<UICheckBox>(ui_id)->OnChangedEvent().connect(
+	dialog_->Control<UICheckBox>(ui_id)->OnChangedEvent().Connect(
 		[this](UICheckBox const & sender)
 		{
 			this->DualFaceCausticsCheckBoxHandler(sender);
@@ -858,7 +810,7 @@ void CausticsMapApp::InitUI()
 	DualFaceCausticsCheckBoxHandler(*(dialog_->Control<UICheckBox>(ui_id)));
 
 	ui_id = dialog_->IDFromName("Model_Combobox");
-	dialog_->Control<UIComboBox>(ui_id)->OnSelectionChangedEvent().connect(
+	dialog_->Control<UIComboBox>(ui_id)->OnSelectionChangedEvent().Connect(
 		[this](UIComboBox const & sender)
 		{
 			this->ModelSelectionComboBox(sender);
@@ -879,10 +831,10 @@ void CausticsMapApp::OnResize(uint32_t width, uint32_t height)
 	auto fmt = caps.BestMatchTextureRenderTargetFormat({ EF_B10G11R11F, EF_ABGR8, EF_ARGB8 }, 1, 0);
 	BOOST_ASSERT(fmt != EF_Unknown);
 	scene_texture_ = rf.MakeTexture2D(width, height, 1, 1, fmt, 1, 0, EAH_GPU_Read | EAH_GPU_Write);
-	scene_fb_->Attach(FrameBuffer::ATT_Color0, rf.Make2DRenderView(*scene_texture_, 0, 1, 0));
+	scene_fb_->Attach(FrameBuffer::Attachment::Color0, rf.Make2DRtv(scene_texture_, 0, 1, 0));
 	fmt = caps.BestMatchRenderTargetFormat({ EF_D24S8, EF_D16 }, 1, 0);
 	BOOST_ASSERT(fmt != EF_Unknown);
-	scene_fb_->Attach(FrameBuffer::ATT_DepthStencil, rf.Make2DDepthStencilRenderView(width, height, fmt, 1, 0));
+	scene_fb_->Attach(rf.Make2DDsv(width, height, fmt, 1, 0));
 
 	copy_pp_->InputPin(0, scene_texture_);
 }
@@ -942,14 +894,16 @@ void CausticsMapApp::ModelSelectionComboBox(KlayGE::UIComboBox const & sender)
 	{
 	case 0:
 		refract_obj_->Visible(false);
-		refract_obj_ = sphere_;
+		refract_obj_ = sphere_obj_;
 		refract_obj_->Visible(true);
+		refract_model_ = sphere_model_;
 		break;
 
 	default:
 		refract_obj_->Visible(false);
-		refract_obj_ = bunny_;
+		refract_obj_ = bunny_obj_;
 		refract_obj_->Visible(true);
+		refract_model_ = bunny_model_;
 		break;
 	}
 }
@@ -988,16 +942,15 @@ uint32_t CausticsMapApp::DoUpdate(uint32_t pass)
 	//Pass 0 ~ 3 Caustics Map
 	if (0 == pass)
 	{
-		dummy_light_env_->Position(MathLib::transform_coord(
-			refract_obj_->GetRenderable()->PosBound().Center(), refract_obj_->ModelMatrix()));
+		dummy_light_env_->Position(refract_model_->RootNode()->PosBoundWS().Center());
 
 		if (depth_texture_support_)
 		{
-			checked_pointer_cast<PlaneObject>(plane_object_)->CausticsPass(Position_Pass);
+			checked_pointer_cast<ReceivePlane>(plane_renderable_)->CausticsPass(Position_Pass);
 		}
 		else
 		{
-			checked_pointer_cast<PlaneObject>(plane_object_)->CausticsPass(Depth_WODT_Pass);
+			checked_pointer_cast<ReceivePlane>(plane_renderable_)->CausticsPass(Depth_WODT_Pass);
 		}
 
 		re.BindFrameBuffer(background_fb_);
@@ -1006,20 +959,21 @@ uint32_t CausticsMapApp::DoUpdate(uint32_t pass)
 
 		if (depth_texture_support_)
 		{
-			float q = light_->SMCamera(0)->FarPlane() / (light_->SMCamera(0)->FarPlane() - light_->SMCamera(0)->NearPlane());
-			float4 near_q_far(light_->SMCamera(0)->NearPlane() * q, q, light_->SMCamera(0)->FarPlane(), 1 / light_->SMCamera(0)->FarPlane());
-			depth_to_linear_pp_->SetParam(0, near_q_far);
+			depth_to_linear_pp_->SetParam(0, light_->SMCamera(0)->NearQFarParam());
 		}
 
 		return App3DFramework::URV_NeedFlush;
 	}
 	else if (1 == pass)
 	{
-		plane_object_->Visible(false);
+		plane_obj_->Visible(false);
 		refract_obj_->Visible(true);
 		if (depth_texture_support_)
 		{
-			checked_pointer_cast<RefractModel>(refract_obj_->GetRenderable())->CausticsPass(Position_Normal_Front_Pass);
+			refract_model_->ForEachMesh([](Renderable& mesh)
+				{
+					checked_cast<RefractMesh*>(&mesh)->CausticsPass(Position_Normal_Front_Pass);
+				});
 
 			depth_to_linear_pp_->InputPin(0, background_ds_tex_);
 			depth_to_linear_pp_->OutputPin(0, background_depth_tex_);
@@ -1031,7 +985,10 @@ uint32_t CausticsMapApp::DoUpdate(uint32_t pass)
 		}
 		else
 		{
-			checked_pointer_cast<RefractModel>(refract_obj_->GetRenderable())->CausticsPass(Depth_Front_WODT_Pass);
+			refract_model_->ForEachMesh([](Renderable& mesh)
+				{
+					checked_cast<RefractMesh*>(&mesh)->CausticsPass(Depth_Front_WODT_Pass);
+				});
 
 			re.BindFrameBuffer(refract_obj_fb_d_f_);
 			re.CurFrameBuffer()->Clear(FrameBuffer::CBM_Color | FrameBuffer::CBM_Depth, Color(light_->SMCamera(0)->FarPlane(), 0.0f, 0.0f, 0.0f), 1.0f, 0);
@@ -1051,7 +1008,10 @@ uint32_t CausticsMapApp::DoUpdate(uint32_t pass)
 			if (enable_dual_face_caustics_)
 			{
 				refract_obj_->Visible(true);
-				checked_pointer_cast<RefractModel>(refract_obj_->GetRenderable())->CausticsPass(Position_Normal_Back_Pass);
+				refract_model_->ForEachMesh([](Renderable& mesh)
+					{
+						checked_cast<RefractMesh*>(&mesh)->CausticsPass(Position_Normal_Back_Pass);
+					});
 
 				re.BindFrameBuffer(refract_obj_fb_b_);
 				re.CurFrameBuffer()->Clear(FrameBuffer::CBM_Color | FrameBuffer::CBM_Depth, Color(0.0f, 0.0f, 0.0f, 0.0f), 1.0f, 0);
@@ -1063,10 +1023,13 @@ uint32_t CausticsMapApp::DoUpdate(uint32_t pass)
 		}
 		else
 		{
-			plane_object_->Visible(false);
+			plane_obj_->Visible(false);
 			refract_obj_->Visible(true);
 
-			checked_pointer_cast<RefractModel>(refract_obj_->GetRenderable())->CausticsPass(Normal_Front_WODT_Pass);
+			refract_model_->ForEachMesh([](Renderable& mesh)
+				{
+					checked_cast<RefractMesh*>(&mesh)->CausticsPass(Normal_Front_WODT_Pass);
+				});
 
 			re.BindFrameBuffer(refract_obj_fb_f_);
 			re.CurFrameBuffer()->Clear(FrameBuffer::CBM_Color, Color(0.0f, 0.0f, 0.0f, 0.0f), 1.0f, 0);
@@ -1104,7 +1067,10 @@ uint32_t CausticsMapApp::DoUpdate(uint32_t pass)
 			if (enable_dual_face_caustics_)
 			{
 				refract_obj_->Visible(true);
-				checked_pointer_cast<RefractModel>(refract_obj_->GetRenderable())->CausticsPass(Depth_Back_WODT_Pass);
+				refract_model_->ForEachMesh([](Renderable& mesh)
+					{
+						checked_cast<RefractMesh*>(&mesh)->CausticsPass(Depth_Back_WODT_Pass);
+					});
 
 				re.BindFrameBuffer(refract_obj_fb_d_b_);
 				re.CurFrameBuffer()->Clear(FrameBuffer::CBM_Color | FrameBuffer::CBM_Depth, Color(light_->SMCamera(0)->FarPlane(), 0.0f, 0.0f, 0.0f), 1.0f, 0);
@@ -1120,7 +1086,10 @@ uint32_t CausticsMapApp::DoUpdate(uint32_t pass)
 		if (enable_dual_face_caustics_)
 		{
 			refract_obj_->Visible(true);
-			checked_pointer_cast<RefractModel>(refract_obj_->GetRenderable())->CausticsPass(Normal_Back_WODT_Pass);
+			refract_model_->ForEachMesh([](Renderable& mesh)
+				{
+					checked_cast<RefractMesh*>(&mesh)->CausticsPass(Normal_Back_WODT_Pass);
+				});
 
 			re.BindFrameBuffer(refract_obj_fb_b_);
 			re.CurFrameBuffer()->Clear(FrameBuffer::CBM_Color, Color(0.0f, 0.0f, 0.0f, 0.0f), 1.0f, 0);
@@ -1162,15 +1131,20 @@ uint32_t CausticsMapApp::DoUpdate(uint32_t pass)
 		}
 
 		refract_obj_->Visible(true);
-		plane_object_->Visible(true);
+		plane_obj_->Visible(true);
 
-		checked_pointer_cast<PlaneObject>(plane_object_)->CausticsPass(Gen_Shadow_Pass);
-		checked_pointer_cast<ReceivePlane>(plane_object_->GetRenderable())->BindLight(dummy_light_);
-		checked_pointer_cast<RefractModel>(refract_obj_->GetRenderable())->CausticsPass(Gen_Shadow_Pass);
-		checked_pointer_cast<RefractModel>(refract_obj_->GetRenderable())->BindLight(dummy_light_);
+		checked_pointer_cast<ReceivePlane>(plane_renderable_)->CausticsPass(Gen_Shadow_Pass);
+		checked_pointer_cast<ReceivePlane>(plane_renderable_)->BindLight(dummy_light_);
+		refract_model_->ForEachMesh([this](Renderable& mesh)
+			{
+				auto& refract_mesh = *checked_cast<RefractMesh*>(&mesh);
+
+				refract_mesh.CausticsPass(Gen_Shadow_Pass);
+				refract_mesh.BindLight(dummy_light_);
+			});
 
 		re.BindFrameBuffer(shadow_cube_buffer_);
-		re.CurFrameBuffer()->Attached(FrameBuffer::ATT_DepthStencil)->ClearDepth(1.0f);
+		re.CurFrameBuffer()->AttachedDsv()->ClearDepth(1.0f);
 		shadow_cube_buffer_->GetViewport()->camera = dummy_light_->SMCamera(pass - sm_start_pass);
 
 		return App3DFramework::URV_NeedFlush;
@@ -1192,17 +1166,17 @@ uint32_t CausticsMapApp::DoUpdate(uint32_t pass)
 		}
 
 		refract_obj_->Visible(false);
-		plane_object_->Visible(true);
+		plane_obj_->Visible(true);
 		sky_box_->Visible(true);
 
-		checked_pointer_cast<PlaneObject>(plane_object_)->CausticsPass(Default_Pass);
-		checked_pointer_cast<ReceivePlane>(plane_object_->GetRenderable())->BindLight(dummy_light_);
-		checked_pointer_cast<ReceivePlane>(plane_object_->GetRenderable())->CausticsLight(light_);
-		checked_pointer_cast<ReceivePlane>(plane_object_->GetRenderable())->SetSMTexture(shadow_cube_tex_);
-		checked_pointer_cast<ReceivePlane>(plane_object_->GetRenderable())->SetCausticsMap(caustics_texture_filtered_);
+		checked_pointer_cast<ReceivePlane>(plane_renderable_)->CausticsPass(Default_Pass);
+		checked_pointer_cast<ReceivePlane>(plane_renderable_)->BindLight(dummy_light_);
+		checked_pointer_cast<ReceivePlane>(plane_renderable_)->CausticsLight(light_);
+		checked_pointer_cast<ReceivePlane>(plane_renderable_)->SetSMTexture(shadow_cube_tex_);
+		checked_pointer_cast<ReceivePlane>(plane_renderable_)->SetCausticsMap(caustics_texture_filtered_);
 
 		re.BindFrameBuffer(env_cube_buffer_);
-		re.CurFrameBuffer()->Attached(FrameBuffer::ATT_DepthStencil)->ClearDepth(1.0f);
+		re.CurFrameBuffer()->AttachedDsv()->ClearDepth(1.0f);
 		env_cube_buffer_->GetViewport()->camera = dummy_light_env_->SMCamera(pass - env_start_pass);
 		
 		return App3DFramework::URV_NeedFlush;
@@ -1217,17 +1191,17 @@ uint32_t CausticsMapApp::DoUpdate(uint32_t pass)
 		// render background for refract
 
 		refract_obj_->Visible(false);
-		plane_object_->Visible(true);
+		plane_obj_->Visible(true);
 		sky_box_->Visible(true);
 
-		checked_pointer_cast<PlaneObject>(plane_object_)->CausticsPass(Default_Pass);
-		checked_pointer_cast<ReceivePlane>(plane_object_->GetRenderable())->BindLight(dummy_light_);
-		checked_pointer_cast<ReceivePlane>(plane_object_->GetRenderable())->CausticsLight(light_);
-		checked_pointer_cast<ReceivePlane>(plane_object_->GetRenderable())->SetSMTexture(shadow_cube_tex_);
-		checked_pointer_cast<ReceivePlane>(plane_object_->GetRenderable())->SetCausticsMap(caustics_texture_filtered_);
+		checked_pointer_cast<ReceivePlane>(plane_renderable_)->CausticsPass(Default_Pass);
+		checked_pointer_cast<ReceivePlane>(plane_renderable_)->BindLight(dummy_light_);
+		checked_pointer_cast<ReceivePlane>(plane_renderable_)->CausticsLight(light_);
+		checked_pointer_cast<ReceivePlane>(plane_renderable_)->SetSMTexture(shadow_cube_tex_);
+		checked_pointer_cast<ReceivePlane>(plane_renderable_)->SetCausticsMap(caustics_texture_filtered_);
 
 		re.BindFrameBuffer(scene_fb_);
-		re.CurFrameBuffer()->Attached(FrameBuffer::ATT_DepthStencil)->ClearDepth(1.0f);
+		re.CurFrameBuffer()->AttachedDsv()->ClearDepth(1.0f);
 
 		return App3DFramework::URV_NeedFlush;
 	}
@@ -1237,15 +1211,20 @@ uint32_t CausticsMapApp::DoUpdate(uint32_t pass)
 
 		sky_box_->Visible(false);
 		refract_obj_->Visible(true);
-		plane_object_->Visible(true);
+		plane_obj_->Visible(true);
 
-		checked_pointer_cast<PlaneObject>(plane_object_)->CausticsPass(Default_Pass);
-		checked_pointer_cast<RefractModel>(refract_obj_->GetRenderable())->CausticsPass(Refract_Pass);
-		checked_pointer_cast<RefractModel>(refract_obj_->GetRenderable())->SceneTexture(scene_texture_);
-		checked_pointer_cast<RefractModel>(refract_obj_->GetRenderable())->SetEnvCube(env_cube_tex_);
+		checked_pointer_cast<ReceivePlane>(plane_renderable_)->CausticsPass(Default_Pass);
+		refract_model_->ForEachMesh([this](Renderable& mesh)
+			{
+				auto& refract_mesh = *checked_cast<RefractMesh*>(&mesh);
+
+				refract_mesh.CausticsPass(Refract_Pass);
+				refract_mesh.SceneTexture(scene_texture_);
+				refract_mesh.SetEnvCube(env_cube_tex_);
+			});
 
 		re.BindFrameBuffer(FrameBufferPtr());
-		re.CurFrameBuffer()->Attached(FrameBuffer::ATT_DepthStencil)->ClearDepth(1.0f);
+		re.CurFrameBuffer()->AttachedDsv()->ClearDepth(1.0f);
 
 		copy_pp_->Apply();
 

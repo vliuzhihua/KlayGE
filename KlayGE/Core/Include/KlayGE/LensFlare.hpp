@@ -16,11 +16,11 @@
 #pragma once
 
 #include <KlayGE/RenderableHelper.hpp>
-#include <KlayGE/SceneObjectHelper.hpp>
+#include <KlayGE/SceneNodeHelper.hpp>
 
 namespace KlayGE
 {
-	class KLAYGE_CORE_API LensFlareRenderable : public RenderableHelper
+	class KLAYGE_CORE_API LensFlareRenderable : public Renderable
 	{
 	public:
 		LensFlareRenderable();
@@ -29,8 +29,8 @@ namespace KlayGE
 
 		void OnRenderBegin();
 	};
-	
-	class KLAYGE_CORE_API LensFlareSceneObject : public SceneObjectHelper
+
+	class KLAYGE_CORE_API LensFlareSceneObject : public SceneNode
 	{
 	public:
 		LensFlareSceneObject();
@@ -38,18 +38,10 @@ namespace KlayGE
 		void Direction(float3 const & dir);
 		float3 const & Direction() const;
 
-		bool LFVisible() const
-		{
-			return lf_visible_;
-		}
-
-		virtual bool MainThreadUpdate(float app_time, float elapsed_time) override;
-
-		virtual void Pass(PassType type);
+		void MainThreadUpdateFunc();
 
 	private:
 		float3 dir_;
-		bool lf_visible_;
 	};
 }
 

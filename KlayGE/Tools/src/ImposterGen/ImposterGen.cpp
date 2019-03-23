@@ -48,14 +48,10 @@
 #include <fstream>
 #include <iostream>
 
-#if defined(KLAYGE_COMPILER_CLANGC2)
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wunused-variable" // Ignore unused variable (mpl_assertion_in_line_xxx) in boost
+#ifndef KLAYGE_DEBUG
+#define CXXOPTS_NO_RTTI
 #endif
-#include <boost/program_options.hpp>
-#if defined(KLAYGE_COMPILER_CLANGC2)
-#pragma clang diagnostic pop
-#endif
+#include <cxxopts.hpp>
 
 using namespace std;
 using namespace KlayGE;
@@ -101,10 +97,9 @@ void GeneratesImposters(std::string const & meshml_name, std::string const & tar
 		0, 1, EF_ABGR8, 1, 0, EAH_GPU_Read | EAH_GPU_Write | EAH_Generate_Mips);
 
 	FrameBufferPtr imposter_fb = rf.MakeFrameBuffer();
-	imposter_fb->Attach(FrameBuffer::ATT_Color0, rf.Make2DRenderView(*impostors_g_buffer_rt0, 0, 1, 0));
-	imposter_fb->Attach(FrameBuffer::ATT_Color1, rf.Make2DRenderView(*impostors_g_buffer_rt1, 0, 1, 0));
-	imposter_fb->Attach(FrameBuffer::ATT_DepthStencil, rf.Make2DDepthStencilRenderView(size * num_azimuth, size * num_elevation,
-		EF_D24S8, 1, 0));
+	imposter_fb->Attach(FrameBuffer::Attachment::Color0, rf.Make2DRtv(impostors_g_buffer_rt0, 0, 1, 0));
+	imposter_fb->Attach(FrameBuffer::Attachment::Color1, rf.Make2DRtv(impostors_g_buffer_rt1, 0, 1, 0));
+	imposter_fb->Attach(rf.Make2DDsv(size * num_azimuth, size * num_elevation, EF_D24S8, 1, 0));
 	auto const & imposter_camera = imposter_fb->GetViewport()->camera;
 	imposter_fb->GetViewport()->width = size;
 	imposter_fb->GetViewport()->height = size;
@@ -112,9 +107,10 @@ void GeneratesImposters(std::string const & meshml_name, std::string const & tar
 	imposter_fb->Clear(FrameBuffer::CBM_Color | FrameBuffer::CBM_Depth | FrameBuffer::CBM_Stencil,
 		Color(0, 0, 0, 0), 1, 0);
 
-	RenderablePtr scene_model = SyncLoadModel(meshml_name, EAH_GPU_Read | EAH_Immutable);
+	auto scene_model = SyncLoadModel(meshml_name, EAH_GPU_Read | EAH_Immutable,
+		SceneNode::SOA_Cullable, nullptr);
 
-	auto const & aabbox = scene_model->PosBound();
+	auto const & aabbox = scene_model->RootNode()->PosBoundOS();
 	float3 const dimensions = aabbox.Max() - aabbox.Min();
 	float const diag_length = MathLib::length(dimensions);
 
@@ -156,9 +152,9 @@ void GeneratesImposters(std::string const & meshml_name, std::string const & tar
 
 			re.BindFrameBuffer(imposter_fb);
 
-			for (uint32_t i = 0; i < scene_model->NumSubrenderables(); ++ i)
+			for (uint32_t i = 0; i < scene_model->NumMeshes(); ++ i)
 			{
-				auto mesh = scene_model->Subrenderable(i).get();
+				auto mesh = scene_model->Mesh(i).get();
 
 				while (!mesh->AllHWResourceReady());
 				mesh->Pass(PT_OpaqueGBufferMRT);
@@ -207,24 +203,23 @@ int main(int argc, char* argv[])
 	uint32_t size;
 	bool quiet = false;
 
-	boost::program_options::options_description desc("Allowed options");
-	desc.add_options()
-		("help,H", "Produce help message")
-		("input-name,I", boost::program_options::value<std::string>(), "Input meshml name.")
-		("target-folder,T", boost::program_options::value<std::string>(), "Target folder.")
-		("azimuth,A", boost::program_options::value<uint32_t>(&azimuth)->default_value(8U), "Num of view angles in XoZ plane.")
-		("elevation,E", boost::program_options::value<uint32_t>(&elevation)->default_value(8U), "Num of view angles in XoY plane.")
-		("size,S", boost::program_options::value<uint32_t>(&size)->default_value(256U), "Size of each imposter.")
-		("quiet,q", boost::program_options::value<bool>(&quiet)->implicit_value(true), "Quiet mode.")
-		("version,v", "Version.");
+	cxxopts::Options options("ImageConv", "KlayGE Imposter Generator");
+	options.add_options()
+		("H,help", "Produce help message")
+		("I,input-name", "Input mesh name.", cxxopts::value<std::string>())
+		("T,target-folder", "Target folder.", cxxopts::value<std::string>())
+		("A,azimuth", "Num of view angles in XoZ plane.", cxxopts::value<uint32_t>(azimuth)->default_value("8"))
+		("E,elevation", "Num of view angles in XoY plane.", cxxopts::value<uint32_t>(elevation)->default_value("8"))
+		("S,size", "Size of each imposter.", cxxopts::value<uint32_t>(size)->default_value("256"))
+		("q,quiet", "Quiet mode.", cxxopts::value<bool>()->implicit_value("true"))
+		("v,version", "Version.");
 
-	boost::program_options::variables_map vm;
-	boost::program_options::store(boost::program_options::parse_command_line(argc, argv, desc), vm);
-	boost::program_options::notify(vm);
+	int const argc_backup = argc;
+	auto vm = options.parse(argc, argv);
 
-	if ((argc <= 1) || (vm.count("help") > 0))
+	if ((argc_backup <= 1) || (vm.count("help") > 0))
 	{
-		cout << desc << endl;
+		cout << options.help() << endl;
 		return 1;
 	}
 	if (vm.count("version") > 0)
@@ -239,6 +234,7 @@ int main(int argc, char* argv[])
 	else
 	{
 		cout << "Need input meshml name." << endl;
+		cout << options.help() << endl;
 		return 1;
 	}
 	if (vm.count("target-folder") > 0)

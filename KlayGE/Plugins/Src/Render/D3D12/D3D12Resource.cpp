@@ -65,18 +65,12 @@ namespace KlayGE
 
 		auto& re = *checked_cast<D3D12RenderEngine*>(&Context::Instance().RenderFactoryInstance().RenderEngineInstance());
 
+		bool state_changed = false;
 		if (sub_res == D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES)
 		{
-			bool same_state = true;
-			for (auto state : curr_states_)
-			{
-				if (state != curr_states_[0])
-				{
-					same_state = false;
-					break;
-				}
-			}
-
+			auto const first_state = curr_states_[0];
+			bool const same_state = std::all_of(
+				curr_states_.begin(), curr_states_.end(), [first_state](D3D12_RESOURCE_STATES state) { return state == first_state; });
 			if (same_state)
 			{
 				if (curr_states_[0] != target_state)
@@ -85,12 +79,11 @@ namespace KlayGE
 					barrier.Transition.StateBefore = curr_states_[0];
 					barrier.Transition.StateAfter = target_state;
 					barrier.Transition.Subresource = sub_res;
-					for (auto& state : curr_states_)
-					{
-						state = target_state;
-					}
+					std::fill(curr_states_.begin(), curr_states_.end(), target_state);
 
 					re.AddResourceBarrier(cmd_list, barrier);
+
+					state_changed = true;
 				}
 			}
 			else
@@ -106,6 +99,8 @@ namespace KlayGE
 						curr_states_[i] = target_state;
 
 						re.AddResourceBarrier(cmd_list, barrier);
+
+						state_changed = true;
 					}
 				}
 			}
@@ -121,7 +116,17 @@ namespace KlayGE
 				curr_states_[sub_res] = target_state;
 
 				re.AddResourceBarrier(cmd_list, barrier);
+
+				state_changed = true;
 			}
+		}
+
+		if (!state_changed && (target_state == D3D12_RESOURCE_STATE_UNORDERED_ACCESS))
+		{
+			barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
+			barrier.UAV.pResource = d3d_resource_.get();
+
+			re.AddResourceBarrier(cmd_list, barrier);
 		}
 	}
 

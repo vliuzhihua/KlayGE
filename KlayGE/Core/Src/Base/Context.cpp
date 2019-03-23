@@ -24,6 +24,7 @@
 #include <KFL/Util.hpp>
 #include <KFL/Math.hpp>
 #include <KFL/Log.hpp>
+#include <KlayGE/DevHelper.hpp>
 #include <KlayGE/SceneManager.hpp>
 #include <KlayGE/RenderFactory.hpp>
 #include <KlayGE/AudioFactory.hpp>
@@ -43,14 +44,7 @@
 #include <sstream>
 #include <string>
 
-#if defined(KLAYGE_COMPILER_CLANGC2)
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wunused-variable" // Ignore unused variable (mpl_assertion_in_line_xxx) in boost
-#endif
 #include <boost/algorithm/string/split.hpp>
-#if defined(KLAYGE_COMPILER_CLANGC2)
-#pragma clang diagnostic pop
-#endif
 #include <boost/algorithm/string/trim.hpp>
 
 #if defined(KLAYGE_PLATFORM_WINDOWS)
@@ -113,6 +107,9 @@ namespace KlayGE
 	typedef void (*MakeScriptFactoryFunc)(std::unique_ptr<ScriptFactory>& ptr);
 	typedef void (*MakeSceneManagerFunc)(std::unique_ptr<SceneManager>& ptr);
 	typedef void (*MakeAudioDataSourceFactoryFunc)(std::unique_ptr<AudioDataSourceFactory>& ptr);
+#if KLAYGE_IS_DEV_PLATFORM
+	typedef void (*MakeDevHelperFunc)(std::unique_ptr<DevHelper>& ptr);
+#endif
 
 	Context::Context()
 		: app_(nullptr)
@@ -149,6 +146,10 @@ namespace KlayGE
 		input_factory_.reset();
 		script_factory_.reset();
 		audio_data_src_factory_.reset();
+
+#if KLAYGE_IS_DEV_PLATFORM
+		dev_helper_.reset();
+#endif
 
 		app_ = nullptr;
 
@@ -285,7 +286,7 @@ namespace KlayGE
 		static char const * available_scfs_array[] = { "Python" };
 #elif defined(KLAYGE_PLATFORM_ANDROID)
 		static char const * available_rfs_array[] = { "OpenGLES" };
-		static char const * available_afs_array[] = { "NullAudio" };
+		static char const * available_afs_array[] = { "OpenAL" };
 		static char const * available_adsfs_array[] = { "OggVorbis" };
 		static char const * available_ifs_array[] = { "MsgInput" };
 		static char const * available_sfs_array[] = { "NullShow" };
@@ -1164,6 +1165,30 @@ namespace KlayGE
 #endif
 	}
 
+#if KLAYGE_IS_DEV_PLATFORM
+	void Context::LoadDevHelper()
+	{
+		dev_helper_.reset();
+
+		dev_helper_loader_.Free();
+
+		std::string path = KLAYGE_DLL_PREFIX"_DevHelper" DLL_SUFFIX;
+
+		dev_helper_loader_.Load(ResLoader::Instance().Locate(path));
+
+		MakeDevHelperFunc mdh = (MakeDevHelperFunc)dev_helper_loader_.GetProcAddress("MakeDevHelper");
+		if (mdh != nullptr)
+		{
+			mdh(dev_helper_);
+		}
+		else
+		{
+			LogError() << "Loading " << path << " failed" << std::endl;
+			dev_helper_loader_.Free();
+		}
+	}
+#endif
+
 	SceneManager& Context::SceneManagerInstance()
 	{
 		if (!scene_mgr_)
@@ -1254,4 +1279,19 @@ namespace KlayGE
 		}
 		return *audio_data_src_factory_;
 	}
+
+#if KLAYGE_IS_DEV_PLATFORM
+	DevHelper& Context::DevHelperInstance()
+	{
+		if (!dev_helper_)
+		{
+			std::lock_guard<std::mutex> lock(singleton_mutex);
+			if (!dev_helper_)
+			{
+				this->LoadDevHelper();
+			}
+		}
+		return *dev_helper_;
+	}
+#endif
 }

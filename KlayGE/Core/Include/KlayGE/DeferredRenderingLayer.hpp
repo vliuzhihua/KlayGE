@@ -28,8 +28,8 @@
  * from http://www.klayge.org/licensing/.
  */
 
-#ifndef _DEFERREDRENDERINGLAYER_HPP
-#define _DEFERREDRENDERINGLAYER_HPP
+#ifndef KLAYGE_CORE_DEFERRED_RENDERING_LAYER_HPP
+#define KLAYGE_CORE_DEFERRED_RENDERING_LAYER_HPP
 
 #pragma once
 
@@ -87,9 +87,10 @@ namespace KlayGE
 		TexturePtr g_buffer_rt0_backup_tex;
 #if DEFAULT_DEFERRED == LIGHT_INDEXED_DEFERRED
 		std::vector<TexturePtr> g_buffer_min_max_depth_texs;
+		ShaderResourceViewPtr g_buffer_stencil_srv;
 #endif
 		std::vector<TexturePtr> g_buffer_vdm_max_ds_texs;
-		std::vector<RenderViewPtr> g_buffer_vdm_max_ds_views;
+		std::vector<DepthStencilViewPtr> g_buffer_vdm_max_ds_views;
 
 		FrameBufferPtr shadowing_fb;
 		TexturePtr shadowing_tex;
@@ -143,9 +144,6 @@ namespace KlayGE
 
 		TexturePtr temp_shading_tex_array;
 
-		TexturePtr lighting_mask_tex;
-		FrameBufferPtr lighting_mask_fb;
-
 		TexturePtr multi_sample_mask_tex;
 
 		TexturePtr lights_start_tex;
@@ -195,7 +193,7 @@ namespace KlayGE
 	public:
 		DeferredRenderingLayer();
 
-		static bool ConfirmDevice();
+		static void Register();
 
 		void Suspend();
 		void Resume();
@@ -385,6 +383,8 @@ namespace KlayGE
 #endif
 
 	private:
+		static bool ConfirmDevice();
+
 		void SetupViewportGI(uint32_t vp, bool ssgi_enable);
 		void AccumulateToLightingTex(PerViewport const & pvp, PassTargetBuffer pass_tb);
 
@@ -457,11 +457,14 @@ namespace KlayGE
 		uint32_t SpecialShadingDRJob(PerViewport& pvp, PassType pass_type);
 		uint32_t MergeShadingAndDepthDRJob(PerViewport& pvp, PassTargetBuffer pass_tb);
 		uint32_t PostEffectsDRJob(PerViewport& pvp);
-		uint32_t SimpleForwardDRJob();
+		uint32_t SimpleForwardDRJob(PerViewport& pvp);
+		uint32_t PostSimpleForwardDRJob(PerViewport& pvp);
+		uint32_t FinishingViewportDRJob(PerViewport& pvp);
 		uint32_t FinishingDRJob();
 		uint32_t SwitchViewportDRJob(uint32_t vp_index);
 		uint32_t VisualizeGBufferDRJob();
 		uint32_t VisualizeLightingDRJob();
+		uint32_t ClearOnlyDRJob();
 
 	private:
 		bool tex_array_support_;
@@ -483,6 +486,7 @@ namespace KlayGE
 
 		PostProcessPtr ssvo_pp_;
 		PostProcessPtr ssvo_blur_pp_;
+		PostProcessPtr ssvo_upsample_pp_;
 
 		PostProcessPtr sss_blur_pps_[2];
 		bool sss_enabled_;
@@ -522,7 +526,6 @@ namespace KlayGE
 		RenderTechnique* technique_merge_shading_[2];
 		RenderTechnique* technique_merge_depth_[2];
 		RenderTechnique* technique_copy_shading_depth_;
-		RenderTechnique* technique_copy_depth_;
 #if DEFAULT_DEFERRED == TRIDITIONAL_DEFERRED
 		std::array<RenderTechnique*, LightSource::LT_NumLightTypes> technique_lights_;
 		RenderTechnique* technique_light_depth_only_;
@@ -547,7 +550,6 @@ namespace KlayGE
 		RenderTechnique* technique_cldr_unified_[2];
 
 		RenderTechnique* technique_depth_to_tiled_min_max_[2];
-		RenderTechnique* technique_cldr_lighting_mask_;
 		RenderTechnique* technique_resolve_g_buffers_;
 		RenderTechnique* technique_resolve_merged_depth_;
 		RenderTechnique* technique_array_to_multiSample_;
@@ -616,6 +618,8 @@ namespace KlayGE
 		RenderEffectParameter* g_buffer_rt1_tex_ms_param_;
 		RenderEffectParameter* g_buffer_ds_tex_ms_param_;
 		RenderEffectParameter* g_buffer_depth_tex_ms_param_;
+		RenderEffectParameter* g_buffer_stencil_tex_param_;
+		RenderEffectParameter* g_buffer_stencil_tex_ms_param_;
 		RenderEffectParameter* src_2d_tex_array_param_;
 
 		RenderEffectParameter* min_max_depth_tex_param_;
@@ -648,8 +652,6 @@ namespace KlayGE
 		RenderEffectParameter* upper_left_param_;
 		RenderEffectParameter* x_dir_param_;
 		RenderEffectParameter* y_dir_param_;
-		RenderEffectParameter* lighting_mask_tex_param_;
-		RenderEffectParameter* lighting_mask_tex_ms_param_;
 		RenderEffectParameter* multi_sample_mask_tex_param_;
 		RenderEffectParameter* shading_in_tex_param_;
 		RenderEffectParameter* shading_in_tex_ms_param_;
@@ -670,7 +672,7 @@ namespace KlayGE
 		RenderEffectParameter* skylight_y_cube_tex_param_;
 		RenderEffectParameter* skylight_c_cube_tex_param_;
 
-		std::vector<SceneObject*> visible_scene_objs_;
+		std::vector<SceneNode*> visible_scene_nodes_;
 		bool has_sss_objs_;
 		bool has_reflective_objs_;
 		bool has_simple_forward_objs_;
@@ -724,4 +726,4 @@ namespace KlayGE
 	};
 }
 
-#endif		// _DEFERREDRENDERINGLAYER_HPP
+#endif		// KLAYGE_CORE_DEFERRED_RENDERING_LAYER_HPP

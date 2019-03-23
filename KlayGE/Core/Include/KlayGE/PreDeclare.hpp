@@ -48,16 +48,10 @@ namespace KlayGE
 	class SceneManager;
 	class SceneNode;
 	typedef std::shared_ptr<SceneNode> SceneNodePtr;
-	class SceneObject;
-	typedef std::shared_ptr<SceneObject> SceneObjectPtr;
-	class SceneObjectHelper;
-	typedef std::shared_ptr<SceneObjectHelper> SceneObjectHelperPtr;
-	class SceneObjectSkyBox;
-	typedef std::shared_ptr<SceneObjectSkyBox> SceneObjectSkyBoxPtr;
 	class SceneObjectLightSourceProxy;
-	typedef std::shared_ptr<SceneObjectLightSourceProxy> SceneObjectLightSourceProxyPtr;
+	using SceneObjectLightSourceProxyPtr = std::shared_ptr<SceneObjectLightSourceProxy>;
 	class SceneObjectCameraProxy;
-	typedef std::shared_ptr<SceneObjectCameraProxy> SceneObjectCameraProxyPtr;
+	using SceneObjectCameraProxyPtr = std::shared_ptr<SceneObjectCameraProxy>;
 
 	class Blitter;
 	typedef std::shared_ptr<Blitter> BlitterPtr;
@@ -80,8 +74,6 @@ namespace KlayGE
 	typedef std::shared_ptr<RenderMaterial> RenderMaterialPtr;
 	class Renderable;
 	typedef std::shared_ptr<Renderable> RenderablePtr;
-	class RenderableHelper;
-	typedef std::shared_ptr<RenderableHelper> RenderableHelperPtr;
 	class RenderablePoint;
 	typedef std::shared_ptr<RenderablePoint> RenderablePointPtr;
 	class RenderableLine;
@@ -118,6 +110,8 @@ namespace KlayGE
 	typedef std::shared_ptr<RenderStateObject> RenderStateObjectPtr;
 	class SamplerStateObject;
 	typedef std::shared_ptr<SamplerStateObject> SamplerStateObjectPtr;
+	class ShaderStageObject;
+	typedef std::shared_ptr<ShaderStageObject> ShaderStageObjectPtr;
 	class ShaderObject;
 	typedef std::shared_ptr<ShaderObject> ShaderObjectPtr;
 	class Texture;
@@ -154,8 +148,12 @@ namespace KlayGE
 	typedef std::shared_ptr<JudaTexture> JudaTexturePtr;
 	class FrameBuffer;
 	typedef std::shared_ptr<FrameBuffer> FrameBufferPtr;
-	class RenderView;
-	typedef std::shared_ptr<RenderView> RenderViewPtr;
+	class ShaderResourceView;
+	typedef std::shared_ptr<ShaderResourceView> ShaderResourceViewPtr;
+	class RenderTargetView;
+	typedef std::shared_ptr<RenderTargetView> RenderTargetViewPtr;
+	class DepthStencilView;
+	typedef std::shared_ptr<DepthStencilView> DepthStencilViewPtr;
 	class UnorderedAccessView;
 	typedef std::shared_ptr<UnorderedAccessView> UnorderedAccessViewPtr;
 	class GraphicsBuffer;
@@ -255,15 +253,15 @@ namespace KlayGE
 	class InfTerrainRenderable;
 	typedef std::shared_ptr<InfTerrainRenderable> InfTerrainRenderablePtr;
 	class InfTerrainSceneObject;
-	typedef std::shared_ptr<InfTerrainSceneObject> InfTerrainSceneObjectPtr;
+	typedef std::shared_ptr<InfTerrainSceneObject> InfTerrainSceneNodePtr;
 	class HQTerrainRenderable;
 	typedef std::shared_ptr<HQTerrainRenderable> HQTerrainRenderablePtr;
 	class HQTerrainSceneObject;
-	typedef std::shared_ptr<HQTerrainSceneObject> HQTerrainSceneObjectPtr;
+	typedef std::shared_ptr<HQTerrainSceneObject> HQTerrainSceneNodePtr;
 	class LensFlareRenderable;
 	typedef std::shared_ptr<LensFlareRenderable> LensFlareRenderablePtr;
 	class LensFlareSceneObject;
-	typedef std::shared_ptr<LensFlareSceneObject> LensFlareSceneObjectPtr;
+	typedef std::shared_ptr<LensFlareSceneObject> LensFlareSceneNodePtr;
 	class DeferredRenderingLayer;
 	class MultiResLayer;
 	typedef std::shared_ptr<MultiResLayer> MultiResLayerPtr;
@@ -385,6 +383,8 @@ namespace KlayGE
 
 	class Package;
 	typedef std::shared_ptr<Package> PackagePtr;
+
+	class DevHelper;
 }
 
 #endif			// _KLAYGE_PREDECLARE_HPP

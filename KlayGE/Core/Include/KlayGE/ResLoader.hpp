@@ -28,24 +28,17 @@
  * from http://www.klayge.org/licensing/.
  */
 
-#ifndef _KLAYGE_RESLOADER_HPP
-#define _KLAYGE_RESLOADER_HPP
+#ifndef KLAYGE_CORE_RESLOADER_HPP
+#define KLAYGE_CORE_RESLOADER_HPP
 
 #pragma once
 
 #include <KlayGE/PreDeclare.hpp>
 #include <istream>
-#include <vector>
 #include <string>
-#if defined(KLAYGE_COMPILER_CLANGC2)
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wunused-parameter" // Ignore unused parameter 'x', 'alloc'
-#pragma clang diagnostic ignored "-Wunused-variable" // Ignore unused variable (mpl_assertion_in_line_xxx) in boost
-#endif
+#include <vector>
+
 #include <boost/lockfree/spsc_queue.hpp>
-#if defined(KLAYGE_COMPILER_CLANGC2)
-#pragma clang diagnostic pop
-#endif
 
 #include <KFL/ResIdentifier.hpp>
 #include <KFL/Thread.hpp>
@@ -97,6 +90,7 @@ namespace KlayGE
 
 		void AddPath(std::string_view phy_path);
 		void DelPath(std::string_view phy_path);
+		bool IsInPath(std::string_view phy_path);
 		std::string const & LocalFolder() const
 		{
 			return local_path_;
@@ -107,6 +101,7 @@ namespace KlayGE
 
 		ResIdentifierPtr Open(std::string_view name);
 		std::string Locate(std::string_view name);
+		uint64_t Timestamp(std::string_view name);
 		std::string AbsPath(std::string_view path);
 
 		std::shared_ptr<void> SyncQuery(ResLoadingDescPtr const & res_desc);
@@ -181,4 +176,4 @@ namespace KlayGE
 	};
 }
 
-#endif			// _KLAYGE_RESLOADER_HPP
+#endif			// KLAYGE_CORE_RESLOADER_HPP

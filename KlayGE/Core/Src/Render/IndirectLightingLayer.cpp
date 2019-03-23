@@ -74,7 +74,7 @@ namespace KlayGE
 		*(vpls_lighting_effect_->ParameterByName("vpls_tex")) = vpl_tex_;
 		*(vpls_lighting_effect_->ParameterByName("vpl_params")) = float2(1.0f / VPL_COUNT, 0.5f / VPL_COUNT);
 
-		vpl_renderable_ = SyncLoadModel("indirect_light_proxy.meshml", EAH_GPU_Read | EAH_Immutable)->Subrenderable(0);
+		vpl_renderable_ = SyncLoadModel("IndirectLightProxy.glb", EAH_GPU_Read | EAH_Immutable, SceneNode::SOA_Cullable)->Mesh(0);
 		vpl_renderable_->GetRenderLayout().NumInstances(VPL_COUNT);
 	}
 
@@ -158,6 +158,9 @@ namespace KlayGE
 
 	void MultiResSILLayer::ExtractVPLs(Camera const & rsm_camera, LightSource const & light)
 	{
+		RenderFactory& rf = Context::Instance().RenderFactoryInstance();
+		RenderEngine& re = rf.RenderEngineInstance();
+
 		rsm_texs_[0]->BuildMipSubLevels();
 		rsm_texs_[1]->BuildMipSubLevels();
 		
@@ -176,9 +179,10 @@ namespace KlayGE
 		rsm_to_vpls_pps_[type]->SetParam(3, light.CosOuterInner());
 		rsm_to_vpls_pps_[type]->SetParam(4, light.Falloff());
 		rsm_to_vpls_pps_[type]->SetParam(5, g_buffer_camera_->InverseViewMatrix());
-		float3 upper_left = MathLib::transform_coord(float3(-1, +1, 1), inv_proj);
-		float3 upper_right = MathLib::transform_coord(float3(+1, +1, 1), inv_proj);
-		float3 lower_left = MathLib::transform_coord(float3(-1, -1, 1), inv_proj);
+		float const flipping = re.RequiresFlipping() ? -1.0f : +1.0f;
+		float3 const upper_left = MathLib::transform_coord(float3(-1, -flipping, 1), inv_proj);
+		float3 const upper_right = MathLib::transform_coord(float3(+1, -flipping, 1), inv_proj);
+		float3 const lower_left = MathLib::transform_coord(float3(-1, flipping, 1), inv_proj);
 		rsm_to_vpls_pps_[type]->SetParam(6, upper_left);
 		rsm_to_vpls_pps_[type]->SetParam(7, upper_right - upper_left);
 		rsm_to_vpls_pps_[type]->SetParam(8, lower_left - upper_left);

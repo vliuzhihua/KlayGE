@@ -42,7 +42,7 @@
 #endif
 #include <WbemIdl.h>
 
-#if defined(KLAYGE_COMPILER_MSVC) || defined(KLAYGE_COMPILER_CLANGC2)
+#if defined(KLAYGE_COMPILER_MSVC)
 DEFINE_GUID(IID_IWbemLocator, 0xdc12a687, 0x737f, 0x11cf, 0x88, 0x4d, 0x00, 0xaa, 0x00, 0x4b, 0x2e, 0x24);
 #endif
 #if !defined(KLAYGE_COMPILER_GCC)
@@ -267,15 +267,8 @@ namespace KlayGE
 
 	uint32_t SMBios::TypeCount(uint8_t type) const
 	{
-		uint32_t ret = 0;
-		for (auto const & table : smbios_tables_)
-		{
-			if (table.type == type)
-			{
-				++ ret;
-			}
-		}
-		return ret;
+		return static_cast<uint32_t>(
+			std::count_if(smbios_tables_.begin(), smbios_tables_.end(), [type](TableInfo const& table) { return (table.type == type); }));
 	}
 
 	void SMBios::EnumEachTable()

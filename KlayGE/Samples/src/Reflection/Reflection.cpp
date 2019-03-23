@@ -7,8 +7,10 @@
 #include <KlayGE/InputFactory.hpp>
 #include <KlayGE/RenderEngine.hpp>
 #include <KlayGE/RenderEffect.hpp>
-#include <KlayGE/SceneObject.hpp>
-#include <KlayGE/SceneObjectHelper.hpp>
+#include <KlayGE/SceneManager.hpp>
+#include <KlayGE/SceneNode.hpp>
+#include <KlayGE/SceneNodeHelper.hpp>
+#include <KlayGE/SkyBox.hpp>
 #include <KlayGE/Camera.hpp>
 #include <KlayGE/Mesh.hpp>
 #include <KlayGE/PostProcess.hpp>
@@ -16,7 +18,6 @@
 #include <KlayGE/DeferredRenderingLayer.hpp>
 #include <KlayGE/UI.hpp>
 #include <KlayGE/RenderMaterial.hpp>
-#include <KlayGE/RenderableHelper.hpp>
 
 #include <KlayGE/SSRPostProcess.hpp>
 
@@ -32,14 +33,14 @@ namespace
 	class ReflectMesh : public StaticMesh
 	{
 	public:
-		ReflectMesh(RenderModelPtr const & model, std::wstring const & name)
-			: StaticMesh(model, name)
+		explicit ReflectMesh(std::wstring_view name)
+			: StaticMesh(name)
 		{
 		}
 
-		virtual void DoBuildMeshInfo() override
+		void DoBuildMeshInfo(RenderModel const & model) override
 		{
-			StaticMesh::DoBuildMeshInfo();
+			StaticMesh::DoBuildMeshInfo(model);
 
 			mtl_ = SyncLoadRenderMaterial("ReflectMesh.mtlml");
 
@@ -73,9 +74,8 @@ namespace
 					Camera const & camera = app.ActiveCamera();
 					*(effect_->ParameterByName("proj")) = camera.ProjMatrix();
 					*(effect_->ParameterByName("inv_proj")) = camera.InverseProjMatrix();
-					float q = camera.FarPlane() / (camera.FarPlane() - camera.NearPlane());
-					float3 near_q_far(camera.NearPlane() * q, q, camera.FarPlane());
-					*(effect_->ParameterByName("near_q_far")) = near_q_far;
+					float4 const near_q_far = camera.NearQFarParam();
+					*(effect_->ParameterByName("near_q_far")) = float3(near_q_far.x(), near_q_far.y(), near_q_far.z());
 					*(effect_->ParameterByName("ray_length")) = camera.FarPlane() - camera.NearPlane();
 					*(effect_->ParameterByName("inv_view")) = camera.InverseViewMatrix();
 				}
@@ -156,15 +156,15 @@ namespace
 	class DinoMesh : public StaticMesh
 	{
 	public:
-		DinoMesh(RenderModelPtr const & model, std::wstring const & name)
-			: StaticMesh(model, name)
+		explicit DinoMesh(std::wstring_view name)
+			: StaticMesh(name)
 		{
 		}
 
 	private:
-		virtual void DoBuildMeshInfo() override
+		void DoBuildMeshInfo(RenderModel const & model) override
 		{
-			StaticMesh::DoBuildMeshInfo();
+			StaticMesh::DoBuildMeshInfo(model);
 
 			mtl_ = SyncLoadRenderMaterial("DinoMesh.mtlml");
 		}
@@ -209,10 +209,17 @@ void ScreenSpaceReflectionApp::OnCreate()
 	loading_percentage_ = 0;
 	c_cube_ = ASyncLoadTexture("Lake_CraterLake03_filtered_c.dds", EAH_GPU_Read | EAH_Immutable);
 	y_cube_ = ASyncLoadTexture("Lake_CraterLake03_filtered_y.dds", EAH_GPU_Read | EAH_Immutable);
-	teapot_model_ = ASyncLoadModel("teapot.meshml", EAH_GPU_Read | EAH_Immutable,
-		CreateModelFactory<RenderModel>(), CreateMeshFactory<ReflectMesh>());
-	RenderablePtr dino_model = ASyncLoadModel("dino50.meshml", EAH_GPU_Read | EAH_Immutable,
-		CreateModelFactory<RenderModel>(), CreateMeshFactory<DinoMesh>());
+	teapot_model_ = ASyncLoadModel("teapot.glb", EAH_GPU_Read | EAH_Immutable,
+		SceneNode::SOA_Cullable, nullptr,
+		CreateModelFactory<RenderModel>, CreateMeshFactory<ReflectMesh>);
+	auto dino_model = ASyncLoadModel("dino50.glb", EAH_GPU_Read | EAH_Immutable,
+		SceneNode::SOA_Cullable,
+		[](RenderModel& model)
+		{
+			model.RootNode()->TransformToParent(MathLib::scaling(float3(2, 2, 2)) * MathLib::translation(0.0f, 1.0f, -2.5f));
+			AddToSceneRootHelper(model);
+		},
+		CreateModelFactory<RenderModel>, CreateMeshFactory<DinoMesh>);
 
 	this->LookAt(float3(2.0f, 2.0f, -5.0f), float3(0.0f, 1.0f, 0.0f), float3(0, 1, 0));
 	this->Proj(0.1f, 500.0f);
@@ -235,16 +242,12 @@ void ScreenSpaceReflectionApp::OnCreate()
 	point_light_->Falloff(float3(1, 0, 0.3f));
 	point_light_->AddToSceneManager();
 
-	SceneObjectPtr scene_obj = MakeSharedPtr<SceneObjectHelper>(dino_model, SceneObject::SOA_Cullable);
-	scene_obj->ModelMatrix(MathLib::scaling(float3(2, 2, 2)) * MathLib::translation(0.0f, 1.0f, -2.5f));
-	scene_obj->AddToSceneManager();
-
 	deferred_rendering_ = Context::Instance().DeferredRenderingLayerInstance();
 
 	font_ = SyncLoadFont("gkai00mp.kfont");
 
-	sky_box_ = MakeSharedPtr<SceneObjectSkyBox>();
-	sky_box_->AddToSceneManager();
+	sky_box_ = MakeSharedPtr<SceneNode>(MakeSharedPtr<RenderableSkyBox>(), SceneNode::SOA_NotCastShadow);
+	Context::Instance().SceneManagerInstance().SceneRootNode().AddChild(sky_box_);
 
 	back_refl_fb_ = rf.MakeFrameBuffer();
 
@@ -253,7 +256,7 @@ void ScreenSpaceReflectionApp::OnCreate()
 	actionMap.AddActions(actions, actions + std::size(actions));
 
 	action_handler_t input_handler = MakeSharedPtr<input_signal>();
-	input_handler->connect(
+	input_handler->Connect(
 		[this](InputEngine const & sender, InputAction const & action)
 		{
 			this->InputHandler(sender, action);
@@ -265,7 +268,7 @@ void ScreenSpaceReflectionApp::OnCreate()
 
 	id_min_sample_num_static_ = parameter_dialog_->IDFromName("min_sample_num_static");
 	id_min_sample_num_slider_ = parameter_dialog_->IDFromName("min_sample_num_slider");
-	parameter_dialog_->Control<UISlider>(id_min_sample_num_slider_)->OnValueChangedEvent().connect(
+	parameter_dialog_->Control<UISlider>(id_min_sample_num_slider_)->OnValueChangedEvent().Connect(
 		[this](UISlider const & sender)
 		{
 			this->MinSampleNumHandler(sender);
@@ -274,7 +277,7 @@ void ScreenSpaceReflectionApp::OnCreate()
 
 	id_max_sample_num_static_ = parameter_dialog_->IDFromName("max_sample_num_static");
 	id_max_sample_num_slider_ = parameter_dialog_->IDFromName("max_sample_num_slider");
-	parameter_dialog_->Control<UISlider>(id_max_sample_num_slider_)->OnValueChangedEvent().connect(
+	parameter_dialog_->Control<UISlider>(id_max_sample_num_slider_)->OnValueChangedEvent().Connect(
 		[this](UISlider const & sender)
 		{
 			this->MaxSampleNumHandler(sender);
@@ -282,7 +285,7 @@ void ScreenSpaceReflectionApp::OnCreate()
 	this->MaxSampleNumHandler(*(parameter_dialog_->Control<UISlider>(id_max_sample_num_slider_)));
 
 	id_enable_reflection_ = parameter_dialog_->IDFromName("enable_reflection");
-	parameter_dialog_->Control<UICheckBox>(id_enable_reflection_)->OnChangedEvent().connect(
+	parameter_dialog_->Control<UICheckBox>(id_enable_reflection_)->OnChangedEvent().Connect(
 		[this](UICheckBox const & sender)
 		{
 			this->EnbleReflectionHandler(sender);
@@ -305,8 +308,8 @@ void ScreenSpaceReflectionApp::OnResize(KlayGE::uint32_t width, KlayGE::uint32_t
 		deferred_rendering_->ShadingTex(1)->Format(), 1, 0, EAH_GPU_Read | EAH_GPU_Write);
 	back_refl_ds_tex_ = rf.MakeTexture2D(width / 2, width / 2, 1, 1, 
 		EF_D16, 1, 0, EAH_GPU_Read | EAH_GPU_Write);
-	back_refl_fb_->Attach(FrameBuffer::ATT_Color0, rf.Make2DRenderView(*back_refl_tex_, 0, 1, 0));
-	back_refl_fb_->Attach(FrameBuffer::ATT_DepthStencil, rf.Make2DDepthStencilRenderView(*back_refl_ds_tex_, 0, 1, 0));
+	back_refl_fb_->Attach(FrameBuffer::Attachment::Color0, rf.Make2DRtv(back_refl_tex_, 0, 1, 0));
+	back_refl_fb_->Attach(rf.Make2DDsv(back_refl_ds_tex_, 0, 1, 0));
 
 	deferred_rendering_->SetupViewport(0, back_refl_fb_, VPAM_NoTransparencyBack | VPAM_NoTransparencyFront | VPAM_NoSimpleForward | VPAM_NoGI | VPAM_NoSSVO);
 
@@ -382,9 +385,13 @@ uint32_t ScreenSpaceReflectionApp::DoUpdate(KlayGE::uint32_t pass)
 			{
 				if (teapot_model_->HWResourceReady())
 				{
-					teapot_ = MakeSharedPtr<SceneObjectHelper>(teapot_model_->Subrenderable(0), SceneObjectHelper::SOA_Cullable);
-					teapot_->ModelMatrix(MathLib::scaling(float3(15, 15, 15)));
-					teapot_->AddToSceneManager();
+					teapot_ = MakeSharedPtr<SceneNode>(teapot_model_->Mesh(0), SceneNode::SOA_Cullable);
+					teapot_->TransformToParent(MathLib::scaling(float3(15, 15, 15)));
+					{
+						auto& scene_mgr = Context::Instance().SceneManagerInstance();
+						std::lock_guard<std::mutex> lock(scene_mgr.MutexForUpdate());
+						scene_mgr.SceneRootNode().AddChild(teapot_);
+					}
 
 					this->MinSampleNumHandler(*(parameter_dialog_->Control<UISlider>(id_min_sample_num_slider_)));
 					this->MaxSampleNumHandler(*(parameter_dialog_->Control<UISlider>(id_max_sample_num_slider_)));
@@ -397,7 +404,7 @@ uint32_t ScreenSpaceReflectionApp::DoUpdate(KlayGE::uint32_t pass)
 			{
 				if (y_cube_->HWResourceReady() && c_cube_->HWResourceReady())
 				{
-					checked_pointer_cast<SceneObjectSkyBox>(sky_box_)->CompressedCubeMap(y_cube_, c_cube_);
+					checked_pointer_cast<RenderableSkyBox>(sky_box_->GetRenderable())->CompressedCubeMap(y_cube_, c_cube_);
 					checked_pointer_cast<ReflectMesh>(teapot_->GetRenderable())->SkyBox(y_cube_, c_cube_);
 
 					loading_percentage_ = 100;
@@ -411,7 +418,7 @@ uint32_t ScreenSpaceReflectionApp::DoUpdate(KlayGE::uint32_t pass)
 			float3 eye = screen_camera_->EyePos();
 			float3 at = screen_camera_->LookAt();
 
-			float3 center = MathLib::transform_coord(teapot_->GetRenderable()->PosBound().Center(), teapot_->ModelMatrix());
+			float3 center = MathLib::transform_coord(teapot_->GetRenderable()->PosBound().Center(), teapot_->TransformToWorld());
 			float3 direction = eye - at;
 
 			back_camera->ViewParams(center, center + direction, screen_camera_->UpVec());

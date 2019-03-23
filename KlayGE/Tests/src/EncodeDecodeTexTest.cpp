@@ -15,9 +15,11 @@
 using namespace std;
 using namespace KlayGE;
 
-void TestEncodeDecodeTex(std::string const & input_name, std::string const & tc_name,
+void TestEncodeDecodeTex(std::string_view input_name, std::string_view tc_name,
 		ElementFormat bc_fmt, float threshold)
 {
+	ResLoader::Instance().AddPath("../../Tests/media/EncodeDecodeTex");
+
 	std::vector<uint8_t> input_argb;
 	std::vector<uint8_t> bc_blocks;
 	uint32_t width, height;
@@ -57,19 +59,16 @@ void TestEncodeDecodeTex(std::string const & input_name, std::string const & tc_
 		KFL_UNREACHABLE("Unsupported compression format");
 	}
 
-	ElementFormat const decoded_fmt = codec->DecodedFormat();
+	ElementFormat const decoded_fmt = DecodedFormat(bc_fmt);
 	uint32_t const pixel_size = NumFormatBytes(decoded_fmt);
 
 	{
-		Texture::TextureType type;
-		uint32_t depth, num_mipmaps, array_size;
-		ElementFormat format;
-		std::vector<ElementInitData> init_data;
-		std::vector<uint8_t> data_block;
-		LoadTexture(input_name, type, width, height, depth, num_mipmaps, array_size,
-			format, init_data, data_block);
+		TexturePtr in_tex = LoadSoftwareTexture(input_name);
+		width = in_tex->Width(0);
+		height = in_tex->Height(0);
+		auto const & init_data = checked_cast<SoftwareTexture*>(in_tex.get())->SubresourceData();
 
-		BOOST_ASSERT(pixel_size == NumFormatBytes(format));
+		BOOST_ASSERT(pixel_size == NumFormatBytes(in_tex->Format()));
 
 		input_argb.resize(width * height * pixel_size);
 		array<uint8_t, 16> pixel;
@@ -103,9 +102,9 @@ void TestEncodeDecodeTex(std::string const & input_name, std::string const & tc_
 		}
 	}
 
-	uint32_t const block_width = codec->BlockWidth();
-	uint32_t const block_height = codec->BlockWidth();
-	uint32_t const block_bytes = codec->BlockBytes();
+	uint32_t const block_width = BlockWidth(bc_fmt);
+	uint32_t const block_height = BlockWidth(bc_fmt);
+	uint32_t const block_bytes = BlockBytes(bc_fmt);
 	bc_blocks.resize((width + block_width - 1) / block_width * (height + block_height - 1) / block_height * block_bytes);
 
 	if (tc_name.empty())
@@ -138,13 +137,10 @@ void TestEncodeDecodeTex(std::string const & input_name, std::string const & tc_
 	}
 	else
 	{
-		Texture::TextureType type;
-		uint32_t depth, num_mipmaps, array_size;
-		ElementFormat format;
-		std::vector<ElementInitData> init_data;
-		std::vector<uint8_t> data_block;
-		LoadTexture(tc_name, type, width, height, depth, num_mipmaps, array_size,
-			format, init_data, data_block);
+		TexturePtr in_tex = LoadSoftwareTexture(tc_name);
+		width = in_tex->Width(0);
+		height = in_tex->Height(0);
+		auto const & init_data = checked_cast<SoftwareTexture*>(in_tex.get())->SubresourceData();
 
 		uint8_t const * src = static_cast<uint8_t const *>(init_data[0].data);
 		uint32_t const pitch = init_data[0].row_pitch;

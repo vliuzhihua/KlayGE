@@ -4,16 +4,17 @@
 #include <KFL/Math.hpp>
 #include <KlayGE/Font.hpp>
 #include <KlayGE/Renderable.hpp>
-#include <KlayGE/RenderableHelper.hpp>
 #include <KlayGE/RenderEngine.hpp>
 #include <KlayGE/RenderEffect.hpp>
+#include <KlayGE/RenderView.hpp>
 #include <KlayGE/FrameBuffer.hpp>
 #include <KlayGE/SceneManager.hpp>
 #include <KlayGE/Context.hpp>
 #include <KlayGE/ResLoader.hpp>
 #include <KlayGE/RenderSettings.hpp>
 #include <KlayGE/Mesh.hpp>
-#include <KlayGE/SceneObjectHelper.hpp>
+#include <KlayGE/SceneNodeHelper.hpp>
+#include <KlayGE/SkyBox.hpp>
 #include <KlayGE/PostProcess.hpp>
 #include <KlayGE/HDRPostProcess.hpp>
 #include <KlayGE/Camera.hpp>
@@ -36,15 +37,6 @@ using namespace KlayGE;
 
 namespace
 {
-	class ObjectUpdate
-	{
-	public:
-		void operator()(SceneObject& obj, float app_time, float /*elapsed_time*/)
-		{
-			obj.ModelMatrix(MathLib::rotation_y(-app_time / 1.5f));
-		}
-	};
-
 	class PointLightSourceUpdate
 	{
 	public:
@@ -92,7 +84,19 @@ void PostProcessingApp::OnCreate()
 
 	TexturePtr c_cube = ASyncLoadTexture("rnl_cross_filtered_c.dds", EAH_GPU_Read | EAH_Immutable);
 	TexturePtr y_cube = ASyncLoadTexture("rnl_cross_filtered_y.dds", EAH_GPU_Read | EAH_Immutable);
-	RenderablePtr scene_model = ASyncLoadModel("dino50.meshml", EAH_GPU_Read | EAH_Immutable);
+	auto scene_model = ASyncLoadModel("dino50.glb", EAH_GPU_Read | EAH_Immutable,
+		SceneNode::SOA_Cullable | SceneNode::SOA_Moveable,
+		[](RenderModel& model)
+		{
+			auto& node = *model.RootNode();
+			node.OnMainThreadUpdate().Connect([&node](float app_time, float elapsed_time)
+				{
+					KFL_UNUSED(elapsed_time);
+					node.TransformToParent(MathLib::rotation_y(-app_time / 1.5f));
+				});
+
+			AddToSceneRootHelper(model);
+		});
 
 	RenderFactory& rf = Context::Instance().RenderFactoryInstance();
 	RenderEngine& re = rf.RenderEngineInstance();
@@ -118,10 +122,6 @@ void PostProcessingApp::OnCreate()
 	point_light_->BindUpdateFunc(PointLightSourceUpdate());
 	point_light_->AddToSceneManager();
 
-	SceneObjectPtr scene_obj = MakeSharedPtr<SceneObjectHelper>(scene_model, SceneObject::SOA_Cullable | SceneObject::SOA_Moveable);
-	scene_obj->BindMainThreadUpdateFunc(ObjectUpdate());
-	scene_obj->AddToSceneManager();
-
 	fpcController_.Scalers(0.05f, 0.1f);
 
 	InputEngine& inputEngine(Context::Instance().InputFactoryInstance().InputEngineInstance());
@@ -129,7 +129,7 @@ void PostProcessingApp::OnCreate()
 	actionMap.AddActions(actions, actions + std::size(actions));
 
 	action_handler_t input_handler = MakeSharedPtr<input_signal>();
-	input_handler->connect(
+	input_handler->Connect(
 		[this](InputEngine const & sender, InputAction const & action)
 		{
 			this->InputHandler(sender, action);
@@ -162,66 +162,66 @@ void PostProcessingApp::OnCreate()
 	id_frosted_glass_ = dialog_->IDFromName("FrostedGlassPP");
 	id_black_hole_ = dialog_->IDFromName("BlackHolePP");
 
-	dialog_->Control<UICheckBox>(id_fps_camera_)->OnChangedEvent().connect(
+	dialog_->Control<UICheckBox>(id_fps_camera_)->OnChangedEvent().Connect(
 		[this](UICheckBox const & sender)
 		{
 			this->FPSCameraHandler(sender);
 		});
-	dialog_->Control<UIRadioButton>(id_copy_)->OnChangedEvent().connect(
+	dialog_->Control<UIRadioButton>(id_copy_)->OnChangedEvent().Connect(
 		[this](UIRadioButton const & sender)
 		{
 			this->CopyHandler(sender);
 		});
-	dialog_->Control<UIRadioButton>(id_ascii_arts_)->OnChangedEvent().connect(
+	dialog_->Control<UIRadioButton>(id_ascii_arts_)->OnChangedEvent().Connect(
 		[this](UIRadioButton const & sender)
 		{
 			this->AsciiArtsHandler(sender);
 		});
-	dialog_->Control<UIRadioButton>(id_cartoon_)->OnChangedEvent().connect(
+	dialog_->Control<UIRadioButton>(id_cartoon_)->OnChangedEvent().Connect(
 		[this](UIRadioButton const & sender)
 		{
 			this->CartoonHandler(sender);
 		});
-	dialog_->Control<UIRadioButton>(id_tiling_)->OnChangedEvent().connect(
+	dialog_->Control<UIRadioButton>(id_tiling_)->OnChangedEvent().Connect(
 		[this](UIRadioButton const & sender)
 		{
 			this->TilingHandler(sender);
 		});
-	dialog_->Control<UIRadioButton>(id_hdr_)->OnChangedEvent().connect(
+	dialog_->Control<UIRadioButton>(id_hdr_)->OnChangedEvent().Connect(
 		[this](UIRadioButton const & sender)
 		{
 			this->HDRHandler(sender);
 		});
-	dialog_->Control<UIRadioButton>(id_night_vision_)->OnChangedEvent().connect(
+	dialog_->Control<UIRadioButton>(id_night_vision_)->OnChangedEvent().Connect(
 		[this](UIRadioButton const & sender)
 		{
 			this->NightVisionHandler(sender);
 		});
-	dialog_->Control<UIRadioButton>(id_old_fashion_)->OnChangedEvent().connect(
+	dialog_->Control<UIRadioButton>(id_old_fashion_)->OnChangedEvent().Connect(
 		[this](UIRadioButton const & sender)
 		{
 			this->SepiaHandler(sender);
 		});
-	dialog_->Control<UIRadioButton>(id_cross_stitching_)->OnChangedEvent().connect(
+	dialog_->Control<UIRadioButton>(id_cross_stitching_)->OnChangedEvent().Connect(
 		[this](UIRadioButton const & sender)
 		{
 			this->CrossStitchingHandler(sender);
 		});
-	dialog_->Control<UIRadioButton>(id_frosted_glass_)->OnChangedEvent().connect(
+	dialog_->Control<UIRadioButton>(id_frosted_glass_)->OnChangedEvent().Connect(
 		[this](UIRadioButton const & sender)
 		{
 			this->FrostedGlassHandler(sender);
 		});
-	dialog_->Control<UIRadioButton>(id_black_hole_)->OnChangedEvent().connect(
+	dialog_->Control<UIRadioButton>(id_black_hole_)->OnChangedEvent().Connect(
 		[this](UIRadioButton const & sender)
 		{
 			this->BlackHoleHandler(sender);
 		});
 	this->CartoonHandler(*dialog_->Control<UIRadioButton>(id_cartoon_));
 	
-	sky_box_ = MakeSharedPtr<SceneObjectSkyBox>();
-	checked_pointer_cast<SceneObjectSkyBox>(sky_box_)->CompressedCubeMap(y_cube, c_cube);
-	sky_box_->AddToSceneManager();
+	sky_box_ = MakeSharedPtr<SceneNode>(MakeSharedPtr<RenderableSkyBox>(), SceneNode::SOA_NotCastShadow);
+	checked_pointer_cast<RenderableSkyBox>(sky_box_->GetRenderable())->CompressedCubeMap(y_cube, c_cube);
+	Context::Instance().SceneManagerInstance().SceneRootNode().AddChild(sky_box_);
 
 	color_fb_ = rf.MakeFrameBuffer();
 	color_fb_->GetViewport()->camera = re.CurFrameBuffer()->GetViewport()->camera;
@@ -236,8 +236,8 @@ void PostProcessingApp::OnResize(uint32_t width, uint32_t height)
 	auto const fmt = caps.BestMatchTextureRenderTargetFormat({ EF_B10G11R11F, EF_ABGR8, EF_ARGB8 }, 1, 0);
 	BOOST_ASSERT(fmt != EF_Unknown);
 	color_tex_ = rf.MakeTexture2D(width, height, 4, 1, fmt, 1, 0, EAH_GPU_Read | EAH_GPU_Write | EAH_Generate_Mips);
-	color_fb_->Attach(FrameBuffer::ATT_Color0, rf.Make2DRenderView(*color_tex_, 0, 1, 0));
-	color_fb_->Attach(FrameBuffer::ATT_DepthStencil, rf.Make2DDepthStencilRenderView(width, height, EF_D16, 1, 0));
+	color_fb_->Attach(FrameBuffer::Attachment::Color0, rf.Make2DRtv(color_tex_, 0, 1, 0));
+	color_fb_->Attach(rf.Make2DDsv(width, height, EF_D16, 1, 0));
 
 	deferred_rendering_->SetupViewport(0, color_fb_, 0);
 
@@ -408,8 +408,8 @@ uint32_t PostProcessingApp::DoUpdate(uint32_t pass)
 
 		color_tex_->BuildMipSubLevels();
 		re.BindFrameBuffer(FrameBufferPtr());
-		re.CurFrameBuffer()->Attached(FrameBuffer::ATT_Color0)->Discard();
-		re.CurFrameBuffer()->Attached(FrameBuffer::ATT_DepthStencil)->ClearDepth(1.0f);
+		re.CurFrameBuffer()->AttachedRtv(FrameBuffer::Attachment::Color0)->Discard();
+		re.CurFrameBuffer()->AttachedDsv()->ClearDepth(1.0f);
 		active_pp_->Apply();
 
 		return App3DFramework::URV_SkipPostProcess | App3DFramework::URV_Finished;

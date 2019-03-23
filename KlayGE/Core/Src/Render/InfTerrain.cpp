@@ -25,13 +25,13 @@
 
 namespace KlayGE
 {
-	InfTerrainRenderable::InfTerrainRenderable(std::wstring const & name, uint32_t num_grids, float stride, float increate_rate)
-		: RenderableHelper(name)
+	InfTerrainRenderable::InfTerrainRenderable(std::wstring_view name, uint32_t num_grids, float stride, float increate_rate)
+		: Renderable(name)
 	{
 		RenderFactory& rf = Context::Instance().RenderFactoryInstance();
 
-		rl_ = rf.MakeRenderLayout();
-		rl_->TopologyType(RenderLayout::TT_TriangleList);
+		rls_[0] = rf.MakeRenderLayout();
+		rls_[0]->TopologyType(RenderLayout::TT_TriangleList);
 
 		RenderEngine& re = Context::Instance().RenderFactoryInstance().RenderEngineInstance();
 		Camera const & camera = *re.DefaultFrameBuffer()->GetViewport()->camera;
@@ -80,7 +80,7 @@ namespace KlayGE
 
 		GraphicsBufferPtr pos_vb = rf.MakeVertexBuffer(BU_Static, EAH_GPU_Read | EAH_Immutable,
 			static_cast<uint32_t>(vertices.size() * sizeof(vertices[0])), &vertices[0]);
-		rl_->BindVertexStream(pos_vb, VertexElement(VEU_Position, 0, EF_GR32F));
+		rls_[0]->BindVertexStream(pos_vb, VertexElement(VEU_Position, 0, EF_GR32F));
 
 		std::vector<uint32_t> indices;
 		for (uint32_t y = 0; y < num_grids - 1; ++ y)
@@ -99,7 +99,7 @@ namespace KlayGE
 
 		GraphicsBufferPtr ib = rf.MakeIndexBuffer(BU_Static, EAH_GPU_Read | EAH_Immutable,
 			static_cast<uint32_t>(indices.size() * sizeof(indices[0])), &indices[0]);
-		rl_->BindIndexStream(ib, EF_R32UI);
+		rls_[0]->BindIndexStream(ib, EF_R32UI);
 	}
 
 	InfTerrainRenderable::~InfTerrainRenderable()
@@ -128,7 +128,7 @@ namespace KlayGE
 
 		if (deferred_effect_)
 		{
-			RenderableHelper::OnRenderBegin();
+			Renderable::OnRenderBegin();
 		}
 		else
 		{
@@ -149,74 +149,71 @@ namespace KlayGE
 
 
 	InfTerrainSceneObject::InfTerrainSceneObject()
-		: SceneObjectHelper(SOA_Moveable)
+		: SceneNode(SOA_Moveable)
 	{
-	}
-
-	InfTerrainSceneObject::~InfTerrainSceneObject()
-	{
-	}
-
-	bool InfTerrainSceneObject::MainThreadUpdate(float /*app_time*/, float /*elapsed_time*/)
-	{
-		RenderEngine& re = Context::Instance().RenderFactoryInstance().RenderEngineInstance();
-		Camera const & camera = *re.DefaultFrameBuffer()->GetViewport()->camera;
-
-		float3 look_at_vec = float3(camera.LookAt().x() - camera.EyePos().x(), 0, camera.LookAt().z() - camera.EyePos().z());
-		if (MathLib::dot(look_at_vec, look_at_vec) < 1e-6f)
-		{
-			look_at_vec = float3(0, 0, 1);
-		}
-		float4x4 virtual_view = MathLib::look_at_lh(camera.EyePos(), camera.EyePos() + look_at_vec);
-
-		float4x4 proj_to_virtual_view = camera.InverseViewProjMatrix() * virtual_view;
-
-		float2 const & x_dir_2d = checked_pointer_cast<InfTerrainRenderable>(renderable_)->XDir();
-		float2 const & y_dir_2d = checked_pointer_cast<InfTerrainRenderable>(renderable_)->YDir();
-		float3 x_dir(x_dir_2d.x(), -camera.EyePos().y(), x_dir_2d.y());
-		float3 y_dir(y_dir_2d.x(), -camera.EyePos().y(), y_dir_2d.y());
-
-		float3 const frustum[8] = 
-		{
-			MathLib::transform_coord(float3(-1, +1, 1), proj_to_virtual_view),
-			MathLib::transform_coord(float3(+1, +1, 1), proj_to_virtual_view),
-			MathLib::transform_coord(float3(-1, -1, 1), proj_to_virtual_view),
-			MathLib::transform_coord(float3(+1, -1, 1), proj_to_virtual_view),
-			MathLib::transform_coord(float3(-1, +1, 0), proj_to_virtual_view),
-			MathLib::transform_coord(float3(+1, +1, 0), proj_to_virtual_view),
-			MathLib::transform_coord(float3(-1, -1, 0), proj_to_virtual_view),
-			MathLib::transform_coord(float3(+1, -1, 0), proj_to_virtual_view)
-		};
-
-		int const view_cube[24] =
-		{
-			0, 1, 1, 3, 3, 2, 2, 0,
-			4, 5, 5, 7, 7, 6, 6, 4,
-			0, 4, 1, 5, 3, 7, 2, 6
-		};
-
-		Plane const lower_bound = MathLib::from_point_normal(float3(0, base_level_ - camera.EyePos().y() - strength_, 0), float3(0, 1, 0));
-
-		bool intersect = false;
-		float sy = 0;
-		for (int i = 0; i < 12; ++ i)
-		{
-			int src = view_cube[i * 2 + 0];
-			int dst = view_cube[i * 2 + 1];
-			if (MathLib::dot_coord(lower_bound, frustum[src]) / MathLib::dot_coord(lower_bound, frustum[dst]) < 0)
+		this->OnMainThreadUpdate().Connect([this](float app_time, float elapsed_time)
 			{
-				float t = MathLib::intersect_ray(lower_bound, frustum[src], frustum[dst] - frustum[src]);
-				float3 p = MathLib::lerp(frustum[src], frustum[dst], t);
-				sy = std::max(sy, std::max((x_dir.z() * p.x() - x_dir.x() * p.z()) / x_dir.x(),
-					(y_dir.z() * p.x() - y_dir.x() * p.z()) / y_dir.x()));
-				intersect = true;
-			}
-		}
-		checked_pointer_cast<InfTerrainRenderable>(renderable_)->OffsetY(sy);
+				KFL_UNUSED(app_time);
+				KFL_UNUSED(elapsed_time);
 
-		this->Visible(intersect);
+				RenderEngine& re = Context::Instance().RenderFactoryInstance().RenderEngineInstance();
+				Camera const & camera = *re.DefaultFrameBuffer()->GetViewport()->camera;
 
-		return false;
+				float3 look_at_vec = float3(camera.LookAt().x() - camera.EyePos().x(), 0, camera.LookAt().z() - camera.EyePos().z());
+				if (MathLib::dot(look_at_vec, look_at_vec) < 1e-6f)
+				{
+					look_at_vec = float3(0, 0, 1);
+				}
+				float4x4 virtual_view = MathLib::look_at_lh(camera.EyePos(), camera.EyePos() + look_at_vec);
+
+				float4x4 proj_to_virtual_view = camera.InverseViewProjMatrix() * virtual_view;
+
+				float2 const & x_dir_2d = checked_pointer_cast<InfTerrainRenderable>(renderables_[0])->XDir();
+				float2 const & y_dir_2d = checked_pointer_cast<InfTerrainRenderable>(renderables_[0])->YDir();
+				float3 x_dir(x_dir_2d.x(), -camera.EyePos().y(), x_dir_2d.y());
+				float3 y_dir(y_dir_2d.x(), -camera.EyePos().y(), y_dir_2d.y());
+
+				float3 const frustum[8] =
+				{
+					MathLib::transform_coord(float3(-1, +1, 1), proj_to_virtual_view),
+					MathLib::transform_coord(float3(+1, +1, 1), proj_to_virtual_view),
+					MathLib::transform_coord(float3(-1, -1, 1), proj_to_virtual_view),
+					MathLib::transform_coord(float3(+1, -1, 1), proj_to_virtual_view),
+					MathLib::transform_coord(float3(-1, +1, 0), proj_to_virtual_view),
+					MathLib::transform_coord(float3(+1, +1, 0), proj_to_virtual_view),
+					MathLib::transform_coord(float3(-1, -1, 0), proj_to_virtual_view),
+					MathLib::transform_coord(float3(+1, -1, 0), proj_to_virtual_view)
+				};
+
+				int const view_cube[24] =
+				{
+					0, 1, 1, 3, 3, 2, 2, 0,
+					4, 5, 5, 7, 7, 6, 6, 4,
+					0, 4, 1, 5, 3, 7, 2, 6
+				};
+
+				Plane const lower_bound = MathLib::from_point_normal(
+					float3(0, base_level_ - camera.EyePos().y() - strength_, 0), float3(0, 1, 0));
+
+				bool intersect = false;
+				float sy = 0;
+				for (int i = 0; i < 12; ++ i)
+				{
+					int src = view_cube[i * 2 + 0];
+					int dst = view_cube[i * 2 + 1];
+					if (MathLib::dot_coord(lower_bound, frustum[src]) / MathLib::dot_coord(lower_bound, frustum[dst]) < 0)
+					{
+						float t = MathLib::intersect_ray(lower_bound, frustum[src], frustum[dst] - frustum[src]);
+						float3 p = MathLib::lerp(frustum[src], frustum[dst], t);
+						sy = std::max(sy, std::max((x_dir.z() * p.x() - x_dir.x() * p.z()) / x_dir.x(),
+							(y_dir.z() * p.x() - y_dir.x() * p.z()) / y_dir.x()));
+						intersect = true;
+					}
+				}
+				checked_pointer_cast<InfTerrainRenderable>(renderables_[0])->OffsetY(sy);
+
+				this->Visible(intersect);
+			});
 	}
 
 
@@ -356,7 +353,7 @@ namespace KlayGE
 
 	HQTerrainRenderable::HQTerrainRenderable(RenderEffectPtr const & effect,
 			float world_scale, float vertical_scale, int world_uv_repeats)
-		: RenderableHelper(L"HQTerrain"),
+		: Renderable(L"HQTerrain"),
 			world_scale_(world_scale), vertical_scale_(vertical_scale), world_uv_repeats_(world_uv_repeats),
 			ridge_octaves_(3), fBm_octaves_(3), tex_twist_octaves_(1), detail_noise_scale_(0.02f),
 			tessellated_tri_size_(6), wireframe_(false), show_patches_(false), show_tiles_(false)
@@ -439,7 +436,7 @@ namespace KlayGE
 
 	void HQTerrainRenderable::UpdateTechniques()
 	{
-		RenderableHelper::UpdateTechniques();
+		Renderable::UpdateTechniques();
 
 		auto deferred_effect = deferred_effect_.get();
 
@@ -675,15 +672,15 @@ namespace KlayGE
 
 			if (need_tess)
 			{
-				rl_ = ring->GetTessRL();
+				rls_[0] = ring->GetTessRL();
 			}
 			else
 			{
-				rl_ = ring->GetNonTessRL();
+				rls_[0] = ring->GetNonTessRL();
 			}
 
 			*tile_size_param_ = ring->TileSize();
-			re.Render(*effect_, *technique_, *rl_);
+			re.Render(*effect_, *technique_, *rls_[0]);
 		}
 	}
 
@@ -716,83 +713,31 @@ namespace KlayGE
 
 
 	HQTerrainSceneObject::HQTerrainSceneObject(RenderablePtr const & renderable)
-		: SceneObjectHelper(SOA_Moveable),
+		: SceneNode(renderable, SOA_Moveable),
 			reset_terrain_(true)
 	{
-		RenderEngine& re = Context::Instance().RenderFactoryInstance().RenderEngineInstance();
-		last_eye_pos_ = re.DefaultFrameBuffer()->GetViewport()->camera->EyePos();
+		last_eye_pos_ =
+			Context::Instance().RenderFactoryInstance().RenderEngineInstance().DefaultFrameBuffer()->GetViewport()->camera->EyePos();
 
-		renderable_ = renderable;
 		BOOST_ASSERT(!!std::dynamic_pointer_cast<HQTerrainRenderable>(renderable));
-	}
 
-	HQTerrainSceneObject::~HQTerrainSceneObject()
-	{
-	}
+		this->OnMainThreadUpdate().Connect([this](float app_time, float elapsed_time)
+			{
+				KFL_UNUSED(app_time);
+				KFL_UNUSED(elapsed_time);
 
-	bool HQTerrainSceneObject::MainThreadUpdate(float app_time, float elapsed_time)
-	{
-		KFL_UNUSED(app_time);
-		KFL_UNUSED(elapsed_time);
+				RenderEngine& re = Context::Instance().RenderFactoryInstance().RenderEngineInstance();
+				Camera const & camera = *re.DefaultFrameBuffer()->GetViewport()->camera;
 
-		RenderEngine& re = Context::Instance().RenderFactoryInstance().RenderEngineInstance();
-		Camera const & camera = *re.DefaultFrameBuffer()->GetViewport()->camera;
+				checked_pointer_cast<HQTerrainRenderable>(renderables_[0])->SetMatrices(camera);
 
-		checked_pointer_cast<HQTerrainRenderable>(renderable_)->SetMatrices(camera);
-
-		reset_terrain_ = reset_terrain_ || (last_eye_pos_ != camera.EyePos());
-		if (reset_terrain_)
-		{
-			checked_pointer_cast<HQTerrainRenderable>(renderable_)->FlushTerrainData();
-			reset_terrain_ = false;
-			last_eye_pos_ = camera.EyePos();
-		}
-
-		return false;
-	}
-
-	void HQTerrainSceneObject::Tessellation(bool tess)
-	{
-		checked_pointer_cast<HQTerrainRenderable>(renderable_)->Tessellation(tess);
-	}
-
-	void HQTerrainSceneObject::ShowPatches(bool sp)
-	{
-		checked_pointer_cast<HQTerrainRenderable>(renderable_)->ShowPatches(sp);
-	}
-
-	void HQTerrainSceneObject::ShowTiles(bool st)
-	{
-		checked_pointer_cast<HQTerrainRenderable>(renderable_)->ShowTiles(st);
-	}
-
-	void HQTerrainSceneObject::Wireframe(bool wf)
-	{
-		checked_pointer_cast<HQTerrainRenderable>(renderable_)->Wireframe(wf);
-	}
-
-	void HQTerrainSceneObject::DetailNoiseScale(float scale)
-	{
-		checked_pointer_cast<HQTerrainRenderable>(renderable_)->DetailNoiseScale(scale);
-	}
-
-	void HQTerrainSceneObject::TessellatedTriSize(int size)
-	{
-		checked_pointer_cast<HQTerrainRenderable>(renderable_)->TessellatedTriSize(size);
-	}
-
-	void HQTerrainSceneObject::TextureLayer(uint32_t layer, TexturePtr const & tex)
-	{
-		checked_pointer_cast<HQTerrainRenderable>(renderable_)->TextureLayer(layer, tex);
-	}
-
-	void HQTerrainSceneObject::TextureScale(uint32_t layer, float2 const & scale)
-	{
-		checked_pointer_cast<HQTerrainRenderable>(renderable_)->TextureScale(layer, scale);
-	}
-
-	float HQTerrainSceneObject::GetHeight(float x, float z)
-	{
-		return checked_pointer_cast<HQTerrainRenderable>(renderable_)->GetHeight(x, z);
+				reset_terrain_ = reset_terrain_ || (last_eye_pos_ != camera.EyePos());
+				if (reset_terrain_)
+				{
+					checked_pointer_cast<HQTerrainRenderable>(renderables_[0])->FlushTerrainData();
+					reset_terrain_ = false;
+					last_eye_pos_ = camera.EyePos();
+				}
+			});
 	}
 }

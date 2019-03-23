@@ -4,7 +4,6 @@
 #include <KFL/Math.hpp>
 #include <KlayGE/Font.hpp>
 #include <KlayGE/Renderable.hpp>
-#include <KlayGE/RenderableHelper.hpp>
 #include <KlayGE/RenderEngine.hpp>
 #include <KlayGE/RenderEffect.hpp>
 #include <KlayGE/FrameBuffer.hpp>
@@ -15,7 +14,7 @@
 #include <KlayGE/Mesh.hpp>
 #include <KlayGE/GraphicsBuffer.hpp>
 #include <KlayGE/Light.hpp>
-#include <KlayGE/SceneObjectHelper.hpp>
+#include <KlayGE/SceneNodeHelper.hpp>
 #include <KlayGE/Camera.hpp>
 
 #include <KlayGE/RenderFactory.hpp>
@@ -35,15 +34,17 @@ namespace
 	class RenderPolygon : public StaticMesh
 	{
 	public:
-		RenderPolygon(RenderModelPtr const & model, std::wstring const & name)
-			: StaticMesh(model, name)
+		explicit RenderPolygon(std::wstring_view name)
+			: StaticMesh(name)
 		{
 			effect_ = SyncLoadRenderEffect("ProceduralTex.fxml");
 			technique_ = effect_->TechniqueByName("ProceduralMarbleTex");
 		}
 
-		virtual void DoBuildMeshInfo() override
+		void DoBuildMeshInfo(RenderModel const & model) override
 		{
+			KFL_UNUSED(model);
+
 			AABBox const & pos_bb = this->PosBound();
 			*(effect_->ParameterByName("pos_center")) = pos_bb.Center();
 			*(effect_->ParameterByName("pos_extent")) = pos_bb.HalfSize();
@@ -88,70 +89,6 @@ namespace
 		void ProceduralFreq(float freq)
 		{
 			*(effect_->ParameterByName("freq")) = freq;
-		}
-	};
-
-	class PolygonObject : public SceneObjectHelper
-	{
-	public:
-		PolygonObject()
-			: SceneObjectHelper(SOA_Cullable)
-		{
-			renderable_ = SyncLoadModel("teapot.meshml", EAH_GPU_Read | EAH_Immutable, CreateModelFactory<RenderModel>(), CreateMeshFactory<RenderPolygon>());
-		}
-
-		void LightPos(float3 const & light_pos)
-		{
-			RenderModelPtr model = checked_pointer_cast<RenderModel>(renderable_);
-			for (uint32_t i = 0; i < model->NumSubrenderables(); ++ i)
-			{
-				checked_pointer_cast<RenderPolygon>(model->Subrenderable(i))->LightPos(light_pos);
-			}
-		}
-
-		void LightColor(float3 const & light_color)
-		{
-			RenderModelPtr model = checked_pointer_cast<RenderModel>(renderable_);
-			for (uint32_t i = 0; i < model->NumSubrenderables(); ++ i)
-			{
-				checked_pointer_cast<RenderPolygon>(model->Subrenderable(i))->LightColor(light_color);
-			}
-		}
-
-		void LightFalloff(float3 const & light_falloff)
-		{
-			RenderModelPtr model = checked_pointer_cast<RenderModel>(renderable_);
-			for (uint32_t i = 0; i < model->NumSubrenderables(); ++ i)
-			{
-				checked_pointer_cast<RenderPolygon>(model->Subrenderable(i))->LightFalloff(light_falloff);
-			}
-		}
-
-		void ProceduralType(int type)
-		{
-			RenderModelPtr model = checked_pointer_cast<RenderModel>(renderable_);
-			for (uint32_t i = 0; i < model->NumSubrenderables(); ++ i)
-			{
-				checked_pointer_cast<RenderPolygon>(model->Subrenderable(i))->ProceduralType(type);
-			}
-		}
-
-		void ProceduralFreq(float freq)
-		{
-			RenderModelPtr model = checked_pointer_cast<RenderModel>(renderable_);
-			for (uint32_t i = 0; i < model->NumSubrenderables(); ++ i)
-			{
-				checked_pointer_cast<RenderPolygon>(model->Subrenderable(i))->ProceduralFreq(freq);
-			}
-		}
-
-		virtual void SubThreadUpdate(float app_time, float /*elapsed_time*/) override
-		{
-			RenderModelPtr model = checked_pointer_cast<RenderModel>(renderable_);
-			for (uint32_t i = 0; i < model->NumSubrenderables(); ++ i)
-			{
-				checked_pointer_cast<RenderPolygon>(model->Subrenderable(i))->AppTime(app_time);
-			}
 		}
 	};
 
@@ -211,13 +148,19 @@ void ProceduralTexApp::InputHandler(InputEngine const & /*sender*/, InputAction 
 void ProceduralTexApp::TypeChangedHandler(KlayGE::UIComboBox const & sender)
 {
 	procedural_type_ = sender.GetSelectedIndex();
-	checked_pointer_cast<PolygonObject>(polygon_)->ProceduralType(procedural_type_);
+	polygon_model_->ForEachMesh([this](Renderable& mesh)
+		{
+			checked_cast<RenderPolygon*>(&mesh)->ProceduralType(procedural_type_);
+		});
 }
 
 void ProceduralTexApp::FreqChangedHandler(KlayGE::UISlider const & sender)
 {
 	procedural_freq_ = static_cast<float>(sender.GetValue());
-	checked_pointer_cast<PolygonObject>(polygon_)->ProceduralFreq(procedural_freq_);
+	polygon_model_->ForEachMesh([this](Renderable& mesh)
+		{
+			checked_cast<RenderPolygon*>(&mesh)->ProceduralFreq(procedural_freq_);
+		});
 
 	std::wostringstream stream;
 	stream << L"Freq: " << procedural_freq_;
@@ -266,8 +209,18 @@ uint32_t ProceduralTexApp::DoUpdate(uint32_t /*pass*/)
 		}
 		else if (loading_percentage_ < 60)
 		{
-			polygon_ = MakeSharedPtr<PolygonObject>();
-			polygon_->AddToSceneManager();
+			polygon_model_ = SyncLoadModel("teapot.glb", EAH_GPU_Read | EAH_Immutable,
+				SceneNode::SOA_Cullable, AddToSceneRootHelper,
+				CreateModelFactory<RenderModel>, CreateMeshFactory<RenderPolygon>);
+			polygon_model_->RootNode()->OnSubThreadUpdate().Connect([this](float app_time, float elapsed_time)
+				{
+					KFL_UNUSED(elapsed_time);
+
+					for (uint32_t i = 0; i < polygon_model_->NumMeshes(); ++ i)
+					{
+						checked_pointer_cast<RenderPolygon>(polygon_model_->Mesh(i))->AppTime(app_time);
+					}
+				});
 
 			this->LookAt(float3(-0.18f, 0.24f, -0.18f), float3(0, 0.05f, 0));
 			this->Proj(0.01f, 100);
@@ -289,8 +242,12 @@ uint32_t ProceduralTexApp::DoUpdate(uint32_t /*pass*/)
 			light_->AddToSceneManager();
 
 			light_proxy_ = MakeSharedPtr<SceneObjectLightSourceProxy>(light_);
-			checked_pointer_cast<SceneObjectLightSourceProxy>(light_proxy_)->Scaling(0.01f, 0.01f, 0.01f);
-			light_proxy_->AddToSceneManager();
+			light_proxy_->Scaling(0.01f, 0.01f, 0.01f);
+			{
+				auto& scene_mgr = Context::Instance().SceneManagerInstance();
+				std::lock_guard<std::mutex> lock(scene_mgr.MutexForUpdate());
+				scene_mgr.SceneRootNode().AddChild(light_proxy_->RootNode());
+			}
 
 			loading_percentage_ = 80;
 			progress_bar->SetValue(loading_percentage_);
@@ -303,7 +260,7 @@ uint32_t ProceduralTexApp::DoUpdate(uint32_t /*pass*/)
 			actionMap.AddActions(actions, actions + std::size(actions));
 
 			action_handler_t input_handler = MakeSharedPtr<input_signal>();
-			input_handler->connect(
+			input_handler->Connect(
 				[this](InputEngine const & sender, InputAction const & action)
 				{
 					this->InputHandler(sender, action);
@@ -321,7 +278,7 @@ uint32_t ProceduralTexApp::DoUpdate(uint32_t /*pass*/)
 			id_freq_static_ = dialog_->IDFromName("FreqStatic");
 			id_freq_slider_ = dialog_->IDFromName("FreqSlider");
 
-			dialog_->Control<UIComboBox>(id_type_combo_)->OnSelectionChangedEvent().connect(
+			dialog_->Control<UIComboBox>(id_type_combo_)->OnSelectionChangedEvent().Connect(
 				[this](UIComboBox const & sender)
 				{
 					this->TypeChangedHandler(sender);
@@ -329,7 +286,7 @@ uint32_t ProceduralTexApp::DoUpdate(uint32_t /*pass*/)
 			this->TypeChangedHandler(*dialog_->Control<UIComboBox>(id_type_combo_));
 
 			dialog_->Control<UISlider>(id_freq_slider_)->SetValue(static_cast<int>(procedural_freq_));
-			dialog_->Control<UISlider>(id_freq_slider_)->OnValueChangedEvent().connect(
+			dialog_->Control<UISlider>(id_freq_slider_)->OnValueChangedEvent().Connect(
 				[this](UISlider const & sender)
 				{
 					this->FreqChangedHandler(sender);
@@ -363,9 +320,12 @@ uint32_t ProceduralTexApp::DoUpdate(uint32_t /*pass*/)
 		light_pos = MathLib::normalize(light_pos) * 1.2f;
 		light_->Position(light_pos);
 
-		checked_pointer_cast<PolygonObject>(polygon_)->LightPos(light_->Position());
-		checked_pointer_cast<PolygonObject>(polygon_)->LightColor(light_->Color());
-		checked_pointer_cast<PolygonObject>(polygon_)->LightFalloff(light_->Falloff());
+		polygon_model_->ForEachMesh([this](Renderable& mesh)
+			{
+				checked_cast<RenderPolygon*>(&mesh)->LightPos(light_->Position());
+				checked_cast<RenderPolygon*>(&mesh)->LightColor(light_->Color());
+				checked_cast<RenderPolygon*>(&mesh)->LightFalloff(light_->Falloff());
+			});
 
 		return App3DFramework::URV_NeedFlush | App3DFramework::URV_Finished;
 	}

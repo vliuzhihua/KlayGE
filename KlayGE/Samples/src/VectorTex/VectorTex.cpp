@@ -4,7 +4,6 @@
 #include <KFL/Math.hpp>
 #include <KlayGE/Font.hpp>
 #include <KlayGE/Renderable.hpp>
-#include <KlayGE/RenderableHelper.hpp>
 #include <KlayGE/RenderEngine.hpp>
 #include <KlayGE/RenderEffect.hpp>
 #include <KlayGE/FrameBuffer.hpp>
@@ -13,9 +12,8 @@
 #include <KlayGE/ResLoader.hpp>
 #include <KlayGE/RenderSettings.hpp>
 #include <KlayGE/Mesh.hpp>
-#include <KlayGE/RenderableHelper.hpp>
 #include <KlayGE/Light.hpp>
-#include <KlayGE/SceneObjectHelper.hpp>
+#include <KlayGE/SceneNodeHelper.hpp>
 #include <KlayGE/Show.hpp>
 #include <KlayGE/UI.hpp>
 #include <KlayGE/Camera.hpp>
@@ -38,15 +36,17 @@ namespace
 	class RenderTeapot : public StaticMesh
 	{
 	public:
-		RenderTeapot(RenderModelPtr model, std::wstring const & /*name*/)
-			: StaticMesh(model, L"Teapot")
+		explicit RenderTeapot(std::wstring_view name)
+			: StaticMesh(name)
 		{
 			effect_ = SyncLoadRenderEffect("VectorTex.fxml");
 			technique_ = effect_->TechniqueByName("Object");
 		}
 
-		virtual void DoBuildMeshInfo() override
+		void DoBuildMeshInfo(RenderModel const & model) override
 		{
+			KFL_UNUSED(model);
+
 			AABBox const & pos_bb = this->PosBound();
 			*(effect_->ParameterByName("pos_center")) = pos_bb.Center();
 			*(effect_->ParameterByName("pos_extent")) = pos_bb.HalfSize();
@@ -69,21 +69,6 @@ namespace
 		void VectorTexture(TexturePtr const & vector_tex)
 		{
 			*(effect_->ParameterByName("vector_tex")) = vector_tex;
-		}
-	};
-
-	class TeapotObject : public SceneObjectHelper
-	{
-	public:
-		TeapotObject()
-			: SceneObjectHelper(SOA_Cullable)
-		{
-			renderable_ = SyncLoadModel("teapot.meshml", EAH_GPU_Read | EAH_Immutable, CreateModelFactory<RenderModel>(), CreateMeshFactory<RenderTeapot>())->Subrenderable(0);
-		}
-
-		void VectorTexture(TexturePtr const & vector_tex)
-		{
-			checked_pointer_cast<RenderTeapot>(renderable_)->VectorTexture(vector_tex);
 		}
 	};
 
@@ -129,17 +114,21 @@ void VectorTexApp::OnCreate()
 	actionMap.AddActions(actions, actions + std::size(actions));
 
 	action_handler_t input_handler = MakeSharedPtr<input_signal>();
-	input_handler->connect(
+	input_handler->Connect(
 		[this](InputEngine const & sender, InputAction const & action)
 		{
 			this->InputHandler(sender, action);
 		});
 	inputEngine.ActionMap(actionMap, input_handler);
 
-	object_ = MakeSharedPtr<TeapotObject>();
-	object_->AddToSceneManager();
+	model_ = SyncLoadModel("teapot.glb", EAH_GPU_Read | EAH_Immutable,
+		SceneNode::SOA_Cullable, nullptr,
+		CreateModelFactory<RenderModel>, CreateMeshFactory<RenderTeapot>);
+	object_ = MakeSharedPtr<SceneNode>(model_->Mesh(0), SceneNode::SOA_Cullable);
+	Context::Instance().SceneManagerInstance().SceneRootNode().AddChild(object_);
 
-	checked_pointer_cast<TeapotObject>(object_)->VectorTexture(ASyncLoadTexture("Drawing.dds", EAH_GPU_Read | EAH_Immutable));
+	checked_pointer_cast<RenderTeapot>(object_->GetRenderable())->VectorTexture(
+		ASyncLoadTexture("Drawing.dds", EAH_GPU_Read | EAH_Immutable));
 
 	UIManager::Instance().Load(ResLoader::Instance().Open("VideoTexture.uiml"));
 }

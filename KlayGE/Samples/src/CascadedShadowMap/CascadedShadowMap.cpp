@@ -13,7 +13,8 @@
 #include <KlayGE/ResLoader.hpp>
 #include <KlayGE/RenderSettings.hpp>
 #include <KlayGE/Mesh.hpp>
-#include <KlayGE/SceneObjectHelper.hpp>
+#include <KlayGE/SceneNodeHelper.hpp>
+#include <KlayGE/SkyBox.hpp>
 #include <KlayGE/PostProcess.hpp>
 #include <KlayGE/Camera.hpp>
 #include <KlayGE/DeferredRenderingLayer.hpp>
@@ -71,8 +72,15 @@ void CascadedShadowMapApp::OnCreate()
 
 	TexturePtr c_cube = ASyncLoadTexture("Lake_CraterLake03_filtered_c.dds", EAH_GPU_Read | EAH_Immutable);
 	TexturePtr y_cube = ASyncLoadTexture("Lake_CraterLake03_filtered_y.dds", EAH_GPU_Read | EAH_Immutable);
-	RenderablePtr plane_model = ASyncLoadModel("plane.meshml", EAH_GPU_Read | EAH_Immutable);
-	RenderablePtr katapult_model = ASyncLoadModel("katapult.meshml", EAH_GPU_Read | EAH_Immutable);
+	auto plane_model = ASyncLoadModel("plane.glb", EAH_GPU_Read | EAH_Immutable,
+		SceneNode::SOA_Cullable,
+		[](RenderModel& model)
+		{
+			model.RootNode()->TransformToParent(MathLib::scaling(200.0f, 1.0f, 200.0f));
+			AddToSceneRootHelper(model);
+		});
+	auto katapult_model = ASyncLoadModel("katapult.glb", EAH_GPU_Read | EAH_Immutable,
+		SceneNode::SOA_Cullable, AddToSceneRootHelper);
 
 	font_ = SyncLoadFont("gkai00mp.kfont");
 
@@ -90,13 +98,6 @@ void CascadedShadowMapApp::OnCreate()
 	sun_light_->Color(float3(1, 1, 1));
 	sun_light_->AddToSceneManager();
 
-	SceneObjectPtr plane_so = MakeSharedPtr<SceneObjectHelper>(plane_model, SceneObject::SOA_Cullable);
-	plane_so->ModelMatrix(MathLib::scaling(200.0f, 1.0f, 200.0f));
-	plane_so->AddToSceneManager();
-
-	SceneObjectPtr katapult_so = MakeSharedPtr<SceneObjectHelper>(katapult_model, SceneObject::SOA_Cullable);
-	katapult_so->AddToSceneManager();
-
 	fpcController_.Scalers(0.05f, 1.0f);
 
 	InputEngine& inputEngine(Context::Instance().InputFactoryInstance().InputEngineInstance());
@@ -104,7 +105,7 @@ void CascadedShadowMapApp::OnCreate()
 	actionMap.AddActions(actions, actions + std::size(actions));
 
 	action_handler_t input_handler = MakeSharedPtr<input_signal>();
-	input_handler->connect(
+	input_handler->Connect(
 		[this](InputEngine const & sender, InputAction const & action)
 		{
 			this->InputHandler(sender, action);
@@ -120,37 +121,37 @@ void CascadedShadowMapApp::OnCreate()
 	id_pssm_factor_slider_ = dialog_->IDFromName("PSSMFactorSlider");
 	id_ctrl_camera_ = dialog_->IDFromName("CtrlCamera");
 
-	dialog_->Control<UIComboBox>(id_csm_type_combo_)->OnSelectionChangedEvent().connect(
+	dialog_->Control<UIComboBox>(id_csm_type_combo_)->OnSelectionChangedEvent().Connect(
 		[this](UIComboBox const & sender)
 		{
 			this->CSMTypeChangedHandler(sender);
 		});
 	this->CSMTypeChangedHandler(*dialog_->Control<UIComboBox>(id_csm_type_combo_));
 
-	dialog_->Control<UIComboBox>(id_cascades_combo_)->OnSelectionChangedEvent().connect(
+	dialog_->Control<UIComboBox>(id_cascades_combo_)->OnSelectionChangedEvent().Connect(
 		[this](UIComboBox const & sender)
 		{
 			this->CascadesChangedHandler(sender);
 		});
 	this->CascadesChangedHandler(*dialog_->Control<UIComboBox>(id_cascades_combo_));
 
-	dialog_->Control<UISlider>(id_pssm_factor_slider_)->OnValueChangedEvent().connect(
+	dialog_->Control<UISlider>(id_pssm_factor_slider_)->OnValueChangedEvent().Connect(
 		[this](UISlider const & sender)
 		{
 			this->PSSMFactorChangedHandler(sender);
 		});
 	this->PSSMFactorChangedHandler(*dialog_->Control<UISlider>(id_pssm_factor_slider_));
 
-	dialog_->Control<UICheckBox>(id_ctrl_camera_)->OnChangedEvent().connect(
+	dialog_->Control<UICheckBox>(id_ctrl_camera_)->OnChangedEvent().Connect(
 		[this](UICheckBox const & sender)
 		{
 			this->CtrlCameraHandler(sender);
 		});
 	this->CtrlCameraHandler(*dialog_->Control<UICheckBox>(id_ctrl_camera_));
 
-	sky_box_ = MakeSharedPtr<SceneObjectSkyBox>();
-	checked_pointer_cast<SceneObjectSkyBox>(sky_box_)->CompressedCubeMap(y_cube, c_cube);
-	sky_box_->AddToSceneManager();
+	sky_box_ = MakeSharedPtr<SceneNode>(MakeSharedPtr<RenderableSkyBox>(), SceneNode::SOA_NotCastShadow);
+	checked_pointer_cast<RenderableSkyBox>(sky_box_->GetRenderable())->CompressedCubeMap(y_cube, c_cube);
+	Context::Instance().SceneManagerInstance().SceneRootNode().AddChild(sky_box_);
 
 	RenderDeviceCaps const & caps = Context::Instance().RenderFactoryInstance().RenderEngineInstance().DeviceCaps();
 	if (caps.max_shader_model < ShaderModel(5, 0))

@@ -639,13 +639,10 @@ namespace KlayGE
 		valid_ = false;
 	}
 
-	
+
 	TexCompressionETC1::TexCompressionETC1()
 	{
-		block_width_ = block_height_ = 4;
-		block_depth_ = 1;
-		block_bytes_ = NumFormatBytes(EF_ETC1) * 4;
-		decoded_fmt_ = EF_ARGB8;
+		compression_format_ = EF_ETC1;
 
 		params_ = nullptr;
 		result_ = nullptr;
@@ -1088,9 +1085,6 @@ namespace KlayGE
 #ifdef KLAYGE_DEBUG
 		uint32_t const limit = diff ? 32 : 16;
 		BOOST_ASSERT((diff < 2) && (inten < 8) && (selector < 4) && (packed_c < limit));
-#if defined(KLAYGE_COMPILER_CLANGC2)
-		KFL_UNUSED(limit);
-#endif
 #endif
 		int c;
 		if (diff)
@@ -1155,12 +1149,6 @@ namespace KlayGE
 						uint32_t selector = (x >> 4) & 3;
 						uint32_t p0 = (x >> 8) & 255;
 						BOOST_ASSERT(ETC1DecodeValue(diff, inten, selector, p0) == static_cast<uint32_t>(c_plus_delta));
-#if defined(KLAYGE_COMPILER_CLANGC2)
-						KFL_UNUSED(diff);
-						KFL_UNUSED(inten);
-						KFL_UNUSED(selector);
-						KFL_UNUSED(p0);
-#endif
 					}
 #endif
 
@@ -1285,11 +1273,6 @@ namespace KlayGE
 						uint32_t const selector = (x >> 4) & 3;
 						uint32_t const p0 = (x >> 8) & 0xFF;
 						BOOST_ASSERT(ETC1DecodeValue(diff, inten, selector, p0) == static_cast<uint32_t>(c_plus_delta));
-#if defined(KLAYGE_COMPILER_CLANGC2)
-						KFL_UNUSED(inten);
-						KFL_UNUSED(selector);
-						KFL_UNUSED(p0);
-#endif
 					}
 #endif
 
@@ -1834,10 +1817,7 @@ namespace KlayGE
 
 	TexCompressionETC2RGB8::TexCompressionETC2RGB8()
 	{
-		block_width_ = block_height_ = 4;
-		block_depth_ = 1;
-		block_bytes_ = NumFormatBytes(EF_ETC2_BGR8) * 4;
-		decoded_fmt_ = EF_ARGB8;
+		compression_format_ = EF_ETC2_BGR8;
 
 		etc1_codec_ = MakeSharedPtr<TexCompressionETC1>();
 	}
@@ -2057,10 +2037,7 @@ namespace KlayGE
 
 	TexCompressionETC2RGB8A1::TexCompressionETC2RGB8A1()
 	{
-		block_width_ = block_height_ = 4;
-		block_depth_ = 1;
-		block_bytes_ = NumFormatBytes(EF_ETC2_A1BGR8) * 4;
-		decoded_fmt_ = EF_ARGB8;
+		compression_format_ = EF_ETC2_A1BGR8;
 
 		etc1_codec_ = MakeSharedPtr<TexCompressionETC1>();
 		etc2_rgb8_codec_ = MakeSharedPtr<TexCompressionETC2RGB8>();

@@ -27,6 +27,7 @@
 #include <KlayGE/RenderEngine.hpp>
 #include <KlayGE/RenderEffect.hpp>
 #include <KlayGE/RenderableHelper.hpp>
+#include <KlayGE/RenderView.hpp>
 #include <KlayGE/FrameBuffer.hpp>
 #include <KlayGE/RenderLayout.hpp>
 #include <KFL/XMLDom.hpp>
@@ -69,10 +70,10 @@ namespace
 		};
 
 	public:
-		PostProcessLoadingDesc(std::string const & res_name, std::string const & pp_name)
+		PostProcessLoadingDesc(std::string_view res_name, std::string_view pp_name)
 		{
-			pp_desc_.res_name = res_name;
-			pp_desc_.pp_name = pp_name;
+			pp_desc_.res_name = std::string(res_name);
+			pp_desc_.pp_name = std::string(pp_name);
 			pp_desc_.pp_data = MakeSharedPtr<PostProcessDesc::PostProcessData>();
 			pp_desc_.pp = MakeSharedPtr<PostProcessPtr>();
 		}
@@ -248,15 +249,15 @@ namespace
 
 namespace KlayGE
 {
-	PostProcess::PostProcess(std::wstring const & name, bool volumetric)
-			: RenderableHelper(name),
+	PostProcess::PostProcess(std::wstring_view name, bool volumetric)
+			: Renderable(name),
 				volumetric_(volumetric),
 				cs_based_(false), cs_pixel_per_thread_x_(1), cs_pixel_per_thread_y_(1), cs_pixel_per_thread_z_(1),
 				num_bind_output_(0)
 	{
 	}
 
-	PostProcess::PostProcess(std::wstring const & name, bool volumetric,
+	PostProcess::PostProcess(std::wstring_view name, bool volumetric,
 		ArrayRef<std::string> param_names,
 		ArrayRef<std::string> input_pin_names,
 		ArrayRef<std::string> output_pin_names,
@@ -323,7 +324,7 @@ namespace KlayGE
 		{
 			BOOST_ASSERT(effect);
 
-			cs_based_ = (technique_->Pass(0).GetShaderObject(*effect_)->CSBlockSizeX() > 0);
+			cs_based_ = !!technique_->Pass(0).GetShaderObject(*effect_)->Stage(ShaderStage::Compute);
 
 			BOOST_ASSERT(!(cs_based_ && volumetric_));
 
@@ -702,11 +703,25 @@ namespace KlayGE
 
 	void PostProcess::InputPin(uint32_t index, TexturePtr const & tex)
 	{
-		input_pins_[index].second = tex;
-		*(input_pins_ep_[index]) = tex;
-
-		if (0 == index)
+		if (tex)
 		{
+			auto& rf = Context::Instance().RenderFactoryInstance();
+			this->InputPin(index, rf.MakeTextureSrv(tex));
+		}
+		else
+		{
+			this->InputPin(index, ShaderResourceViewPtr());
+		}
+	}
+
+	void PostProcess::InputPin(uint32_t index, ShaderResourceViewPtr const & srv)
+	{
+		input_pins_[index].second = srv;
+		*(input_pins_ep_[index]) = srv;
+
+		if ((0 == index) && srv)
+		{
+			auto const & tex = srv->TextureResource();
 			float const width = static_cast<float>(tex->Width(0));
 			float const height = static_cast<float>(tex->Height(0));
 			if (width_height_ep_)
@@ -723,7 +738,15 @@ namespace KlayGE
 	TexturePtr const & PostProcess::InputPin(uint32_t index) const
 	{
 		BOOST_ASSERT(index < input_pins_.size());
-		return input_pins_[index].second;
+		if (input_pins_[index].second)
+		{
+			return input_pins_[index].second->TextureResource();
+		}
+		else
+		{
+			static TexturePtr null_tex;
+			return null_tex;
+		}
 	}
 
 	uint32_t PostProcess::NumOutputPins() const
@@ -765,17 +788,17 @@ namespace KlayGE
 			if (!cs_based_)
 			{
 				RenderFactory& rf = Context::Instance().RenderFactoryInstance();
-				RenderViewPtr view;
+				RenderTargetViewPtr rtv;
 				if (Texture::TT_2D == tex->Type())
 				{
-					view = rf.Make2DRenderView(*tex, array_index, 1, level);
+					rtv = rf.Make2DRtv(tex, array_index, 1, level);
 				}
 				else
 				{
 					BOOST_ASSERT(Texture::TT_Cube == tex->Type());
-					view = rf.Make2DRenderView(*tex, array_index, static_cast<Texture::CubeFaces>(face), level);
+					rtv = rf.Make2DRtv(tex, array_index, static_cast<Texture::CubeFaces>(face), level);
 				}
-				frame_buffer_->Attach(FrameBuffer::ATT_Color0 + index, view);
+				frame_buffer_->Attach(FrameBuffer::CalcAttachment(index), rtv);
 			}
 
 			if (output_pins_ep_[index])
@@ -799,10 +822,10 @@ namespace KlayGE
 			re.BindFrameBuffer(re.DefaultFrameBuffer());
 			re.DefaultFrameBuffer()->Discard(FrameBuffer::CBM_Color);
 
-			ShaderObjectPtr const & so = technique_->Pass(0).GetShaderObject(*effect_);
-			uint32_t const bx = so->CSBlockSizeX() * cs_pixel_per_thread_x_;
-			uint32_t const by = so->CSBlockSizeY() * cs_pixel_per_thread_y_;
-			uint32_t const bz = so->CSBlockSizeZ() * cs_pixel_per_thread_z_;
+			auto const& cs_stage = technique_->Pass(0).GetShaderObject(*effect_)->Stage(ShaderStage::Compute);
+			uint32_t const bx = cs_stage->BlockSizeX() * cs_pixel_per_thread_x_;
+			uint32_t const by = cs_stage->BlockSizeY() * cs_pixel_per_thread_y_;
+			uint32_t const bz = cs_stage->BlockSizeZ() * cs_pixel_per_thread_z_;
 			
 			BOOST_ASSERT(bx > 0);
 			BOOST_ASSERT(by > 0);
@@ -849,23 +872,23 @@ namespace KlayGE
 	{
 		if (cs_based_)
 		{
-			rl_.reset();
+			rls_[0].reset();
 			frame_buffer_.reset();
 		}
 		else
 		{
-			if (!rl_)
+			if (!rls_[0])
 			{
 				RenderFactory& rf = Context::Instance().RenderFactoryInstance();
 				RenderEngine& re = rf.RenderEngineInstance();
 
 				if (volumetric_)
 				{
-					rl_ = re.VolumetricPostProcessRenderLayout();
+					rls_[0] = re.VolumetricPostProcessRenderLayout();
 				}
 				else
 				{
-					rl_ = re.PostProcessRenderLayout();
+					rls_[0] = re.PostProcessRenderLayout();
 				}
 
 				pos_aabb_ = AABBox(float3(-1, -1, -1), float3(1, 1, 1));
@@ -878,12 +901,12 @@ namespace KlayGE
 	}
 
 
-	PostProcessPtr SyncLoadPostProcess(std::string const & ppml_name, std::string const & pp_name)
+	PostProcessPtr SyncLoadPostProcess(std::string_view ppml_name, std::string_view pp_name)
 	{
 		return ResLoader::Instance().SyncQueryT<PostProcess>(MakeSharedPtr<PostProcessLoadingDesc>(ppml_name, pp_name));
 	}
 
-	PostProcessPtr ASyncLoadPostProcess(std::string const & ppml_name, std::string const & pp_name)
+	PostProcessPtr ASyncLoadPostProcess(std::string_view ppml_name, std::string_view pp_name)
 	{
 		// TODO: Make it really async
 		return ResLoader::Instance().SyncQueryT<PostProcess>(MakeSharedPtr<PostProcessLoadingDesc>(ppml_name, pp_name));
@@ -1707,8 +1730,8 @@ namespace KlayGE
 		pp_chain_[0]->SetParam(0, esm_scale_factor);
 		pp_chain_[1]->SetParam(0, esm_scale_factor);
 
-		float q = fp / (fp - np);
-		float4 near_q_far(np * q, q, fp, 1 / fp / esm_scale_factor);
+		float4 near_q_far = camera.NearQFarParam();
+		near_q_far.w() = 1 / fp / esm_scale_factor;
 		pp_chain_[0]->SetParam(1, near_q_far);
 		near_q_far.z() *= esm_scale_factor;
 		pp_chain_[1]->SetParam(1, near_q_far);

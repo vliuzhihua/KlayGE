@@ -216,13 +216,19 @@ namespace KlayGE
 		RenderFactory& rf = Context::Instance().RenderFactoryInstance();
 
 		src_ = rf.MakeVertexBuffer(BU_Dynamic, EAH_GPU_Read | EAH_GPU_Unordered | EAH_GPU_Structured,
-			3 * width * height * sizeof(float) * 2, nullptr, EF_GR32F);
+			3 * width * height * sizeof(float2), nullptr, sizeof(float2));
+		src_srv_ = rf.MakeBufferSrv(src_, EF_GR32F);
+		src_uav_ = rf.MakeBufferUav(src_, EF_GR32F);
 
 		dst_ = rf.MakeVertexBuffer(BU_Dynamic, EAH_GPU_Read | EAH_GPU_Unordered | EAH_GPU_Structured,
-			3 * width * height * sizeof(float) * 2, nullptr, EF_GR32F);
+			3 * width * height * sizeof(float2), nullptr, sizeof(float2));
+		src_srv_ = rf.MakeBufferSrv(src_, EF_GR32F);
+		dst_uav_ = rf.MakeBufferUav(dst_, EF_GR32F);
 
 		tmp_buffer_ = rf.MakeVertexBuffer(BU_Dynamic, EAH_GPU_Read | EAH_GPU_Unordered | EAH_GPU_Structured,
-			3 * width * height * sizeof(float) * 2, nullptr, EF_GR32F);
+			3 * width * height * sizeof(float2), nullptr, sizeof(float2));
+		tmp_buffer_srv_ = rf.MakeBufferSrv(tmp_buffer_, EF_GR32F);
+		tmp_buffer_uav_ = rf.MakeBufferUav(tmp_buffer_, EF_GR32F);
 
 		quad_layout_ = rf.MakeRenderLayout();
 		quad_layout_->TopologyType(RenderLayout::TT_TriangleStrip);
@@ -247,7 +253,7 @@ namespace KlayGE
 		real_tex_ep_ = effect_->ParameterByName("real_tex");
 		imag_tex_ep_ = effect_->ParameterByName("imag_tex");
 
-		*(effect_->ParameterByName("input_buf")) = dst_;
+		*(effect_->ParameterByName("input_buf")) = dst_srv_;
 
 		*(effect_->ParameterByName("tex_width_height")) = uint2(width, height);
 		uint32_t n = width * height;
@@ -263,8 +269,8 @@ namespace KlayGE
 		RenderFactory& rf = Context::Instance().RenderFactoryInstance();
 		RenderEngine& re = rf.RenderEngineInstance();
 
-		tex_fb_->Attach(FrameBuffer::ATT_Color0, rf.Make2DRenderView(*out_real, 0, 1, 0));
-		tex_fb_->Attach(FrameBuffer::ATT_Color1, rf.Make2DRenderView(*out_imag, 0, 1, 0));
+		tex_fb_->Attach(FrameBuffer::Attachment::Color0, rf.Make2DRtv(out_real, 0, 1, 0));
+		tex_fb_->Attach(FrameBuffer::Attachment::Color1, rf.Make2DRtv(out_imag, 0, 1, 0));
 
 		FrameBufferPtr old_fb = re.CurFrameBuffer();
 		re.BindFrameBuffer(FrameBufferPtr());
@@ -289,9 +295,10 @@ namespace KlayGE
 		*(effect_->ParameterByName("istride")) = istride;
 		*(effect_->ParameterByName("istride3")) = uint2(0, istride3);
 		*(effect_->ParameterByName("phase_base")) = phase_base;
-		this->Radix008A(tmp_buffer_, src_, thread_count, istride, true);
+		this->Radix008A(tmp_buffer_uav_, src_srv_, thread_count, istride, true);
 
-		GraphicsBufferPtr buf[2] = { dst_, tmp_buffer_ };
+		ShaderResourceViewPtr srvs[2] = { dst_srv_, tmp_buffer_srv_ };
+		UnorderedAccessViewPtr uavs[2] = { dst_uav_, tmp_buffer_uav_ };
 		int index = 0;
 
 		uint32_t t = width_;
@@ -303,7 +310,7 @@ namespace KlayGE
 			*(effect_->ParameterByName("istride")) = istride;
 			*(effect_->ParameterByName("istride3")) = uint2(0, istride3);
 			*(effect_->ParameterByName("phase_base")) = phase_base;
-			this->Radix008A(buf[index], buf[!index], thread_count, istride, false);
+			this->Radix008A(uavs[index], srvs[!index], thread_count, istride, false);
 			index = !index;
 
 			t /= 8;
@@ -322,7 +329,7 @@ namespace KlayGE
 		*(effect_->ParameterByName("istride")) = istride;
 		*(effect_->ParameterByName("istride3")) = uint2(istride3, 0);
 		*(effect_->ParameterByName("phase_base")) = phase_base;
-		this->Radix008A(buf[index], buf[!index], thread_count, istride, false);
+		this->Radix008A(uavs[index], srvs[!index], thread_count, istride, false);
 		index = !index;
 
 		t = height_;
@@ -334,7 +341,7 @@ namespace KlayGE
 			*(effect_->ParameterByName("istride")) = istride;
 			*(effect_->ParameterByName("istride3")) = uint2(istride3, 0);
 			*(effect_->ParameterByName("phase_base")) = phase_base;
-			this->Radix008A(buf[index], buf[!index], thread_count, istride, false);
+			this->Radix008A(uavs[index], srvs[!index], thread_count, istride, false);
 			index = !index;
 
 			t /= 8;
@@ -348,9 +355,9 @@ namespace KlayGE
 		re.BindFrameBuffer(old_fb);
 	}
 
-	void GpuFftCS4::Radix008A(GraphicsBufferPtr const & dst,
-				   GraphicsBufferPtr const & src,
-				   uint32_t thread_count, uint32_t istride, bool first)
+	void GpuFftCS4::Radix008A(UnorderedAccessViewPtr const & dst,
+					ShaderResourceViewPtr const & src,
+					uint32_t thread_count, uint32_t istride, bool first)
 	{
 		// Setup execution configuration
 		uint32_t grid = (thread_count + COHERENCY_GRANULARITY - 1) / COHERENCY_GRANULARITY;

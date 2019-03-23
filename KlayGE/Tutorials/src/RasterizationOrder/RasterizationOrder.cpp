@@ -8,6 +8,7 @@
 #include <KlayGE/RenderableHelper.hpp>
 #include <KlayGE/RenderEngine.hpp>
 #include <KlayGE/RenderEffect.hpp>
+#include <KlayGE/RenderView.hpp>
 #include <KlayGE/FrameBuffer.hpp>
 #include <KlayGE/RenderLayout.hpp>
 #include <KlayGE/SceneManager.hpp>
@@ -32,11 +33,11 @@ using namespace KlayGE;
 
 namespace
 {
-	class RenderQuad : public RenderableHelper
+	class RenderQuad : public Renderable
 	{
 	public:
 		RenderQuad()
-			: RenderableHelper(L"RasterizationOrder")
+			: Renderable(L"RasterizationOrder")
 		{
 			RenderFactory& rf = Context::Instance().RenderFactoryInstance();
 
@@ -52,11 +53,11 @@ namespace
 				float2(-1, -3)
 			};
 
-			rl_ = rf.MakeRenderLayout();
-			rl_->TopologyType(RenderLayout::TT_TriangleList);
+			rls_[0] = rf.MakeRenderLayout();
+			rls_[0]->TopologyType(RenderLayout::TT_TriangleList);
 
 			GraphicsBufferPtr pos_vb = rf.MakeVertexBuffer(BU_Static, EAH_GPU_Read | EAH_Immutable, sizeof(pos), pos);
-			rl_->BindVertexStream(pos_vb, VertexElement(VEU_Position, 0, EF_GR32F));
+			rls_[0]->BindVertexStream(pos_vb, VertexElement(VEU_Position, 0, EF_GR32F));
 
 			// From https://github.com/BIDS/colormap/blob/master/parula.py
 			uint32_t const color_map[] =
@@ -141,7 +142,7 @@ namespace
 			technique_ = ras_order_tech_[on];
 		}
 
-		void BindRasOrderBuffer(GraphicsBufferPtr const & ras_order_buff)
+		void BindRasOrderBuffer(UnorderedAccessViewPtr const & ras_order_buff)
 		{
 			*(effect_->ParameterByName("ras_order_buff")) = ras_order_buff;
 		}
@@ -183,16 +184,16 @@ RasterizationOrderApp::RasterizationOrderApp()
 			: App3DFramework("RasterizationOrder")
 {
 	ResLoader::Instance().AddPath("../../Tutorials/media/RasterizationOrder");
-}
 
-bool RasterizationOrderApp::ConfirmDevice() const
-{
-	RenderDeviceCaps const & caps = Context::Instance().RenderFactoryInstance().RenderEngineInstance().DeviceCaps();
-	if (caps.max_shader_model < ShaderModel(5, 0))
-	{
-		return false;
-	}
-	return true;
+	this->OnConfirmDevice().Connect([]
+		{
+			RenderDeviceCaps const & caps = Context::Instance().RenderFactoryInstance().RenderEngineInstance().DeviceCaps();
+			if (caps.max_shader_model < ShaderModel(5, 0))
+			{
+				return false;
+			}
+			return true;
+		});
 }
 
 void RasterizationOrderApp::OnCreate()
@@ -212,7 +213,7 @@ void RasterizationOrderApp::OnCreate()
 	actionMap.AddActions(actions, actions + std::size(actions));
 
 	action_handler_t input_handler = MakeSharedPtr<input_signal>();
-	input_handler->connect(
+	input_handler->Connect(
 		[this](InputEngine const & sender, InputAction const & action)
 		{
 			this->InputHandler(sender, action);
@@ -224,13 +225,13 @@ void RasterizationOrderApp::OnCreate()
 	id_color_map_ = dialog_params_->IDFromName("ColorMap");
 	id_capture_ = dialog_params_->IDFromName("Capture");
 
-	dialog_params_->Control<UICheckBox>(id_color_map_)->OnChangedEvent().connect(
+	dialog_params_->Control<UICheckBox>(id_color_map_)->OnChangedEvent().Connect(
 		[this](UICheckBox const & sender)
 		{
 			this->ColorMapHandler(sender);
 		});
 	this->ColorMapHandler(*dialog_params_->Control<UICheckBox>(id_color_map_));
-	dialog_params_->Control<UIButton>(id_capture_)->OnClickedEvent().connect(
+	dialog_params_->Control<UIButton>(id_capture_)->OnClickedEvent().Connect(
 		[this](UIButton const & sender)
 		{
 			this->CaptureHandler(sender);
@@ -242,14 +243,14 @@ void RasterizationOrderApp::OnResize(uint32_t width, uint32_t height)
 	RenderFactory& rf = Context::Instance().RenderFactoryInstance();
 	ras_order_buff_ = rf.MakeVertexBuffer(BU_Dynamic,
 		EAH_GPU_Read | EAH_GPU_Write | EAH_GPU_Unordered | EAH_Raw,
-		width * height * sizeof(uint32_t), nullptr, EF_R32UI);
-	ras_order_uav_ = rf.MakeGraphicsBufferUnorderedAccessView(*ras_order_buff_, EF_R32UI);
-	ras_order_fb_->AttachUAV(0, ras_order_uav_);
+		width * height * sizeof(uint32_t), nullptr, sizeof(uint32_t));
+	ras_order_uav_ = rf.MakeBufferUav(ras_order_buff_, EF_R32UI);
+	ras_order_fb_->Attach(0, ras_order_uav_);
 
-	checked_pointer_cast<RenderQuad>(render_quad_)->BindRasOrderBuffer(ras_order_buff_);
+	checked_pointer_cast<RenderQuad>(render_quad_)->BindRasOrderBuffer(ras_order_uav_);
 
 	ras_order_tex_ = rf.MakeTexture2D(width, height, 1, 1, EF_ABGR8, 1, 0, EAH_GPU_Read | EAH_GPU_Write);
-	ras_order_fb_->Attach(FrameBuffer::ATT_Color0, rf.Make2DRenderView(*ras_order_tex_, 0, 1, 0));
+	ras_order_fb_->Attach(FrameBuffer::Attachment::Color0, rf.Make2DRtv(ras_order_tex_, 0, 1, 0));
 
 	copy_pp_->InputPin(0, ras_order_tex_);
 

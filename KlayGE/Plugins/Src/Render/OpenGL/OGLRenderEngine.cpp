@@ -205,9 +205,16 @@ namespace KlayGE
 		mod_opengl32_ = ::LoadLibraryEx(TEXT("opengl32.dll"), nullptr, 0);
 		KLAYGE_ASSUME(mod_opengl32_ != nullptr);
 
-		DynamicWglCreateContext_ = (wglCreateContextFUNC)::GetProcAddress(mod_opengl32_, "wglCreateContext");
-		DynamicWglDeleteContext_ = (wglDeleteContextFUNC)::GetProcAddress(mod_opengl32_, "wglDeleteContext");
-		DynamicWglMakeCurrent_ = (wglMakeCurrentFUNC)::GetProcAddress(mod_opengl32_, "wglMakeCurrent");
+#if defined(KLAYGE_COMPILER_GCC) && (KLAYGE_COMPILER_VERSION >= 80)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wcast-function-type"
+#endif
+		DynamicWglCreateContext_ = reinterpret_cast<wglCreateContextFUNC>(::GetProcAddress(mod_opengl32_, "wglCreateContext"));
+		DynamicWglDeleteContext_ = reinterpret_cast<wglDeleteContextFUNC>(::GetProcAddress(mod_opengl32_, "wglDeleteContext"));
+		DynamicWglMakeCurrent_ = reinterpret_cast<wglMakeCurrentFUNC>(::GetProcAddress(mod_opengl32_, "wglMakeCurrent"));
+#if defined(KLAYGE_COMPILER_GCC) && (KLAYGE_COMPILER_VERSION >= 80)
+#pragma GCC diagnostic pop
+#endif
 #endif
 	}
 
@@ -282,18 +289,23 @@ namespace KlayGE
 		}
 #endif
 
-		win->Attach(FrameBuffer::ATT_Color0,
-			MakeSharedPtr<OGLScreenColorRenderView>(win->Width(), win->Height(), settings.color_fmt));
+		win->Attach(FrameBuffer::Attachment::Color0,
+			MakeSharedPtr<OGLScreenRenderTargetView>(win->Width(), win->Height(), settings.color_fmt));
 		if (NumDepthBits(settings.depth_stencil_fmt) > 0)
 		{
-			win->Attach(FrameBuffer::ATT_DepthStencil,
-				MakeSharedPtr<OGLScreenDepthStencilRenderView>(win->Width(), win->Height(), settings.depth_stencil_fmt));
+			win->Attach(MakeSharedPtr<OGLScreenDepthStencilView>(win->Width(), win->Height(), settings.depth_stencil_fmt));
 		}
 
 		this->BindFrameBuffer(win);
 
 		glGenFramebuffers(1, &fbo_blit_src_);
 		glGenFramebuffers(1, &fbo_blit_dst_);
+
+		if (glloader_GL_VERSION_4_5() || glloader_GL_ARB_clip_control())
+		{
+			glClipControl(GL_LOWER_LEFT, GL_ZERO_TO_ONE);
+			clip_control_ = true;
+		}
 	}
 
 	void OGLRenderEngine::CheckConfig(RenderSettings& settings)
@@ -1447,7 +1459,10 @@ namespace KlayGE
 
 	void OGLRenderEngine::AdjustProjectionMatrix(float4x4& proj_mat)
 	{
-		proj_mat *= MathLib::scaling(1.0f, 1.0f, 2.0f) * MathLib::translation(0.0f, 0.0f, -1.0f);
+		if (!clip_control_)
+		{
+			proj_mat *= MathLib::scaling(1.0f, 1.0f, 2.0f) * MathLib::translation(0.0f, 0.0f, -1.0f);
+		}
 	}
 
 	// 填充设备能力
@@ -1524,6 +1539,7 @@ namespace KlayGE
 		caps_.load_from_buffer_support = true;
 		caps_.uavs_at_every_stage_support = false;	// TODO
 		caps_.rovs_support = false;	// TODO
+		caps_.flexible_srvs_support = false; // TODO
 
 		caps_.gs_support = true;
 
@@ -1619,7 +1635,7 @@ namespace KlayGE
 				vertex_formats.push_back(EF_B10G11R11F);
 			}
 
-			this->AssignCapVertexFormats(std::move(vertex_formats));
+			caps_.AssignVertexFormats(std::move(vertex_formats));
 		}
 		{
 			std::vector<ElementFormat> texture_formats =
@@ -1704,7 +1720,9 @@ namespace KlayGE
 				texture_formats.insert(texture_formats.end(),
 					{
 						EF_BC6,
-						EF_BC7
+						EF_SIGNED_BC6,
+						EF_BC7,
+						EF_BC7_SRGB
 					});
 			}
 			if (glloader_GL_EXT_texture_compression_s3tc())
@@ -1734,7 +1752,7 @@ namespace KlayGE
 					});
 			}
 
-			this->AssignCapTextureFormats(std::move(texture_formats));
+			caps_.AssignTextureFormats(std::move(texture_formats));
 		}
 		{
 			GLint max_samples;
@@ -1795,7 +1813,7 @@ namespace KlayGE
 					EF_ABGR8_SRGB
 				});
 
-			this->AssignCapRenderTargetFormats(std::move(render_target_formats));
+			caps_.AssignRenderTargetFormats(std::move(render_target_formats));
 		}
 	}
 

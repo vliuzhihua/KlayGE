@@ -1,14 +1,32 @@
-// ShaderObject.cpp
-// KlayGE shader对象类 实现文件
-// Ver 3.5.0
-// 版权所有(C) 龚敏敏, 2006
-// Homepage: http://www.klayge.org
-//
-// 3.5.0
-// 初次建立 (2006.11.2)
-//
-// 修改记录
-//////////////////////////////////////////////////////////////////////////////////
+/**
+ * @file ShaderObject.cpp
+ * @author Minmin Gong
+ *
+ * @section DESCRIPTION
+ *
+ * This source file is part of KlayGE
+ * For the latest info, see http://www.klayge.org
+ *
+ * @section LICENSE
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published
+ * by the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *
+ * You may alternatively use this source under the terms of
+ * the KlayGE Proprietary License (KPL). You can obtained such a license
+ * from http://www.klayge.org/licensing/.
+ */
 
 #include <KlayGE/KlayGE.hpp>
 #include <KFL/CustomizedStreamBuf.hpp>
@@ -166,7 +184,7 @@ namespace
 			static bool first = true;
 			if (first)
 			{
-				ss << WINE_PATH << "wineserver -p";
+				ss << KFL_STRINGIZE(WINE_PATH) << "wineserver -p";
 				int err = system(ss.str().c_str());
 				KFL_UNUSED(err);
 				// We should hold on a persistant wineserver, or XCode will lost connection after wineserver instance close and wine may not be able to find '.exe.so' file
@@ -175,7 +193,7 @@ namespace
 			}
 			d3dcompiler_wrapper_name += ".exe.so";
 			std::string wrapper_path = ResLoader::Instance().Locate(d3dcompiler_wrapper_name);
-			ss << WINE_PATH << "wine " << wrapper_path;
+			ss << KFL_STRINGIZE(WINE_PATH) << "wine " << wrapper_path;
 #endif
 			ss << " compile";
 			ss << " " << compile_input_file;
@@ -265,20 +283,30 @@ namespace
 			mod_d3dcompiler_ = ::LoadLibraryEx(TEXT("d3dcompiler_47.dll"), nullptr, 0);
 			KLAYGE_ASSUME(mod_d3dcompiler_ != nullptr);
 
-			DynamicD3DCompile_ = reinterpret_cast<pD3DCompile>(::GetProcAddress(mod_d3dcompiler_, "D3DCompile"));
+#if defined(KLAYGE_COMPILER_GCC) && (KLAYGE_COMPILER_VERSION >= 80)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wcast-function-type"
+#endif
+			DynamicD3DCompile_ = reinterpret_cast<D3DCompileFunc>(::GetProcAddress(mod_d3dcompiler_, "D3DCompile"));
 			DynamicD3DReflect_ = reinterpret_cast<D3DReflectFunc>(::GetProcAddress(mod_d3dcompiler_, "D3DReflect"));
 			DynamicD3DStripShader_ = reinterpret_cast<D3DStripShaderFunc>(::GetProcAddress(mod_d3dcompiler_, "D3DStripShader"));
+#if defined(KLAYGE_COMPILER_GCC) && (KLAYGE_COMPILER_VERSION >= 80)
+#pragma GCC diagnostic pop
+#endif
 #endif
 		}
 
 	private:
 #ifdef CALL_D3DCOMPILER_DIRECTLY
+		typedef HRESULT (WINAPI *D3DCompileFunc)(LPCVOID pSrcData, SIZE_T SrcDataSize, LPCSTR pSourceName,
+			D3D_SHADER_MACRO const * pDefines, ID3DInclude* pInclude, LPCSTR pEntrypoint,
+			LPCSTR pTarget, UINT Flags1, UINT Flags2, ID3DBlob** ppCode, ID3DBlob** ppErrorMsgs);
 		typedef HRESULT (WINAPI *D3DReflectFunc)(LPCVOID pSrcData, SIZE_T SrcDataSize, REFIID pInterface, void** ppReflector);
 		typedef HRESULT (WINAPI *D3DStripShaderFunc)(LPCVOID pShaderBytecode, SIZE_T BytecodeLength, UINT uStripFlags,
 			ID3DBlob** ppStrippedBlob);
 
 		HMODULE mod_d3dcompiler_;
-		pD3DCompile DynamicD3DCompile_;
+		D3DCompileFunc DynamicD3DCompile_;
 		D3DReflectFunc DynamicD3DReflect_;
 		D3DStripShaderFunc DynamicD3DStripShader_;
 #endif
@@ -289,17 +317,17 @@ namespace
 
 namespace KlayGE
 {
-	ShaderObject::ShaderObject()
-		: has_discard_(false), has_tessellation_(false),
-			cs_block_size_x_(0), cs_block_size_y_(0), cs_block_size_z_(0)
+	ShaderStageObject::ShaderStageObject(ShaderStage stage) : stage_(stage)
 	{
 	}
 
+	ShaderStageObject::~ShaderStageObject() = default;
+
 #if KLAYGE_IS_DEV_PLATFORM
-	std::vector<uint8_t> ShaderObject::CompileToDXBC(ShaderType type, RenderEffect const & effect,
-			RenderTechnique const & tech, RenderPass const & pass,
-			std::vector<std::pair<char const *, char const *>> const & api_special_macros,
-			char const * func_name, char const * shader_profile, uint32_t flags)
+	std::vector<uint8_t> ShaderStageObject::CompileToDXBC(ShaderStage stage, RenderEffect const & effect,
+		RenderTechnique const & tech, RenderPass const & pass,
+		std::vector<std::pair<char const *, char const *>> const & api_special_macros,
+		char const * func_name, char const * shader_profile, uint32_t flags)
 	{
 		RenderEngine const & re = Context::Instance().RenderFactoryInstance().RenderEngineInstance();
 		RenderDeviceCaps const & caps = re.DeviceCaps();
@@ -318,7 +346,7 @@ namespace KlayGE
 		std::string err_msg;
 		std::vector<D3D_SHADER_MACRO> macros;
 
-		for (uint32_t i = 0; i < api_special_macros.size(); ++ i)
+		for (uint32_t i = 0; i < api_special_macros.size(); ++i)
 		{
 			D3D_SHADER_MACRO macro = { api_special_macros[i].first, api_special_macros[i].second };
 			macros.push_back(macro);
@@ -375,46 +403,46 @@ namespace KlayGE
 		}
 		{
 			D3D_SHADER_MACRO macro_shader_type = { "", "1" };
-			switch (type)
+			switch (stage)
 			{
-			case ST_VertexShader:
+			case ShaderStage::Vertex:
 				macro_shader_type.Name = "KLAYGE_VERTEX_SHADER";
 				break;
 
-			case ST_PixelShader:
+			case ShaderStage::Pixel:
 				macro_shader_type.Name = "KLAYGE_PIXEL_SHADER";
 				break;
 
-			case ST_GeometryShader:
+			case ShaderStage::Geometry:
 				macro_shader_type.Name = "KLAYGE_GEOMETRY_SHADER";
 				break;
 
-			case ST_ComputeShader:
+			case ShaderStage::Compute:
 				macro_shader_type.Name = "KLAYGE_COMPUTE_SHADER";
 				break;
 
-			case ST_HullShader:
+			case ShaderStage::Hull:
 				macro_shader_type.Name = "KLAYGE_HULL_SHADER";
 				break;
 
-			case ST_DomainShader:
+			case ShaderStage::Domain:
 				macro_shader_type.Name = "KLAYGE_DOMAIN_SHADER";
 				break;
 
 			default:
-				KFL_UNREACHABLE("Invalid shader type");
+				KFL_UNREACHABLE("Invalid shader stage");
 			}
 			macros.push_back(macro_shader_type);
 		}
 
-		for (uint32_t i = 0; i < tech.NumMacros(); ++ i)
+		for (uint32_t i = 0; i < tech.NumMacros(); ++i)
 		{
 			std::pair<std::string, std::string> const & name_value = tech.MacroByIndex(i);
 			D3D_SHADER_MACRO macro = { name_value.first.c_str(), name_value.second.c_str() };
 			macros.push_back(macro);
 		}
 
-		for (uint32_t i = 0; i < pass.NumMacros(); ++ i)
+		for (uint32_t i = 0; i < pass.NumMacros(); ++i)
 		{
 			std::pair<std::string, std::string> const & name_value = pass.MacroByIndex(i);
 			D3D_SHADER_MACRO macro = { name_value.first.c_str(), name_value.second.c_str() };
@@ -482,7 +510,7 @@ namespace KlayGE
 				}
 			}
 
-			for (auto iter = err_lines.begin(); iter != err_lines.end(); ++ iter)
+			for (auto iter = err_lines.begin(); iter != err_lines.end(); ++iter)
 			{
 				if (iter->first >= 0)
 				{
@@ -496,7 +524,7 @@ namespace KlayGE
 					while (iss && ((iter->first - line) >= 3))
 					{
 						std::getline(iss, s);
-						++ line;
+						++line;
 					}
 					while (iss && (abs(line - iter->first) < 3))
 					{
@@ -509,7 +537,7 @@ namespace KlayGE
 
 						LogInfo() << line << ' ' << s << std::endl;
 
-						++ line;
+						++line;
 					}
 					LogInfo() << "..." << std::endl;
 				}
@@ -524,16 +552,69 @@ namespace KlayGE
 		return code;
 	}
 
-	void ShaderObject::ReflectDXBC(std::vector<uint8_t> const & code, void** reflector)
+	void ShaderStageObject::ReflectDXBC(std::vector<uint8_t> const & code, void** reflector)
 	{
 		D3DCompilerLoader::Instance().D3DReflect(code, reflector);
 	}
 
-	std::vector<uint8_t> ShaderObject::StripDXBC(std::vector<uint8_t> const & code, uint32_t strip_flags)
+	std::vector<uint8_t> ShaderStageObject::StripDXBC(std::vector<uint8_t> const & code, uint32_t strip_flags)
 	{
 		std::vector<uint8_t> ret;
 		D3DCompilerLoader::Instance().D3DStripShader(code, strip_flags, ret);
 		return ret;
 	}
 #endif
+
+
+	ShaderObject::ShaderObject() : ShaderObject(MakeSharedPtr<ShaderObjectTemplate>())
+	{
+	}
+
+	ShaderObject::ShaderObject(std::shared_ptr<ShaderObjectTemplate> so_template) : so_template_(std::move(so_template))
+	{
+	}
+
+	ShaderObject::~ShaderObject() = default;
+
+	void ShaderObject::AttachStage(ShaderStage stage, ShaderStageObjectPtr const& shader_stage)
+	{
+		auto& curr_shader_stage = so_template_->shader_stages_[static_cast<uint32_t>(stage)];
+		if (curr_shader_stage != shader_stage)
+		{
+			curr_shader_stage = shader_stage;
+			shader_stages_dirty_ = true;
+			hw_res_ready_ = false;
+		}
+	}
+	
+	ShaderStageObjectPtr const& ShaderObject::Stage(ShaderStage stage) const
+	{
+		return so_template_->shader_stages_[static_cast<uint32_t>(stage)];
+	}
+
+	void ShaderObject::LinkShaders(RenderEffect const & effect)
+	{
+		if (shader_stages_dirty_)
+		{
+			is_validate_ = true;
+			for (uint32_t stage_index = 0; stage_index < NumShaderStages; ++stage_index)
+			{
+				ShaderStage const stage = static_cast<ShaderStage>(stage_index);
+				auto const& shader_stage = this->Stage(stage);
+				if (shader_stage)
+				{
+					if (shader_stage->Validate())
+					{
+						this->CreateHwResources(stage, effect);
+					}
+					is_validate_ &= shader_stage->Validate();
+				}
+			}
+
+			this->DoLinkShaders(effect);
+
+			shader_stages_dirty_ = false;
+			hw_res_ready_ = true;
+		}
+	}
 }

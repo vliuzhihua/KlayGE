@@ -37,8 +37,9 @@
 #include <KlayGE/Texture.hpp>
 #include <KFL/Half.hpp>
 
-#include <vector>
 #include <cstring>
+#include <random>
+#include <vector>
 #include <boost/assert.hpp>
 #ifdef KLAYGE_COMPILER_MSVC
 	#include <intrin.h>		// For _BitScanForward
@@ -878,6 +879,13 @@ namespace
 			KFL_UNREACHABLE("Invalid rotation mode");
 		}
 	}
+
+	int IntRand()
+	{
+		static thread_local std::mt19937 gen;
+		std::uniform_int_distribution<int> random_dis(0, RAND_MAX);
+		return random_dis(gen);
+	}
 }
 
 namespace KlayGE
@@ -886,10 +894,7 @@ namespace KlayGE
 
 	TexCompressionBC1::TexCompressionBC1()
 	{
-		block_width_ = block_height_ = 4;
-		block_depth_ = 1;
-		block_bytes_ = NumFormatBytes(EF_BC1) * 4;
-		decoded_fmt_ = EF_ARGB8;
+		compression_format_ = EF_BC1;
 	}
 
 	void TexCompressionBC1::EncodeBlock(void* output, void const * input, TexCompressionMethod method)
@@ -1376,10 +1381,7 @@ namespace KlayGE
 
 	TexCompressionBC2::TexCompressionBC2()
 	{
-		block_width_ = block_height_ = 4;
-		block_depth_ = 1;
-		block_bytes_ = NumFormatBytes(EF_BC2) * 4;
-		decoded_fmt_ = EF_ARGB8;
+		compression_format_ = EF_BC2;
 	}
 
 	void TexCompressionBC2::EncodeBlock(void* output, void const * input, TexCompressionMethod method)
@@ -1430,10 +1432,7 @@ namespace KlayGE
 
 	TexCompressionBC3::TexCompressionBC3()
 	{
-		block_width_ = block_height_ = 4;
-		block_depth_ = 1;
-		block_bytes_ = NumFormatBytes(EF_BC3) * 4;
-		decoded_fmt_ = EF_ARGB8;
+		compression_format_ = EF_BC3;
 	}
 
 	void TexCompressionBC3::EncodeBlock(void* output, void const * input, TexCompressionMethod method)
@@ -1479,10 +1478,7 @@ namespace KlayGE
 
 	TexCompressionBC4::TexCompressionBC4()
 	{
-		block_width_ = block_height_ = 4;
-		block_depth_ = 1;
-		block_bytes_ = NumFormatBytes(EF_BC4) * 4;
-		decoded_fmt_ = EF_R8;
+		compression_format_ = EF_BC4;
 	}
 
 	// Alpha block compression (this is easy for a change)
@@ -1588,10 +1584,7 @@ namespace KlayGE
 
 	TexCompressionBC5::TexCompressionBC5()
 	{
-		block_width_ = block_height_ = 4;
-		block_depth_ = 1;
-		block_bytes_ = NumFormatBytes(EF_BC5) * 4;
-		decoded_fmt_ = EF_GR8;
+		compression_format_ = EF_BC5;
 	}
 
 	void TexCompressionBC5::EncodeBlock(void* output, void const * input, TexCompressionMethod method)
@@ -1891,10 +1884,7 @@ namespace KlayGE
 
 	TexCompressionBC6U::TexCompressionBC6U()
 	{
-		block_width_ = block_height_ = 4;
-		block_depth_ = 1;
-		block_bytes_ = NumFormatBytes(EF_BC6) * 4;
-		decoded_fmt_ = EF_ABGR16F;
+		compression_format_ = EF_BC6;
 	}
 
 	void TexCompressionBC6U::EncodeBlock(void* output, void const * input, TexCompressionMethod method)
@@ -1935,7 +1925,7 @@ namespace KlayGE
 			ModeInfo const & info = mode_info_[mode_to_info_[mode]];
 
 			std::array<std::pair<int3, int3>, BC6_MAX_REGIONS> end_pts;
-			memset(&end_pts[0], 0, BC6_MAX_REGIONS * sizeof(end_pts[0]));
+			memset(reinterpret_cast<void*>(&end_pts[0]), 0, BC6_MAX_REGIONS * sizeof(end_pts[0]));
 			uint32_t shape = 0;
 
 			// Read header
@@ -1989,7 +1979,7 @@ namespace KlayGE
 						break;
 
 					default:
-						memset(abgr, 0, 16 * sizeof(abgr[0]));
+						memset(reinterpret_cast<void*>(abgr), 0, 16 * sizeof(abgr[0]));
 						return;
 					}
 				}
@@ -2027,14 +2017,14 @@ namespace KlayGE
 				size_t num_bits = IsFixUpOffset(info.partitions, shape, i) ? info.index_prec - 1 : info.index_prec;
 				if (start_bit + num_bits > 128)
 				{
-					memset(abgr, 0, 16 * sizeof(abgr[0]));
+					memset(reinterpret_cast<void*>(abgr), 0, 16 * sizeof(abgr[0]));
 					return;
 				}
 
 				uint8_t index = ReadBits(input, start_bit, num_bits);
 				if (index >= ((info.partitions > 1) ? 8 : 16))
 				{
-					memset(abgr, 0, 16 * sizeof(abgr[0]));
+					memset(reinterpret_cast<void*>(abgr), 0, 16 * sizeof(abgr[0]));
 					return;
 				}
 
@@ -2145,10 +2135,7 @@ namespace KlayGE
 
 	TexCompressionBC6S::TexCompressionBC6S()
 	{
-		block_width_ = block_height_ = 4;
-		block_depth_ = 1;
-		block_bytes_ = NumFormatBytes(EF_SIGNED_BC6) * 4;
-		decoded_fmt_ = EF_ABGR16F;
+		compression_format_ = EF_SIGNED_BC6;
 	}
 
 	void TexCompressionBC6S::EncodeBlock(void* output, void const * input, TexCompressionMethod method)
@@ -2190,10 +2177,7 @@ namespace KlayGE
 	TexCompressionBC7::TexCompressionBC7()
 		: index_mode_(0)
 	{
-		block_width_ = block_height_ = 4;
-		block_depth_ = 1;
-		block_bytes_ = NumFormatBytes(EF_BC7) * 4;
-		decoded_fmt_ = EF_ARGB8;
+		compression_format_ = EF_BC7;
 	}
 
 	void TexCompressionBC7::EncodeBlock(void* output, void const * input, TexCompressionMethod method)
@@ -2238,7 +2222,7 @@ namespace KlayGE
 			KFL_UNREACHABLE("Invalid compression method");
 		}
 
-		RGBACluster block_cluster(argb, block_width_ * block_height_, GetPartition);
+		RGBACluster block_cluster(argb, BlockWidth(EF_BC7) * BlockHeight(EF_BC7), GetPartition);
 		ShapeSelection selection = BoxSelection(block_cluster, metric);
 		BOOST_ASSERT(selection.selected_modes > 0);
 
@@ -2339,7 +2323,7 @@ namespace KlayGE
 				{
 					if (start_bit + rgba_prec[ch] > 128)
 					{
-						memset(argb, 0, 16 * sizeof(argb[0]));
+						memset(reinterpret_cast<void*>(argb), 0, 16 * sizeof(argb[0]));
 						return;
 					}
 
@@ -2353,7 +2337,7 @@ namespace KlayGE
 			{
 				if (start_bit > 127)
 				{
-					memset(argb, 0, 16 * sizeof(argb[0]));
+					memset(reinterpret_cast<void*>(argb), 0, 16 * sizeof(argb[0]));
 					return;
 				}
 
@@ -2389,7 +2373,7 @@ namespace KlayGE
 					? index_prec_1 - 1 : index_prec_1;
 				if (start_bit + num_bits > 128)
 				{
-					memset(argb, 0, 16 * sizeof(argb[0]));
+					memset(reinterpret_cast<void*>(argb), 0, 16 * sizeof(argb[0]));
 					return;
 				}
 				w1[i] = ReadBits(input, start_bit, num_bits);
@@ -2402,7 +2386,7 @@ namespace KlayGE
 					size_t num_bits = i ? index_prec_2 : index_prec_2 - 1;
 					if (start_bit + num_bits > 128)
 					{
-						memset(argb, 0, 16 * sizeof(argb[0]));
+						memset(reinterpret_cast<void*>(argb), 0, 16 * sizeof(argb[0]));
 						return;
 					}
 					w2[i] = ReadBits(input, start_bit, num_bits);
@@ -2447,7 +2431,7 @@ namespace KlayGE
 		}
 		else
 		{
-			memset(argb, 0, 16 * sizeof(argb[0]));
+			memset(reinterpret_cast<void*>(argb), 0, 16 * sizeof(argb[0]));
 		}
 	}
 
@@ -2904,7 +2888,7 @@ namespace KlayGE
 		{
 			float4 const & p = pt ? p1 : p2;
 			float4& np = pt ? np1 : np2;
-			uint32_t const rdir = rand() & 0xF;
+			uint32_t const rdir = IntRand() & 0xF;
 
 			np = p;
 			if (has_pbits)
@@ -2937,7 +2921,7 @@ namespace KlayGE
 		}
 
 		size_t const p = static_cast<size_t>(exp(0.1f * static_cast<int64_t>(old_err - new_err) / temp) * RAND_MAX);
-		size_t const r = rand();
+		size_t const r = IntRand();
 
 		return r < p;
 	}
@@ -3044,7 +3028,7 @@ namespace KlayGE
 				best_err = error;
 				best_pbit_combo = static_cast<uint8_t>(pbi);
 
-				for (uint32_t ci = 0; ci < p1.size(); ++ci)
+				for (uint32_t ci = 0; ci < p1.size(); ++ ci)
 				{
 					p1[ci] = static_cast<float>(best_val_i[ci]);
 					p2[ci] = static_cast<float>(best_val_j[ci]);
@@ -3192,7 +3176,7 @@ namespace KlayGE
 		{
 			if (num_pts[i] > 0)
 			{
-				num_buckets_filled++;
+				++ num_buckets_filled;
 				last_filled_bucket = i;
 			}
 		}

@@ -5,7 +5,6 @@
 #include <KlayGE/GraphicsBuffer.hpp>
 #include <KlayGE/Font.hpp>
 #include <KlayGE/Renderable.hpp>
-#include <KlayGE/RenderableHelper.hpp>
 #include <KlayGE/RenderEngine.hpp>
 #include <KlayGE/RenderEffect.hpp>
 #include <KlayGE/FrameBuffer.hpp>
@@ -15,7 +14,8 @@
 #include <KlayGE/RenderSettings.hpp>
 #include <KlayGE/Mesh.hpp>
 #include <KlayGE/Texture.hpp>
-#include <KlayGE/SceneObjectHelper.hpp>
+#include <KlayGE/SceneNodeHelper.hpp>
+#include <KlayGE/SkyBox.hpp>
 #include <KlayGE/PostProcess.hpp>
 #include <KlayGE/Light.hpp>
 #include <KlayGE/Camera.hpp>
@@ -69,10 +69,15 @@ SSSSSApp::SSSSSApp()
 
 void SSSSSApp::OnCreate()
 {
-	RenderablePtr scene_model = ASyncLoadModel("ScifiRoom.meshml",
-		EAH_GPU_Read | EAH_Immutable);
-	RenderablePtr sss_model = ASyncLoadModel("Infinite-Level_02.meshml",
-		EAH_GPU_Read | EAH_Immutable);
+	auto scene_model = ASyncLoadModel("ScifiRoom/Scifi.3DS", EAH_GPU_Read | EAH_Immutable,
+		SceneNode::SOA_Cullable, AddToSceneRootHelper);
+	auto sss_model = ASyncLoadModel("Infinite-Level_02.glb", EAH_GPU_Read | EAH_Immutable,
+		SceneNode::SOA_Cullable,
+		[](RenderModel& model)
+		{
+			model.RootNode()->TransformToParent(MathLib::translation(0.0f, 5.0f, 0.0f));
+			AddToSceneRootHelper(model);
+		});
 	TexturePtr c_cube = ASyncLoadTexture("Lake_CraterLake03_filtered_c.dds",
 		EAH_GPU_Read | EAH_Immutable);
 	TexturePtr y_cube = ASyncLoadTexture("Lake_CraterLake03_filtered_y.dds",
@@ -81,7 +86,6 @@ void SSSSSApp::OnCreate()
 	font_ = SyncLoadFont("gkai00mp.kfont");
 
 	deferred_rendering_ = Context::Instance().DeferredRenderingLayerInstance();
-	deferred_rendering_->SSVOEnabled(0, false);
 	  
 	this->LookAt(float3(0.5f, 5, -0.5f), float3(0, 5, 0));
 	this->Proj(0.05f, 200.0f);
@@ -102,8 +106,8 @@ void SSSSSApp::OnCreate()
 	light_->AddToSceneManager();
 
 	light_proxy_ = MakeSharedPtr<SceneObjectLightSourceProxy>(light_);
-	checked_pointer_cast<SceneObjectLightSourceProxy>(light_proxy_)->Scaling(0.1f, 0.1f, 0.1f);
-	light_proxy_->AddToSceneManager();
+	light_proxy_->Scaling(0.1f, 0.1f, 0.1f);
+	Context::Instance().SceneManagerInstance().SceneRootNode().AddChild(light_proxy_->RootNode());
 
 	RenderEngine& re = Context::Instance().RenderFactoryInstance().RenderEngineInstance();
 
@@ -123,7 +127,7 @@ void SSSSSApp::OnCreate()
 	actionMap.AddActions(actions, actions + std::size(actions));
 
 	action_handler_t input_handler = MakeSharedPtr<input_signal>();
-	input_handler->connect(
+	input_handler->Connect(
 		[this](InputEngine const & sender, InputAction const & action)
 		{
 			this->InputHandler(sender, action);
@@ -141,47 +145,40 @@ void SSSSSApp::OnCreate()
 	id_translucency_strength_static_ = dialog_params_->IDFromName("TranslucencyStrengthStatic");
 	id_translucency_strength_slider_ = dialog_params_->IDFromName("TranslucencyStrengthSlider");
 
-	dialog_params_->Control<UICheckBox>(id_sss_)->OnChangedEvent().connect(
+	dialog_params_->Control<UICheckBox>(id_sss_)->OnChangedEvent().Connect(
 		[this](UICheckBox const & sender)
 		{
 			this->SSSHandler(sender);
 		});
 	this->SSSHandler(*dialog_params_->Control<UICheckBox>(id_sss_));
-	dialog_params_->Control<UISlider>(id_sss_strength_slider_)->OnValueChangedEvent().connect(
+	dialog_params_->Control<UISlider>(id_sss_strength_slider_)->OnValueChangedEvent().Connect(
 		[this](UISlider const & sender)
 		{
 			this->SSSStrengthChangedHandler(sender);
 		});
 	this->SSSStrengthChangedHandler(*dialog_params_->Control<UISlider>(id_sss_strength_slider_));
-	dialog_params_->Control<UISlider>(id_sss_correction_slider_)->OnValueChangedEvent().connect(
+	dialog_params_->Control<UISlider>(id_sss_correction_slider_)->OnValueChangedEvent().Connect(
 		[this](UISlider const & sender)
 		{
 			this->SSSCorrectionChangedHandler(sender);
 		});
 	this->SSSCorrectionChangedHandler(*dialog_params_->Control<UISlider>(id_sss_correction_slider_));
-	dialog_params_->Control<UICheckBox>(id_translucency_)->OnChangedEvent().connect(
+	dialog_params_->Control<UICheckBox>(id_translucency_)->OnChangedEvent().Connect(
 		[this](UICheckBox const & sender)
 		{
 			this->TranslucencyHandler(sender);
 		});
 	this->TranslucencyHandler(*dialog_params_->Control<UICheckBox>(id_translucency_));
-	dialog_params_->Control<UISlider>(id_translucency_strength_slider_)->OnValueChangedEvent().connect(
+	dialog_params_->Control<UISlider>(id_translucency_strength_slider_)->OnValueChangedEvent().Connect(
 		[this](UISlider const & sender)
 		{
 			this->TranslucencyStrengthChangedHandler(sender);
 		});
 	this->TranslucencyStrengthChangedHandler(*dialog_params_->Control<UISlider>(id_translucency_strength_slider_));
 
-	SceneObjectPtr subsurface_obj = MakeSharedPtr<SceneObjectHelper>(sss_model, SceneObject::SOA_Cullable);
-	subsurface_obj->ModelMatrix(MathLib::translation(0.0f, 5.0f, 0.0f));
-	subsurface_obj->AddToSceneManager();
-
-	SceneObjectPtr scene_obj = MakeSharedPtr<SceneObjectHelper>(scene_model, SceneObject::SOA_Cullable);
-	scene_obj->AddToSceneManager();
-
-	SceneObjectSkyBoxPtr sky_box = MakeSharedPtr<SceneObjectSkyBox>();
-	sky_box->CompressedCubeMap(y_cube, c_cube);
-	sky_box->AddToSceneManager();
+	auto sky_box = MakeSharedPtr<SceneNode>(MakeSharedPtr<RenderableSkyBox>(), SceneNode::SOA_NotCastShadow);
+	checked_pointer_cast<RenderableSkyBox>(sky_box->GetRenderable())->CompressedCubeMap(y_cube, c_cube);
+	Context::Instance().SceneManagerInstance().SceneRootNode().AddChild(sky_box);
 }
 
 void SSSSSApp::OnResize(uint32_t width, uint32_t height)

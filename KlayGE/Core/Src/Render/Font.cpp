@@ -36,13 +36,15 @@
 #include <KlayGE/Viewport.hpp>
 #include <KlayGE/FrameBuffer.hpp>
 #include <KlayGE/Texture.hpp>
+#include <KlayGE/RenderableHelper.hpp>
 #include <KlayGE/RenderEngine.hpp>
 #include <KlayGE/RenderFactory.hpp>
 #include <KlayGE/RenderEffect.hpp>
 #include <KlayGE/Context.hpp>
 #include <KFL/AABBox.hpp>
 #include <KlayGE/ResLoader.hpp>
-#include <KlayGE/SceneObjectHelper.hpp>
+#include <KlayGE/SceneManager.hpp>
+#include <KlayGE/SceneNodeHelper.hpp>
 #include <KlayGE/LZMACodec.hpp>
 #include <KlayGE/TransientBuffer.hpp>
 #include <KFL/Hash.hpp>
@@ -65,11 +67,11 @@
 
 namespace KlayGE
 {
-	class FontRenderable : public RenderableHelper
+	class FontRenderable : public Renderable
 	{
 	public:
 		explicit FontRenderable(std::shared_ptr<KFont> const & kfl)
-				: RenderableHelper(L"Font"),
+				: Renderable(L"Font"),
 					three_dim_(false),
 					kfont_loader_(kfl),
 					tick_(0)
@@ -78,14 +80,14 @@ namespace KlayGE
 
 			restart_ = rf.RenderEngineInstance().DeviceCaps().primitive_restart_support;
 
-			rl_ = rf.MakeRenderLayout();
+			rls_[0] = rf.MakeRenderLayout();
 			if (restart_)
 			{
-				rl_->TopologyType(RenderLayout::TT_TriangleStrip);
+				rls_[0]->TopologyType(RenderLayout::TT_TriangleStrip);
 			}
 			else
 			{
-				rl_->TopologyType(RenderLayout::TT_TriangleList);
+				rls_[0]->TopologyType(RenderLayout::TT_TriangleList);
 			}
 
 			uint32_t const kfont_char_size = kfont_loader_->CharSize();
@@ -111,9 +113,9 @@ namespace KlayGE
 			tb_vb_ = MakeUniquePtr<TransientBuffer>(static_cast<uint32_t>(INIT_NUM_CHAR * 4 * sizeof(FontVert)), TransientBuffer::BF_Vertex);
 			tb_ib_ = MakeUniquePtr<TransientBuffer>(static_cast<uint32_t>(INIT_NUM_CHAR * INDEX_PER_CHAR * sizeof(uint16_t)), TransientBuffer::BF_Index);
 
-			rl_->BindVertexStream(tb_vb_->GetBuffer(), { VertexElement(VEU_Position, 0, EF_BGR32F),
+			rls_[0]->BindVertexStream(tb_vb_->GetBuffer(), { VertexElement(VEU_Position, 0, EF_BGR32F),
 				VertexElement(VEU_Diffuse, 0, EF_ABGR8), VertexElement(VEU_TextureCoord, 0, EF_GR32F) });
-			rl_->BindIndexStream(tb_ib_->GetBuffer(), EF_R16UI);
+			rls_[0]->BindIndexStream(tb_ib_->GetBuffer(), EF_R16UI);
 
 			pos_aabb_ = AABBox(float3(0, 0, 0), float3(0, 0, 0));
 			tc_aabb_ = AABBox(float3(0, 0, 0), float3(0, 0, 0));
@@ -146,8 +148,8 @@ namespace KlayGE
 			tb_vb_->EnsureDataReady();
 			tb_ib_->EnsureDataReady();
 
-			rl_->SetVertexStream(0, tb_vb_->GetBuffer());
-			rl_->BindIndexStream(tb_ib_->GetBuffer(), EF_R16UI);
+			rls_[0]->SetVertexStream(0, tb_vb_->GetBuffer());
+			rls_[0]->BindIndexStream(tb_ib_->GetBuffer(), EF_R16UI);
 		}
 
 		void OnRenderEnd()
@@ -184,11 +186,11 @@ namespace KlayGE
 					++ i;
 				}
 
-				rl_->NumVertices(vert_length / sizeof(FontVert));
-				rl_->StartIndexLocation(ind_offset / sizeof(uint16_t));
-				rl_->NumIndices(ind_length / sizeof(uint16_t));
+				rls_[0]->NumVertices(vert_length / sizeof(FontVert));
+				rls_[0]->StartIndexLocation(ind_offset / sizeof(uint16_t));
+				rls_[0]->NumIndices(ind_length / sizeof(uint16_t));
 
-				re.Render(*this->GetRenderEffect(), *this->GetRenderTechnique(), *rl_);
+				re.Render(*this->GetRenderEffect(), *this->GetRenderTechnique(), *rls_[0]);
 			}
 
 			for (size_t i = 0; i < tb_vb_sub_allocs_.size(); ++ i)
@@ -284,34 +286,26 @@ namespace KlayGE
 				}
 			}
 
-			std::vector<float> sx;
-			sx.reserve(lines.size());
-			std::vector<float> sy;
-			sy.reserve(lines.size());
-
+			std::vector<float> sx(lines.size());
 			if (align & Font::FA_Hor_Left)
 			{
-				sx.resize(lines.size(), rc.left());
+				std::fill(sx.begin(), sx.end(), rc.left());
+			}
+			else if (align & Font::FA_Hor_Right)
+			{
+				std::transform(lines.begin(), lines.end(), sx.begin(),
+					[&rc](std::pair<float, std::wstring> const& p) { return rc.right() - p.first; });
 			}
 			else
 			{
-				if (align & Font::FA_Hor_Right)
-				{
-					for (auto const & p : lines)
-					{
-						sx.push_back(rc.right() - p.first);
-					}
-				}
-				else
-				{
-					// Font::FA_Hor_Center
-					for (auto const & p : lines)
-					{
-						sx.push_back((rc.left() + rc.right()) / 2 - p.first / 2);
-					}
-				}
+				BOOST_ASSERT(align & Font::FA_Hor_Center);
+
+				std::transform(lines.begin(), lines.end(), sx.begin(),
+					[&rc](std::pair<float, std::wstring> const& p) { return (rc.left() + rc.right()) / 2 - p.first / 2; });
 			}
 
+			std::vector<float> sy;
+			sy.reserve(lines.size());
 			if (align & Font::FA_Ver_Top)
 			{
 				for (auto iter = lines.begin(); iter != lines.end(); ++ iter)
@@ -319,23 +313,20 @@ namespace KlayGE
 					sy.push_back(rc.top() + (iter - lines.begin()) * h);
 				}
 			}
+			else if (align & Font::FA_Ver_Bottom)
+			{
+				for (auto iter = lines.begin(); iter != lines.end(); ++ iter)
+				{
+					sy.push_back(rc.bottom() - (lines.size() - (iter - lines.begin())) * h);
+				}
+			}
 			else
 			{
-				if (align & Font::FA_Ver_Bottom)
+				BOOST_ASSERT(align & Font::FA_Ver_Middle);
+
+				for (auto iter = lines.begin(); iter != lines.end(); ++ iter)
 				{
-					for (auto iter = lines.begin(); iter != lines.end(); ++ iter)
-					{
-						sy.push_back(rc.bottom() - (lines.size() - (iter - lines.begin())) * h);
-					}
-				}
-				else
-				{
-					// Font::FA_Ver_Middle
-					for (auto iter = lines.begin(); iter != lines.end(); ++ iter)
-					{
-						sy.push_back((rc.top() + rc.bottom()) / 2
-							- lines.size() * h / 2 + (iter - lines.begin()) * h);
-					}
+					sy.push_back((rc.top() + rc.bottom()) / 2 - lines.size() * h / 2 + (iter - lines.begin()) * h);
 				}
 			}
 
@@ -732,9 +723,9 @@ namespace
 		};
 
 	public:
-		FontLoadingDesc(std::string const & res_name, uint32_t flag)
+		FontLoadingDesc(std::string_view res_name, uint32_t flag)
 		{
-			font_desc_.res_name = res_name;
+			font_desc_.res_name = std::string(res_name);
 			font_desc_.flag = flag;
 			font_desc_.kfont_loader = MakeSharedPtr<KFont>();
 			font_desc_.kfont = MakeSharedPtr<FontPtr>();
@@ -838,7 +829,7 @@ namespace KlayGE
 	Font::Font(std::shared_ptr<FontRenderable> const & fr)
 			: font_renderable_(fr)
 	{
-		fso_attrib_ = SceneObject::SOA_Overlay;
+		fsn_attrib_ = SceneNode::SOA_Overlay;
 	}
 
 	Font::Font(std::shared_ptr<FontRenderable> const & fr, uint32_t flags)
@@ -846,7 +837,7 @@ namespace KlayGE
 	{
 		if (flags & Font::FS_Cullable)
 		{
-			fso_attrib_ |= SceneObject::SOA_Cullable;
+			fsn_attrib_ |= SceneNode::SOA_Cullable;
 		}
 	}
 
@@ -880,9 +871,9 @@ namespace KlayGE
 	{
 		if (!text.empty())
 		{
-			SceneObjectHelperPtr font_obj = MakeSharedPtr<SceneObjectHelper>(font_renderable_, fso_attrib_);
+			auto font_node = MakeSharedPtr<SceneNode>(font_renderable_, fsn_attrib_);
 			font_renderable_->AddText2D(x, y, z, xScale, yScale, clr, text, font_size);
-			font_obj->AddToSceneManager();
+			Context::Instance().SceneManagerInstance().OverlayRootNode().AddChild(font_node);
 		}
 	}
 
@@ -894,9 +885,9 @@ namespace KlayGE
 	{
 		if (!text.empty())
 		{
-			SceneObjectHelperPtr font_obj = MakeSharedPtr<SceneObjectHelper>(font_renderable_, fso_attrib_);
+			auto font_node = MakeSharedPtr<SceneNode>(font_renderable_, fsn_attrib_);
 			font_renderable_->AddText2D(rc, z, xScale, yScale, clr, text, font_size, align);
-			font_obj->AddToSceneManager();
+			Context::Instance().SceneManagerInstance().OverlayRootNode().AddChild(font_node);
 		}
 	}
 
@@ -906,19 +897,19 @@ namespace KlayGE
 	{
 		if (!text.empty())
 		{
-			SceneObjectHelperPtr font_obj = MakeSharedPtr<SceneObjectHelper>(font_renderable_, fso_attrib_);
+			auto font_node = MakeSharedPtr<SceneNode>(font_renderable_, fsn_attrib_);
 			font_renderable_->AddText3D(mvp, clr, text, font_size);
-			font_obj->AddToSceneManager();
+			Context::Instance().SceneManagerInstance().SceneRootNode().AddChild(font_node);
 		}
 	}
 
 
-	FontPtr SyncLoadFont(std::string const & font_name, uint32_t flags)
+	FontPtr SyncLoadFont(std::string_view font_name, uint32_t flags)
 	{
 		return ResLoader::Instance().SyncQueryT<Font>(MakeSharedPtr<FontLoadingDesc>(font_name, flags));
 	}
 
-	FontPtr ASyncLoadFont(std::string const & font_name, uint32_t flags)
+	FontPtr ASyncLoadFont(std::string_view font_name, uint32_t flags)
 	{
 		// TODO: Make it really async
 		return ResLoader::Instance().SyncQueryT<Font>(MakeSharedPtr<FontLoadingDesc>(font_name, flags));

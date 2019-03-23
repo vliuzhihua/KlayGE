@@ -712,7 +712,9 @@ void GLSLGen::ToDclInterShaderOutputRecords(std::ostream& out)
 			if (output_var)
 			{
 				int num_comps = 4;
-				if (((ST_GS == shader_type_) && !has_ps_) || ((ST_DS == shader_type_) && !has_gs_ && !has_ps_) || (ST_PS == shader_type_))
+				if (((ST_VS == shader_type_) && !has_gs_ && !has_ps_) || ((ST_DS == shader_type_) && !has_gs_ && !has_ps_)
+					|| ((ST_GS == shader_type_) && !has_ps_)
+					|| (ST_PS == shader_type_))
 				{
 					num_comps = bitcount32(program_->params_out[i].mask);
 				}
@@ -1718,7 +1720,28 @@ void GLSLGen::ToDeclaration(std::ostream& out, ShaderDecl const & dcl)
 			switch (cbuffer.vars[0].type_desc.var_class)
 			{
 			case SVC_VECTOR:
-				out << cbuffer.vars[0].type_desc.name << cbuffer.vars[0].type_desc.columns;
+				{
+					std::string name;
+					switch (cbuffer.vars[0].type_desc.type)
+					{
+					case SVT_INT:
+						name = "ivec";
+						break;
+
+					case SVT_UINT:
+						name = "uvec";
+						break;
+
+					case SVT_FLOAT:
+						name = "vec";
+						break;
+
+					default:
+						name = cbuffer.vars[0].type_desc.name;
+						break;
+					}
+					out << name << cbuffer.vars[0].type_desc.columns;
+				}
 				break;
 
 			case SVC_SCALAR:

@@ -32,6 +32,7 @@
 #include <KFL/ErrorHandling.hpp>
 #include <KFL/Util.hpp>
 #include <KFL/COMPtr.hpp>
+#include <KFL/Hash.hpp>
 #include <KFL/Math.hpp>
 #include <KlayGE/RenderEngine.hpp>
 #include <KlayGE/RenderFactory.hpp>
@@ -47,12 +48,112 @@
 namespace KlayGE
 {
 	D3D12GraphicsBuffer::D3D12GraphicsBuffer(BufferUsage usage, uint32_t access_hint,
-							uint32_t size_in_byte, ElementFormat fmt)
-						: GraphicsBuffer(usage, access_hint, size_in_byte),
-							counter_offset_(0),
-							fmt_as_shader_res_(fmt)
+							uint32_t size_in_byte, uint32_t structure_byte_stride)
+						: GraphicsBuffer(usage, access_hint, size_in_byte, structure_byte_stride),
+							counter_offset_(0)
 	{
 		curr_states_.resize(1, D3D12_RESOURCE_STATE_COMMON);
+	}
+
+	D3D12ShaderResourceViewSimulationPtr const & D3D12GraphicsBuffer::RetrieveD3DShaderResourceView(ElementFormat pf, uint32_t first_elem,
+		uint32_t num_elems)
+	{
+		size_t hash_val = HashValue(pf);
+		HashCombine(hash_val, first_elem);
+		HashCombine(hash_val, num_elems);
+
+		auto iter = d3d_sr_views_.find(hash_val);
+		if (iter != d3d_sr_views_.end())
+		{
+			return iter->second;
+		}
+		else
+		{
+			D3D12_SHADER_RESOURCE_VIEW_DESC desc;
+			desc.Format = (access_hint_ & EAH_GPU_Structured) ? DXGI_FORMAT_UNKNOWN : D3D12Mapping::MappingFormat(pf);
+			desc.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
+			desc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+			desc.Buffer.FirstElement = first_elem;
+			desc.Buffer.NumElements = num_elems;
+			desc.Buffer.StructureByteStride = (access_hint_ & EAH_GPU_Structured) ? structure_byte_stride_ : 0;
+			desc.Buffer.Flags = D3D12_BUFFER_SRV_FLAG_NONE;
+
+			auto sr_view = MakeSharedPtr<D3D12ShaderResourceViewSimulation>(this, desc);
+			return d3d_sr_views_.emplace(hash_val, sr_view).first->second;
+		}
+	}
+
+	D3D12RenderTargetViewSimulationPtr const & D3D12GraphicsBuffer::RetrieveD3DRenderTargetView(ElementFormat pf, uint32_t first_elem,
+		uint32_t num_elems)
+	{
+		size_t hash_val = HashValue(pf);
+		HashCombine(hash_val, first_elem);
+		HashCombine(hash_val, num_elems);
+
+		auto iter = d3d_rt_views_.find(hash_val);
+		if (iter != d3d_rt_views_.end())
+		{
+			return iter->second;
+		}
+		else
+		{
+			D3D12_RENDER_TARGET_VIEW_DESC desc;
+			desc.Format = D3D12Mapping::MappingFormat(pf);
+			desc.ViewDimension = D3D12_RTV_DIMENSION_BUFFER;
+			desc.Buffer.FirstElement = first_elem;
+			desc.Buffer.NumElements = num_elems;
+
+			auto rt_view = MakeSharedPtr<D3D12RenderTargetViewSimulation>(this, desc);
+			return d3d_rt_views_.emplace(hash_val, rt_view).first->second;
+		}
+	}
+
+	D3D12UnorderedAccessViewSimulationPtr const & D3D12GraphicsBuffer::RetrieveD3DUnorderedAccessView(ElementFormat pf, uint32_t first_elem,
+		uint32_t num_elems)
+	{
+		size_t hash_val = HashValue(pf);
+		HashCombine(hash_val, first_elem);
+		HashCombine(hash_val, num_elems);
+
+		auto iter = d3d_ua_views_.find(hash_val);
+		if (iter != d3d_ua_views_.end())
+		{
+			return iter->second;
+		}
+		else
+		{
+			D3D12_UNORDERED_ACCESS_VIEW_DESC d3d_ua_view;
+			if (access_hint_ & EAH_Raw)
+			{
+				d3d_ua_view.Format = DXGI_FORMAT_R32_TYPELESS;
+				d3d_ua_view.Buffer.StructureByteStride = 0;
+			}
+			else if (access_hint_ & EAH_GPU_Structured)
+			{
+				d3d_ua_view.Format = DXGI_FORMAT_UNKNOWN;
+				d3d_ua_view.Buffer.StructureByteStride = structure_byte_stride_;
+			}
+			else
+			{
+				d3d_ua_view.Format = D3D12Mapping::MappingFormat(pf);
+				d3d_ua_view.Buffer.StructureByteStride = 0;
+			}
+			d3d_ua_view.ViewDimension = D3D12_UAV_DIMENSION_BUFFER;
+			d3d_ua_view.Buffer.FirstElement = first_elem;
+			d3d_ua_view.Buffer.NumElements = num_elems;
+			d3d_ua_view.Buffer.CounterOffsetInBytes = counter_offset_;
+			if (access_hint_ & EAH_Raw)
+			{
+				d3d_ua_view.Buffer.Flags = D3D12_BUFFER_UAV_FLAG_RAW;
+			}
+			else
+			{
+				d3d_ua_view.Buffer.Flags = D3D12_BUFFER_UAV_FLAG_NONE;
+			}
+
+			auto ua_view = MakeSharedPtr<D3D12UnorderedAccessViewSimulation>(this, d3d_ua_view);
+			return d3d_ua_views_.emplace(hash_val, ua_view).first->second;
+		}
 	}
 
 	void D3D12GraphicsBuffer::CreateHWResource(void const * subres_init)
@@ -64,9 +165,9 @@ namespace KlayGE
 		if ((access_hint_ & EAH_GPU_Write)
 			&& !((access_hint_ & EAH_GPU_Structured) || (access_hint_ & EAH_GPU_Unordered)))
 		{
-			total_size = ((size_in_byte_ + 4 - 1) & ~(4 - 1)) + sizeof(uint64_t);
+			total_size = ((size_in_byte_ + sizeof(uint64_t) - 1) & ~(sizeof(uint64_t) - 1)) + sizeof(uint64_t);
 		}
-		else if ((access_hint_ & EAH_GPU_Unordered) && (fmt_as_shader_res_ != EF_Unknown)
+		else if ((access_hint_ & EAH_GPU_Unordered) && (structure_byte_stride_ != 0)
 			&& ((access_hint_ & EAH_Append) || (access_hint_ & EAH_Counter)))
 		{
 			total_size = ((size_in_byte_ + D3D12_UAV_COUNTER_PLACEMENT_ALIGNMENT - 1) & ~(D3D12_UAV_COUNTER_PLACEMENT_ALIGNMENT - 1))
@@ -130,88 +231,37 @@ namespace KlayGE
 			re.CommitResCmd();
 		}
 
-		uint32_t const structure_byte_stride = NumFormatBytes(fmt_as_shader_res_);
-
-		if ((access_hint_ & EAH_GPU_Read) && (fmt_as_shader_res_ != EF_Unknown))
-		{
-			D3D12_SHADER_RESOURCE_VIEW_DESC d3d_sr_view;
-			d3d_sr_view.Format = (access_hint_ & EAH_GPU_Structured) ? DXGI_FORMAT_UNKNOWN : D3D12Mapping::MappingFormat(fmt_as_shader_res_);
-			d3d_sr_view.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
-			d3d_sr_view.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-			d3d_sr_view.Buffer.FirstElement = 0;
-			d3d_sr_view.Buffer.NumElements = size_in_byte_ / structure_byte_stride;
-			d3d_sr_view.Buffer.StructureByteStride = (access_hint_ & EAH_GPU_Structured) ? structure_byte_stride : 0;
-			d3d_sr_view.Buffer.Flags = D3D12_BUFFER_SRV_FLAG_NONE;
-
-			d3d_sr_view_ = MakeSharedPtr<D3D12ShaderResourceViewSimulation>(this, d3d_sr_view);
-		}
-
 		if ((access_hint_ & EAH_GPU_Write)
 			&& !((access_hint_ & EAH_GPU_Structured) || (access_hint_ & EAH_GPU_Unordered)))
 		{
-			counter_offset_ = (size_in_byte_ + 4 - 1) & ~(4 - 1);
+			counter_offset_ = (size_in_byte_ + sizeof(uint64_t) - 1) & ~(sizeof(uint64_t) - 1);
 		}
-		else if ((access_hint_ & EAH_GPU_Unordered) && (fmt_as_shader_res_ != EF_Unknown))
+		else if ((access_hint_ & EAH_GPU_Unordered) && (structure_byte_stride_ != 0))
 		{
 			if ((access_hint_ & EAH_Append) || (access_hint_ & EAH_Counter))
 			{
 				counter_offset_ = (size_in_byte_ + D3D12_UAV_COUNTER_PLACEMENT_ALIGNMENT - 1)
 					& ~(D3D12_UAV_COUNTER_PLACEMENT_ALIGNMENT - 1);
-
-				heap_prop.Type = D3D12_HEAP_TYPE_UPLOAD;
-				res_desc.Width = sizeof(uint64_t);
-				res_desc.Flags &= ~D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
-				ID3D12Resource* buffer;
-				TIFHR(device->CreateCommittedResource(&heap_prop, D3D12_HEAP_FLAG_NONE,
-					&res_desc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
-					IID_ID3D12Resource, reinterpret_cast<void**>(&buffer)));
-				buffer_counter_upload_ = MakeCOMPtr(buffer);
 			}
 			else
 			{
 				counter_offset_ = 0;
 			}
-
-			D3D12_UNORDERED_ACCESS_VIEW_DESC d3d_ua_view;
-			if (access_hint_ & EAH_Raw)
-			{
-				d3d_ua_view.Format = DXGI_FORMAT_R32_TYPELESS;
-				d3d_ua_view.Buffer.StructureByteStride = 0;
-			}
-			else if (access_hint_ & EAH_GPU_Structured)
-			{
-				d3d_ua_view.Format = DXGI_FORMAT_UNKNOWN;
-				d3d_ua_view.Buffer.StructureByteStride = structure_byte_stride;
-			}
-			else
-			{
-				d3d_ua_view.Format = D3D12Mapping::MappingFormat(fmt_as_shader_res_);
-				d3d_ua_view.Buffer.StructureByteStride = 0;
-			}
-			d3d_ua_view.ViewDimension = D3D12_UAV_DIMENSION_BUFFER;
-			d3d_ua_view.Buffer.FirstElement = 0;
-			d3d_ua_view.Buffer.NumElements = size_in_byte_ / structure_byte_stride;
-			d3d_ua_view.Buffer.CounterOffsetInBytes = counter_offset_;
-			if (access_hint_ & EAH_Raw)
-			{
-				d3d_ua_view.Buffer.Flags = D3D12_BUFFER_UAV_FLAG_RAW;
-			}
-			else
-			{
-				d3d_ua_view.Buffer.Flags = D3D12_BUFFER_UAV_FLAG_NONE;
-			}
-
-			d3d_ua_view_ = MakeSharedPtr<D3D12UnorderedAccessViewSimulation>(this, d3d_ua_view);
 		}
 	}
 
 	void D3D12GraphicsBuffer::DeleteHWResource()
 	{
-		d3d_sr_view_.reset();
-		d3d_ua_view_.reset();
+		d3d_sr_views_.clear();
+		d3d_rt_views_.clear();
+		d3d_ua_views_.clear();
 		counter_offset_ = 0;
-		buffer_counter_upload_.reset();
 		d3d_resource_.reset();
+	}
+
+	bool D3D12GraphicsBuffer::HWResourceReady() const
+	{
+		return d3d_resource_.get() ? true : false;
 	}
 
 	void* D3D12GraphicsBuffer::Map(BufferAccess ba)
@@ -359,6 +409,14 @@ namespace KlayGE
 			cmd_list->CopyBufferRegion(d3d_resource_.get(), offset, upload_buff.get(), 0, size);
 
 			re.RecycleTempBuffer(upload_buff, true, size);
+		}
+	}
+
+	void D3D12GraphicsBuffer::ResetInitCount(uint64_t count)
+	{
+		if (counter_offset_ > 0)
+		{
+			this->UpdateSubresource(counter_offset_, sizeof(count), &count);
 		}
 	}
 }

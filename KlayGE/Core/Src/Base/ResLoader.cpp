@@ -220,6 +220,9 @@ namespace KlayGE
 		this->AddPath("..");
 		this->AddPath("../../media/RenderFX");
 		this->AddPath("../../media/Models");
+#if KLAYGE_IS_DEV_PLATFORM
+		this->AddPath("../../media/PlatConf");
+#endif
 		this->AddPath("../../media/Textures/2D");
 		this->AddPath("../../media/Textures/3D");
 		this->AddPath("../../media/Textures/Cube");
@@ -429,6 +432,40 @@ namespace KlayGE
 		this->Unmount("", phy_path);
 	}
 
+	bool ResLoader::IsInPath(std::string_view phy_path)
+	{
+		std::string_view virtual_path = "";
+
+		std::lock_guard<std::mutex> lock(paths_mutex_);
+
+		std::string real_path = this->RealPath(phy_path);
+		if (!real_path.empty())
+		{
+			std::string virtual_path_str(virtual_path);
+			if (!virtual_path.empty() && (virtual_path.back() != '/'))
+			{
+				virtual_path_str.push_back('/');
+			}
+			uint64_t const virtual_path_hash = HashRange(virtual_path_str.begin(), virtual_path_str.end());
+
+			bool found = false;
+			for (auto const & path : paths_)
+			{
+				if ((std::get<0>(path) == virtual_path_hash) && (std::get<2>(path) == real_path))
+				{
+					found = true;
+					break;
+				}
+			}
+
+			return found;
+		}
+		else
+		{
+			return false;
+		}
+	}
+
 	void ResLoader::Mount(std::string_view virtual_path, std::string_view phy_path)
 	{
 		std::lock_guard<std::mutex> lock(paths_mutex_);
@@ -519,6 +556,11 @@ namespace KlayGE
 
 	std::string ResLoader::Locate(std::string_view name)
 	{
+		if (name.empty())
+		{
+			return "";
+		}
+
 #if defined(KLAYGE_PLATFORM_ANDROID)
 		AAsset* asset = this->LocateFileAndroid(name);
 		if (asset != nullptr)
@@ -586,6 +628,11 @@ namespace KlayGE
 
 	ResIdentifierPtr ResLoader::Open(std::string_view name)
 	{
+		if (name.empty())
+		{
+			return ResIdentifierPtr();
+		}
+
 #if defined(KLAYGE_PLATFORM_ANDROID)
 		AAsset* asset = this->LocateFileAndroid(name);
 		if (asset != nullptr)
@@ -673,6 +720,22 @@ namespace KlayGE
 		return ResIdentifierPtr();
 	}
 
+	uint64_t ResLoader::Timestamp(std::string_view name)
+	{
+		uint64_t timestamp = 0;
+		auto res_path = this->Locate(name);
+		if (!res_path.empty())
+		{
+#if defined(KLAYGE_CXX17_LIBRARY_FILESYSTEM_SUPPORT) || defined(KLAYGE_TS_LIBRARY_FILESYSTEM_SUPPORT)
+			timestamp = std::filesystem::last_write_time(res_path).time_since_epoch().count();
+#else
+			timestamp = std::filesystem::last_write_time(res_path);
+#endif
+		}
+
+		return timestamp;
+	}
+
 	std::shared_ptr<void> ResLoader::SyncQuery(ResLoadingDescPtr const & res_desc)
 	{
 		this->RemoveUnrefResources();
@@ -706,7 +769,6 @@ namespace KlayGE
 					if (lrq.first->Match(*res_desc))
 					{
 						res_desc->CopyDataFrom(*lrq.first);
-						res = lrq.first->Resource();
 						async_is_done = lrq.second;
 						found = true;
 						break;
@@ -720,7 +782,7 @@ namespace KlayGE
 			}
 			else
 			{
-				res = res_desc->CreateResource();
+				res_desc->CreateResource();
 			}
 
 			if (res_desc->HasSubThreadStage())
@@ -740,8 +802,8 @@ namespace KlayGE
 	{
 		this->RemoveUnrefResources();
 
-		std::shared_ptr<void> res;
 		std::shared_ptr<void> loaded_res = this->FindMatchLoadedResource(res_desc);
+		std::shared_ptr<void> res;
 		if (loaded_res)
 		{
 			if (res_desc->StateLess())
@@ -769,7 +831,6 @@ namespace KlayGE
 					if (lrq.first->Match(*res_desc))
 					{
 						res_desc->CopyDataFrom(*lrq.first);
-						res = lrq.first->Resource();
 						async_is_done = lrq.second;
 						found = true;
 						break;
@@ -779,6 +840,8 @@ namespace KlayGE
 
 			if (found)
 			{
+				res = res_desc->Resource();
+
 				if (!res_desc->StateLess())
 				{
 					std::lock_guard<std::mutex> lock(loading_mutex_);
@@ -910,7 +973,12 @@ namespace KlayGE
 					res = res_desc->Resource();
 					this->AddLoadedResource(res_desc, res);
 				}
-
+			}
+		}
+		for (auto& lrq : tmp_loading_res)
+		{
+			if (LS_Complete == *lrq.second)
+			{
 				*lrq.second = LS_CanBeRemoved;
 			}
 		}

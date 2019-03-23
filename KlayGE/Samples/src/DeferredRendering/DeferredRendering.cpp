@@ -13,7 +13,8 @@
 #include <KlayGE/ResLoader.hpp>
 #include <KlayGE/RenderSettings.hpp>
 #include <KlayGE/Mesh.hpp>
-#include <KlayGE/SceneObjectHelper.hpp>
+#include <KlayGE/SceneNodeHelper.hpp>
+#include <KlayGE/SkyBox.hpp>
 #include <KlayGE/PostProcess.hpp>
 #include <KlayGE/Camera.hpp>
 #include <KlayGE/DeferredRenderingLayer.hpp>
@@ -128,7 +129,8 @@ void DeferredRenderingApp::OnCreate()
 
 	TexturePtr c_cube = ASyncLoadTexture("Lake_CraterLake03_filtered_c.dds", EAH_GPU_Read | EAH_Immutable);
 	TexturePtr y_cube = ASyncLoadTexture("Lake_CraterLake03_filtered_y.dds", EAH_GPU_Read | EAH_Immutable);
-	RenderablePtr scene_model = ASyncLoadModel("sponza_crytek.meshml", EAH_GPU_Read | EAH_Immutable);
+	auto scene_model = ASyncLoadModel("Sponza/sponza.glb", EAH_GPU_Read | EAH_Immutable,
+		SceneNode::SOA_Cullable, AddToSceneRootHelper);
 
 	font_ = SyncLoadFont("gkai00mp.kfont");
 
@@ -173,14 +175,11 @@ void DeferredRenderingApp::OnCreate()
 	spot_light_[2]->AddToSceneManager();
 
 	spot_light_src_[0] = MakeSharedPtr<SceneObjectLightSourceProxy>(spot_light_[0]);
-	checked_pointer_cast<SceneObjectLightSourceProxy>(spot_light_src_[0])->Scaling(0.1f, 0.1f, 0.1f);
+	spot_light_src_[0]->Scaling(0.1f, 0.1f, 0.1f);
 	spot_light_src_[1] = MakeSharedPtr<SceneObjectLightSourceProxy>(spot_light_[1]);
-	checked_pointer_cast<SceneObjectLightSourceProxy>(spot_light_src_[1])->Scaling(0.1f, 0.1f, 0.1f);
+	spot_light_src_[1]->Scaling(0.1f, 0.1f, 0.1f);
 	spot_light_src_[2] = MakeSharedPtr<SceneObjectLightSourceProxy>(spot_light_[2]);
-	spot_light_src_[2]->AddToSceneManager();
-
-	SceneObjectPtr scene_obj = MakeSharedPtr<SceneObjectHelper>(scene_model, SceneObject::SOA_Cullable);
-	scene_obj->AddToSceneManager();
+	Context::Instance().SceneManagerInstance().SceneRootNode().AddChild(spot_light_src_[2]->RootNode());
 
 	fpcController_.Scalers(0.05f, 0.5f);
 
@@ -189,7 +188,7 @@ void DeferredRenderingApp::OnCreate()
 	actionMap.AddActions(actions, actions + std::size(actions));
 
 	action_handler_t input_handler = MakeSharedPtr<input_signal>();
-	input_handler->connect(
+	input_handler->Connect(
 		[this](InputEngine const & sender, InputAction const & action)
 		{
 			this->InputHandler(sender, action);
@@ -215,14 +214,14 @@ void DeferredRenderingApp::OnCreate()
 	dialog_->Control<UIComboBox>(id_buffer_combo_)->RemoveItem(9);
 #endif
 
-	dialog_->Control<UIComboBox>(id_buffer_combo_)->OnSelectionChangedEvent().connect(
+	dialog_->Control<UIComboBox>(id_buffer_combo_)->OnSelectionChangedEvent().Connect(
 		[this](UIComboBox const & sender)
 		{
 			this->BufferChangedHandler(sender);
 		});
 	this->BufferChangedHandler(*dialog_->Control<UIComboBox>(id_buffer_combo_));
 
-	dialog_->Control<UIComboBox>(id_illum_combo_)->OnSelectionChangedEvent().connect(
+	dialog_->Control<UIComboBox>(id_illum_combo_)->OnSelectionChangedEvent().Connect(
 		[this](UIComboBox const & sender)
 		{
 			this->IllumChangedHandler(sender);
@@ -230,56 +229,56 @@ void DeferredRenderingApp::OnCreate()
 	this->IllumChangedHandler(*dialog_->Control<UIComboBox>(id_illum_combo_));
 
 	dialog_->Control<UISlider>(id_il_scale_slider_)->SetValue(static_cast<int>(il_scale_ * 10));
-	dialog_->Control<UISlider>(id_il_scale_slider_)->OnValueChangedEvent().connect(
+	dialog_->Control<UISlider>(id_il_scale_slider_)->OnValueChangedEvent().Connect(
 		[this](UISlider const & sender)
 		{
 			this->ILScaleChangedHandler(sender);
 		});
 	this->ILScaleChangedHandler(*dialog_->Control<UISlider>(id_il_scale_slider_));
 
-	dialog_->Control<UICheckBox>(id_ssvo_)->OnChangedEvent().connect(
+	dialog_->Control<UICheckBox>(id_ssvo_)->OnChangedEvent().Connect(
 		[this](UICheckBox const & sender)
 		{
 			this->SSVOHandler(sender);
 		});
 	this->SSVOHandler(*dialog_->Control<UICheckBox>(id_ssvo_));
-	dialog_->Control<UICheckBox>(id_hdr_)->OnChangedEvent().connect(
+	dialog_->Control<UICheckBox>(id_hdr_)->OnChangedEvent().Connect(
 		[this](UICheckBox const & sender)
 		{
 			this->HDRHandler(sender);
 		});
 	this->HDRHandler(*dialog_->Control<UICheckBox>(id_hdr_));
-	dialog_->Control<UICheckBox>(id_aa_)->OnChangedEvent().connect(
+	dialog_->Control<UICheckBox>(id_aa_)->OnChangedEvent().Connect(
 		[this](UICheckBox const & sender)
 		{
 			this->AntiAliasHandler(sender);
 		});
 	this->AntiAliasHandler(*dialog_->Control<UICheckBox>(id_aa_));
-	dialog_->Control<UISlider>(id_num_lights_slider_)->OnValueChangedEvent().connect(
+	dialog_->Control<UISlider>(id_num_lights_slider_)->OnValueChangedEvent().Connect(
 		[this](UISlider const & sender)
 		{
 			this->NumLightsChangedHandler(sender);
 		});
 	this->NumLightsChangedHandler(*dialog_->Control<UISlider>(id_num_lights_slider_));
 
-	dialog_->Control<UICheckBox>(id_ctrl_camera_)->OnChangedEvent().connect(
+	dialog_->Control<UICheckBox>(id_ctrl_camera_)->OnChangedEvent().Connect(
 		[this](UICheckBox const & sender)
 		{
 			this->CtrlCameraHandler(sender);
 		});
 	this->CtrlCameraHandler(*dialog_->Control<UICheckBox>(id_ctrl_camera_));
 
-	sky_box_ = MakeSharedPtr<SceneObjectSkyBox>();
-	checked_pointer_cast<SceneObjectSkyBox>(sky_box_)->CompressedCubeMap(y_cube, c_cube);
-	sky_box_->AddToSceneManager();
+	sky_box_ = MakeSharedPtr<SceneNode>(MakeSharedPtr<RenderableSkyBox>(), SceneNode::SOA_NotCastShadow);
+	checked_pointer_cast<RenderableSkyBox>(sky_box_->GetRenderable())->CompressedCubeMap(y_cube, c_cube);
+	Context::Instance().SceneManagerInstance().SceneRootNode().AddChild(sky_box_);
 
 	ps_ = SyncLoadParticleSystem("Fire.psml");
 	ps_->Gravity(0.5f);
 	ps_->MediaDensity(0.5f);
-	ps_->AddToSceneManager();
+	Context::Instance().SceneManagerInstance().SceneRootNode().AddChild(ps_);
 
 	float const SCALE = 3;
-	ps_->ModelMatrix(MathLib::scaling(SCALE, SCALE, SCALE));
+	ps_->TransformToParent(MathLib::scaling(SCALE, SCALE, SCALE));
 
 	ParticleEmitterPtr emitter0 = ps_->Emitter(0);
 	emitter0->ModelMatrix(MathLib::translation(spot_light_[0]->Position() / SCALE));
@@ -389,10 +388,14 @@ void DeferredRenderingApp::NumLightsChangedHandler(KlayGE::UISlider const & send
 {
 	int num_lights = sender.GetValue();
 
+	auto& scene_mgr = Context::Instance().SceneManagerInstance();
+
+	std::lock_guard<std::mutex> lock(scene_mgr.MutexForUpdate());
+
 	for (size_t i = num_lights; i < particle_lights_.size(); ++ i)
 	{
 		particle_lights_[i]->DelFromSceneManager();
-		particle_light_srcs_[i]->DelFromSceneManager();
+		scene_mgr.SceneRootNode().RemoveChild(particle_light_srcs_[i]->RootNode());
 	}
 
 	size_t old_size = particle_lights_.size();
@@ -407,8 +410,8 @@ void DeferredRenderingApp::NumLightsChangedHandler(KlayGE::UISlider const & send
 		particle_lights_[i]->AddToSceneManager();
 
 		particle_light_srcs_[i] = MakeSharedPtr<SceneObjectLightSourceProxy>(particle_lights_[i]);
-		checked_pointer_cast<SceneObjectLightSourceProxy>(particle_light_srcs_[i])->Scaling(0.1f, 0.1f, 0.1f);
-		particle_light_srcs_[i]->AddToSceneManager();
+		particle_light_srcs_[i]->Scaling(0.1f, 0.1f, 0.1f);
+		scene_mgr.SceneRootNode().AddChild(particle_light_srcs_[i]->RootNode());
 	}
 
 	std::wostringstream stream;

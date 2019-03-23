@@ -22,6 +22,7 @@
 #pragma once
 
 #include <KlayGE/PreDeclare.hpp>
+#include <KFL/ArrayRef.hpp>
 #include <vector>
 #include <KlayGE/RenderMaterial.hpp>
 
@@ -133,6 +134,7 @@ namespace KlayGE
 
 	public:
 		Renderable();
+		explicit Renderable(std::wstring_view name);
 		virtual ~Renderable();
 
 		virtual RenderEffectPtr const & GetRenderEffect() const
@@ -151,19 +153,15 @@ namespace KlayGE
 		{
 			return active_lod_;
 		}
-		virtual RenderLayout& GetRenderLayout() const = 0;
+		virtual RenderLayout& GetRenderLayout() const;
 		virtual RenderLayout& GetRenderLayout(uint32_t lod) const;
-		virtual std::wstring const & Name() const = 0;
+		virtual std::wstring const & Name() const;
 
 		virtual void OnRenderBegin();
 		virtual void OnRenderEnd();
 
-		// These two functions are used for non-instancing rendering
-		virtual void OnInstanceBegin(uint32_t id);
-		virtual void OnInstanceEnd(uint32_t id);
-
-		virtual AABBox const & PosBound() const = 0;
-		virtual AABBox const & TexcoordBound() const = 0;
+		virtual AABBox const & PosBound() const;
+		virtual AABBox const & TexcoordBound() const;
 
 		virtual void AddToRenderQueue();
 
@@ -178,33 +176,22 @@ namespace KlayGE
 				this->AddInstance(*iter);
 			}
 		}
-		void AddInstance(SceneObject const * obj);
+		void AddInstance(SceneNode const * node);
 		void ClearInstances();
 		uint32_t NumInstances() const
 		{
 			return static_cast<uint32_t>(instances_.size());
 		}
-		SceneObject const * GetInstance(uint32_t index) const
+		SceneNode const * GetInstance(uint32_t index) const
 		{
 			return instances_[index];
 		}
 
 		virtual void ModelMatrix(float4x4 const & mat);
-
-		template <typename ForwardIterator>
-		void AssignSubrenderables(ForwardIterator first, ForwardIterator last)
+		virtual void BindSceneNode(SceneNode const * node);
+		SceneNode const * CurrSceneNode() const
 		{
-			subrenderables_.assign(first, last);
-
-			this->UpdateBoundBox();
-		}
-		RenderablePtr const & Subrenderable(size_t id) const
-		{
-			return subrenderables_[id];
-		}
-		uint32_t NumSubrenderables() const
-		{
-			return static_cast<uint32_t>(subrenderables_.size());
+			return curr_node_;
 		}
 
 		virtual bool HWResourceReady() const
@@ -212,6 +199,9 @@ namespace KlayGE
 			return true;
 		}
 		bool AllHWResourceReady() const;
+
+		bool Enabled() const;
+		void Enabled(bool enabled);
 
 		// For select mode
 
@@ -271,19 +261,29 @@ namespace KlayGE
 		virtual void UpdateTechniques();
 
 	protected:
-		std::vector<SceneObject const *> instances_;
+		std::wstring name_;
+
+		AABBox pos_aabb_;
+		AABBox tc_aabb_;
+
+		std::vector<SceneNode const *> instances_;
+		SceneNode const * curr_node_ = nullptr;
 
 		RenderEffectPtr effect_;
-		RenderTechnique* technique_;
+		RenderTechnique* technique_ = nullptr;
 
-		int32_t active_lod_;
+		std::vector<RenderLayoutPtr> rls_;
+
+		int32_t active_lod_ = 0;
+
+		bool enabled_ = true;
 
 		// For select mode
 
 		RenderTechnique* select_mode_tech_;
 		RenderEffectParameter* select_mode_object_id_param_;
 		float4 select_mode_object_id_;
-		bool select_mode_on_;
+		bool select_mode_on_ = false;
 
 		// For deferred only
 
@@ -304,10 +304,10 @@ namespace KlayGE
 		RenderTechnique* simple_forward_tech_;
 		RenderTechnique* vdm_tech_;
 
-		float4x4 model_mat_;
+		float4x4 model_mat_ = float4x4::Identity();
 
 		PassType type_;
-		uint32_t effect_attrs_;
+		uint32_t effect_attrs_ = 0;
 
 		RenderMaterialPtr mtl_;
 
@@ -339,9 +339,7 @@ namespace KlayGE
 		RenderEffectParameter* reflection_tex_param_;
 		RenderEffectParameter* alpha_test_threshold_param_;
 
-		std::array<TexturePtr, RenderMaterial::TS_NumTextureSlots> textures_;
-
-		std::vector<RenderablePtr> subrenderables_;
+		std::array<ShaderResourceViewPtr, RenderMaterial::TS_NumTextureSlots> textures_;
 	};
 }
 

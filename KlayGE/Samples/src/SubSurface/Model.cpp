@@ -19,16 +19,16 @@
 using namespace KlayGE;
 
 
-DetailedMesh::DetailedMesh(RenderModelPtr const & model, std::wstring const & name)
-	: StaticMesh(model, name)
+DetailedMesh::DetailedMesh(std::wstring_view name)
+	: StaticMesh(name)
 {
 	effect_ = SyncLoadRenderEffect("SubSurface.fxml");
 	technique_ = effect_->TechniqueByName("SubSurfaceTech");
 }
 
-void DetailedMesh::DoBuildMeshInfo()
+void DetailedMesh::DoBuildMeshInfo(RenderModel const & model)
 {
-	StaticMesh::DoBuildMeshInfo();
+	StaticMesh::DoBuildMeshInfo(model);
 
 	RenderEngine& re = Context::Instance().RenderFactoryInstance().RenderEngineInstance();
 	RenderDeviceCaps const & caps = re.DeviceCaps();
@@ -135,84 +135,4 @@ void DetailedMesh::SigmaT(float sigma_t)
 void DetailedMesh::MtlThickness(float thickness)
 {
 	*(effect_->ParameterByName("material_thickness")) = -thickness;
-}
-
-DetailedModel::DetailedModel(std::wstring const & name)
-		: RenderModel(name)
-{
-	RenderFactory& rf = Context::Instance().RenderFactoryInstance();
-
-	uint32_t const empty_nor = 0x80808080;
-
-	ElementInitData nor_init_data;
-	nor_init_data.data = &empty_nor;
-	nor_init_data.slice_pitch = nor_init_data.row_pitch = sizeof(empty_nor);
-
-	auto const format = rf.RenderEngineInstance().DeviceCaps().BestMatchTextureFormat({ EF_ABGR8, EF_ARGB8 });
-	BOOST_ASSERT(format != EF_Unknown);
-	empty_bump_map_ = rf.MakeTexture2D(1, 1, 1, 1, format, 1, 0, EAH_GPU_Read | EAH_Immutable, nor_init_data);
-}
-
-void DetailedModel::EyePos(KlayGE::float3 const & eye_pos)
-{
-	for (auto const & mesh : subrenderables_)
-	{
-		checked_pointer_cast<DetailedMesh>(mesh)->EyePos(eye_pos);
-	}
-}
-
-void DetailedModel::LightPos(KlayGE::float3 const & light_pos)
-{
-	for (auto const & mesh : subrenderables_)
-	{
-		checked_pointer_cast<DetailedMesh>(mesh)->LightPos(light_pos);
-	}
-}
-
-void DetailedModel::LightColor(KlayGE::float3 const & light_color)
-{
-	for (auto const & mesh : subrenderables_)
-	{
-		checked_pointer_cast<DetailedMesh>(mesh)->LightColor(light_color);
-	}
-}
-
-void DetailedModel::LightFalloff(KlayGE::float3 const & light_falloff)
-{
-	for (auto const & mesh : subrenderables_)
-	{
-		checked_pointer_cast<DetailedMesh>(mesh)->LightFalloff(light_falloff);
-	}
-}
-
-void DetailedModel::BackFaceDepthPass(bool dfdp)
-{
-	for (auto const & mesh : subrenderables_)
-	{
-		checked_pointer_cast<DetailedMesh>(mesh)->BackFaceDepthPass(dfdp);
-	}
-}
-
-void DetailedModel::BackFaceDepthTex(KlayGE::TexturePtr const & tex)
-{
-	for (auto const & mesh : subrenderables_)
-	{
-		checked_pointer_cast<DetailedMesh>(mesh)->BackFaceDepthTex(tex);
-	}
-}
-
-void DetailedModel::SigmaT(float sigma_t)
-{
-	for (auto const & mesh : subrenderables_)
-	{
-		checked_pointer_cast<DetailedMesh>(mesh)->SigmaT(sigma_t);
-	}
-}
-
-void DetailedModel::MtlThickness(float thickness)
-{
-	for (auto const & mesh : subrenderables_)
-	{
-		checked_pointer_cast<DetailedMesh>(mesh)->MtlThickness(thickness);
-	}
 }

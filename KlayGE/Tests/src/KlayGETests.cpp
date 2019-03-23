@@ -112,6 +112,31 @@ namespace KlayGE
 		return match;
 	}
 
+	ElementFormat UncompressedFormat(ElementFormat fmt)
+	{
+		if (IsCompressedFormat(fmt))
+		{
+			if ((fmt == EF_BC6) || (fmt == EF_SIGNED_BC6))
+			{
+				fmt = EF_ABGR16F;
+			}
+			else if (IsSigned(fmt))
+			{
+				fmt = EF_SIGNED_ABGR8;
+			}
+			else if (IsSRGB(fmt))
+			{
+				fmt = EF_ARGB8_SRGB;
+			}
+			else
+			{
+				fmt = EF_ARGB8;
+			}
+		}
+
+		return fmt;
+	}
+
 	bool Compare2D(Texture& tex0, uint32_t tex0_array_index, uint32_t tex0_level, uint32_t tex0_x_offset, uint32_t tex0_y_offset,
 		Texture& tex1, uint32_t tex1_array_index, uint32_t tex1_level, uint32_t tex1_x_offset, uint32_t tex1_y_offset,
 		uint32_t width, uint32_t height, float tolerance)
@@ -121,8 +146,8 @@ namespace KlayGE
 
 		RenderFactory& rf = Context::Instance().RenderFactoryInstance();
 
-		ElementFormat const tex0_fmt = tex0.Format();
-		ElementFormat const tex1_fmt = tex1.Format();
+		ElementFormat const tex0_fmt = UncompressedFormat(tex0.Format());
+		ElementFormat const tex1_fmt = UncompressedFormat(tex1.Format());
 
 		TexturePtr tex0_cpu = rf.MakeTexture2D(width, height, 1, 1, tex0_fmt, 1, 0, EAH_CPU_Read);
 		tex0.CopyToSubTexture2D(*tex0_cpu, 0, 0, 0, 0, width, height,
@@ -132,10 +157,13 @@ namespace KlayGE
 		tex1.CopyToSubTexture2D(*tex1_cpu, 0, 0, 0, 0, width, height,
 			tex1_array_index, tex1_level, tex1_x_offset, tex1_y_offset, width, height);
 
+		TexturePtr diff_cpu = rf.MakeTexture2D(width, height, 1, 1, EF_ABGR8, 1, 0, EAH_CPU_Read);
+
 		bool match = true;
 		{
 			uint32_t const tex0_elem_size = NumFormatBytes(tex0_fmt);
 			uint32_t const tex1_elem_size = NumFormatBytes(tex1_fmt);
+			uint32_t const diff_elem_size = NumFormatBytes(EF_ABGR8);
 
 			Texture::Mapper tex0_mapper(*tex0_cpu, 0, 0, TMA_Read_Only, 0, 0, width, height);
 			uint8_t const * tex0_p = tex0_mapper.Pointer<uint8_t>();
@@ -145,7 +173,11 @@ namespace KlayGE
 			uint8_t const * tex1_p = tex1_mapper.Pointer<uint8_t>();
 			uint32_t const tex1_row_pitch = tex1_mapper.RowPitch();
 
-			for (uint32_t y = 0; (y < height) && match; ++ y)
+			Texture::Mapper diff_mapper(*diff_cpu, 0, 0, TMA_Read_Only, 0, 0, width, height);
+			uint8_t* diff_p = diff_mapper.Pointer<uint8_t>();
+			uint32_t const diff_row_pitch = diff_mapper.RowPitch();
+
+			for (uint32_t y = 0; y < height; ++ y)
 			{
 				for (uint32_t x = 0; x < width; ++ x)
 				{
@@ -155,11 +187,21 @@ namespace KlayGE
 					Color tex1_clr;
 					ConvertToABGR32F(tex1_fmt, tex1_p + y * tex1_row_pitch + x * tex1_elem_size, 1, &tex1_clr);
 
-					if ((abs(tex0_clr.r() - tex1_clr.r()) > tolerance) || (abs(tex0_clr.g() - tex1_clr.g()) > tolerance)
-						|| (abs(tex0_clr.b() - tex1_clr.b()) > tolerance) || (abs(tex0_clr.a() - tex1_clr.a()) > tolerance))
+					uint8_t* diff_pixel = diff_p + y * diff_row_pitch + x * diff_elem_size;
+
+					Color const diff = tex0_clr - tex1_clr;
+
+					for (uint32_t ch = 0; ch < 4; ++ ch)
 					{
-						match = false;
-						break;
+						if (abs(diff[ch]) > tolerance)
+						{
+							match = false;
+							diff_pixel[ch] = 255;
+						}
+						else
+						{
+							diff_pixel[ch] = 0;
+						}
 					}
 				}
 			}
@@ -171,6 +213,7 @@ namespace KlayGE
 
 			SaveTexture(tex0_cpu, test_name + "_tex0.dds");
 			SaveTexture(tex1_cpu, test_name + "_tex1.dds");
+			SaveTexture(diff_cpu, test_name + "_diff.dds");
 		}
 
 		return match;

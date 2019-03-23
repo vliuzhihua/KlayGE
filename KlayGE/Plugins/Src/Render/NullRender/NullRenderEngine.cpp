@@ -99,27 +99,23 @@ namespace KlayGE
 		{
 			native_shader_platform_name_ = *static_cast<std::string*>(value);
 
-			if (native_shader_platform_name_.find("d3d_11") == 0)
+			if (native_shader_platform_name_.find("d3d_12") == 0)
 			{
-				vs_profile_ = "vs_5_0";
-				ps_profile_ = "ps_5_0";
-				gs_profile_ = "gs_5_0";
-				cs_profile_ = "cs_5_0";
-				hs_profile_ = "hs_5_0";
-				ds_profile_ = "ds_5_0";
-			}
-			else if (native_shader_platform_name_.find("d3d_12") == 0)
-			{
-				vs_profile_ = "vs_5_1";
-				ps_profile_ = "ps_5_1";
-				gs_profile_ = "gs_5_1";
-				cs_profile_ = "cs_5_1";
-				hs_profile_ = "hs_5_1";
-				ds_profile_ = "ds_5_1";
+				shader_profiles_[static_cast<uint32_t>(ShaderStage::Vertex)] = "vs_5_1";
+				shader_profiles_[static_cast<uint32_t>(ShaderStage::Pixel)] = "ps_5_1";
+				shader_profiles_[static_cast<uint32_t>(ShaderStage::Geometry)] = "gs_5_1";
+				shader_profiles_[static_cast<uint32_t>(ShaderStage::Compute)] = "cs_5_1";
+				shader_profiles_[static_cast<uint32_t>(ShaderStage::Hull)] = "hs_5_1";
+				shader_profiles_[static_cast<uint32_t>(ShaderStage::Domain)] = "ds_5_1";
 			}
 			else
 			{
-				KFL_UNREACHABLE("Invalid feature level");
+				shader_profiles_[static_cast<uint32_t>(ShaderStage::Vertex)] = "vs_5_0";
+				shader_profiles_[static_cast<uint32_t>(ShaderStage::Pixel)] = "ps_5_0";
+				shader_profiles_[static_cast<uint32_t>(ShaderStage::Geometry)] = "gs_5_0";
+				shader_profiles_[static_cast<uint32_t>(ShaderStage::Compute)] = "cs_5_0";
+				shader_profiles_[static_cast<uint32_t>(ShaderStage::Hull)] = "hs_5_0";
+				shader_profiles_[static_cast<uint32_t>(ShaderStage::Domain)] = "ds_5_0";
 			}
 		}
 		else if (CT_HASH("MAJOR_VERSION") == name_hash)
@@ -141,26 +137,6 @@ namespace KlayGE
 		else if (CT_HASH("NATIVE_SHADER_VERSION") == name_hash)
 		{
 			native_shader_version_ = *static_cast<uint32_t*>(value);
-		}
-		else if (CT_HASH("VERTEX_FORMAT") == name_hash)
-		{
-			auto vertex_formats = *static_cast<std::vector<ElementFormat>*>(value);
-			this->AssignCapVertexFormats(std::move(vertex_formats));
-		}
-		else if (CT_HASH("TEXTURE_FORMAT") == name_hash)
-		{
-			auto texture_formats = *static_cast<std::vector<ElementFormat>*>(value);
-			this->AssignCapTextureFormats(std::move(texture_formats));
-		}
-		else if (CT_HASH("RENDER_TARGET_FORMAT") == name_hash)
-		{
-			auto render_target_formats = *static_cast<std::map<ElementFormat, std::vector<uint32_t>>*>(value);
-			this->AssignCapRenderTargetFormats(std::move(render_target_formats));
-		}
-		else if (CT_HASH("UAV_FORMAT") == name_hash)
-		{
-			auto uav_formats = *static_cast<std::vector<ElementFormat>*>(value);
-			this->AssignCapUavFormats(std::move(uav_formats));
 		}
 		else if (CT_HASH("DEVICE_CAPS") == name_hash)
 		{

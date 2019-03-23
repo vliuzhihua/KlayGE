@@ -11,7 +11,7 @@
 #include <KlayGE/ResLoader.hpp>
 #include <KlayGE/RenderSettings.hpp>
 #include <KlayGE/Mesh.hpp>
-#include <KlayGE/SceneObjectHelper.hpp>
+#include <KlayGE/SceneNodeHelper.hpp>
 #include <KlayGE/PostProcess.hpp>
 #include <KlayGE/InfTerrain.hpp>
 #include <KlayGE/LensFlare.hpp>
@@ -49,21 +49,6 @@ namespace
 		void FogColor(Color const & clr)
 		{
 			*(effect_->ParameterByName("fog_color")) = float3(clr.r(), clr.g(), clr.b());
-		}
-	};
-
-	class SceneObjectFoggySkyBox : public SceneObjectSkyBox
-	{
-	public:
-		explicit SceneObjectFoggySkyBox(uint32_t attrib = 0)
-			: SceneObjectSkyBox(attrib)
-		{
-			renderable_ = MakeSharedPtr<RenderableFoggySkyBox>();
-		}
-
-		void FogColor(Color const & clr)
-		{
-			checked_pointer_cast<RenderableFoggySkyBox>(renderable_)->FogColor(clr);
 		}
 	};
 
@@ -131,26 +116,26 @@ void FoliageApp::OnCreate()
 		fog_color.b() = MathLib::srgb_to_linear(fog_color.b());
 	}
 
-	HQTerrainSceneObjectPtr terrain = MakeSharedPtr<HQTerrainSceneObject>(MakeSharedPtr<ProceduralTerrain>());
-	terrain->TextureLayer(0, ASyncLoadTexture("RealSand40BoH.dds", EAH_GPU_Read | EAH_Immutable));
-	terrain->TextureLayer(1, ASyncLoadTexture("snow_DM.dds", EAH_GPU_Read | EAH_Immutable));
-	terrain->TextureLayer(2, ASyncLoadTexture("GrassGreenTexture0002.dds", EAH_GPU_Read | EAH_Immutable));
-	terrain->TextureLayer(3, ASyncLoadTexture("Ground.dds", EAH_GPU_Read | EAH_Immutable));
-	terrain->TextureScale(0, float2(7, 7));
-	terrain->TextureScale(1, float2(1, 1));
-	terrain->TextureScale(2, float2(3, 3));
-	terrain->TextureScale(3, float2(11, 11));
-	terrain_ = terrain;
-	terrain_->AddToSceneManager();
+	auto terrain_renderable = MakeSharedPtr<ProceduralTerrain>();
+	terrain_ = MakeSharedPtr<HQTerrainSceneObject>(terrain_renderable);
+	terrain_renderable->TextureLayer(0, ASyncLoadTexture("RealSand40BoH.dds", EAH_GPU_Read | EAH_Immutable));
+	terrain_renderable->TextureLayer(1, ASyncLoadTexture("snow_DM.dds", EAH_GPU_Read | EAH_Immutable));
+	terrain_renderable->TextureLayer(2, ASyncLoadTexture("GrassGreenTexture0002.dds", EAH_GPU_Read | EAH_Immutable));
+	terrain_renderable->TextureLayer(3, ASyncLoadTexture("Ground.dds", EAH_GPU_Read | EAH_Immutable));
+	terrain_renderable->TextureScale(0, float2(7, 7));
+	terrain_renderable->TextureScale(1, float2(1, 1));
+	terrain_renderable->TextureScale(2, float2(3, 3));
+	terrain_renderable->TextureScale(3, float2(11, 11));
+	Context::Instance().SceneManagerInstance().SceneRootNode().AddChild(terrain_);
 
-	sky_box_ = MakeSharedPtr<SceneObjectFoggySkyBox>();
-	checked_pointer_cast<SceneObjectFoggySkyBox>(sky_box_)->CompressedCubeMap(y_cube, c_cube);
-	checked_pointer_cast<SceneObjectFoggySkyBox>(sky_box_)->FogColor(fog_color);
-	sky_box_->AddToSceneManager();
+	sky_box_ = MakeSharedPtr<SceneNode>(MakeSharedPtr<RenderableFoggySkyBox>(), SceneNode::SOA_NotCastShadow);
+	checked_pointer_cast<RenderableFoggySkyBox>(sky_box_->GetRenderable())->CompressedCubeMap(y_cube, c_cube);
+	checked_pointer_cast<RenderableFoggySkyBox>(sky_box_->GetRenderable())->FogColor(fog_color);
+	Context::Instance().SceneManagerInstance().SceneRootNode().AddChild(sky_box_);
 
 	sun_flare_ = MakeSharedPtr<LensFlareSceneObject>();
 	checked_pointer_cast<LensFlareSceneObject>(sun_flare_)->Direction(float3(-0.267835f, 0.0517653f, 0.960315f));
-	sun_flare_->AddToSceneManager();
+	Context::Instance().SceneManagerInstance().SceneRootNode().AddChild(sun_flare_);
 
 	fog_pp_ = SyncLoadPostProcess("Fog.ppml", "fog");
 	fog_pp_->SetParam(1, float3(fog_color.r(), fog_color.g(), fog_color.b()));
@@ -168,7 +153,7 @@ void FoliageApp::OnCreate()
 	actionMap.AddActions(actions, actions + std::size(actions));
 
 	action_handler_t input_handler = MakeSharedPtr<input_signal>();
-	input_handler->connect(
+	input_handler->Connect(
 		[this](InputEngine const & sender, InputAction const & action)
 		{
 			this->InputHandler(sender, action);
@@ -180,13 +165,13 @@ void FoliageApp::OnCreate()
 	id_light_shaft_ = dialog_params_->IDFromName("LightShaft");
 	id_fps_camera_ = dialog_params_->IDFromName("FPSCamera");
 
-	dialog_params_->Control<UICheckBox>(id_light_shaft_)->OnChangedEvent().connect(
+	dialog_params_->Control<UICheckBox>(id_light_shaft_)->OnChangedEvent().Connect(
 		[this](UICheckBox const & sender)
 		{
 			this->LightShaftHandler(sender);
 		});
 
-	dialog_params_->Control<UICheckBox>(id_fps_camera_)->OnChangedEvent().connect(
+	dialog_params_->Control<UICheckBox>(id_fps_camera_)->OnChangedEvent().Connect(
 		[this](UICheckBox const & sender)
 		{
 			this->FPSCameraHandler(sender);

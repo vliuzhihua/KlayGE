@@ -30,227 +30,56 @@
 
 #include <KlayGE/KlayGE.hpp>
 #include <KFL/CXX17/filesystem.hpp>
-#include <KFL/ErrorHandling.hpp>
-#include <KFL/Math.hpp>
 #include <KFL/Util.hpp>
 #include <KlayGE/ResLoader.hpp>
-#include <KlayGE/Texture.hpp>
 
 #include <iostream>
 #include <vector>
 #include <string>
 
-#if defined(KLAYGE_COMPILER_CLANGC2)
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wunused-variable" // Ignore unused variable (mpl_assertion_in_line_xxx) in boost
+#ifndef KLAYGE_DEBUG
+#define CXXOPTS_NO_RTTI
 #endif
-#include <boost/program_options.hpp>
-#if defined(KLAYGE_COMPILER_CLANGC2)
-#pragma clang diagnostic pop
-#endif
+#include <cxxopts.hpp>
 
-#include <FreeImage.h>
+#include <KlayGE/DevHelper/PlatformDefinition.hpp>
+#include <KlayGE/DevHelper/TexConverter.hpp>
+#include <KlayGE/DevHelper/TexMetadata.hpp>
 
 using namespace std;
 using namespace KlayGE;
 
-namespace
-{
-	bool ConvertImage(std::string const & input_name, std::string const & output_name)
-	{
-		FREE_IMAGE_FORMAT fif = FreeImage_GetFileType(input_name.c_str(), 0);
-		if (fif == FIF_UNKNOWN) 
-		{
-			fif = FreeImage_GetFIFFromFilename(input_name.c_str());
-		}
-		if (fif == FIF_UNKNOWN)
-		{
-			return false;
-		}
-
-		FIBITMAP* dib = nullptr;
-		if (FreeImage_FIFSupportsReading(fif))
-		{
-			dib = FreeImage_Load(fif, input_name.c_str());
-		}
-		if (!dib)
-		{
-			return false;
-		}
-
-		uint32_t const width = FreeImage_GetWidth(dib);
-		uint32_t const height = FreeImage_GetHeight(dib);
-		if ((width == 0) || (height == 0))
-		{
-			return false;
-		}
-
-		FreeImage_FlipVertical(dib);
-
-		ElementFormat format = EF_ABGR8;
-		FREE_IMAGE_TYPE const image_type = FreeImage_GetImageType(dib);
-		switch (image_type)
-		{
-		case FIT_BITMAP:
-			{
-				uint32_t const bpp = FreeImage_GetBPP(dib);
-				uint32_t const r_mask = FreeImage_GetRedMask(dib);
-				uint32_t const g_mask = FreeImage_GetGreenMask(dib);
-				uint32_t const b_mask = FreeImage_GetBlueMask(dib);
-				switch (bpp)
-				{
-				case 1:
-				case 4:
-				case 8:
-				case 24:
-					{
-						if (bpp == 24)
-						{
-							if ((r_mask == 0xFF0000) && (g_mask == 0xFF00) && (b_mask == 0xFF))
-							{
-								format = EF_ARGB8;
-							}
-							else if ((r_mask == 0xFF) && (g_mask == 0xFF00) && (b_mask == 0xFF0000))
-							{
-								format = EF_ABGR8;
-							}
-						}
-						else
-						{
-							format = EF_ARGB8;
-						}
-						auto dib_32bpp = FreeImage_ConvertTo32Bits(dib);
-						FreeImage_Unload(dib);
-						dib = dib_32bpp;
-					}
-					break;
-
-				case 16:
-					if ((r_mask == (0x1F << 10)) && (g_mask == (0x1F << 5)) && (b_mask == 0x1F))
-					{
-						format = EF_A1RGB5;
-					}
-					else if ((r_mask == (0x1F << 11)) && (g_mask == (0x3F << 5)) && (b_mask == 0x1F))
-					{
-						format = EF_R5G6B5;
-					}
-					break;
-
-				case 32:
-					if ((r_mask == 0xFF0000) && (g_mask == 0xFF00) && (b_mask == 0xFF))
-					{
-						format = EF_ARGB8;
-					}
-					else if ((r_mask == 0xFF) && (g_mask == 0xFF00) && (b_mask == 0xFF0000))
-					{
-						format = EF_ABGR8;
-					}
-					break;
-
-				default:
-					KFL_UNREACHABLE("Unsupported bpp.");
-				}
-			}
-			break;
-
-		case FIT_UINT16:
-			format = EF_R16UI;
-			break;
-
-		case FIT_INT16:
-			format = EF_R16I;
-			break;
-
-		case FIT_UINT32:
-			format = EF_R32UI;
-			break;
-
-		case FIT_INT32:
-			format = EF_R32I;
-			break;
-
-		case FIT_FLOAT:
-			format = EF_R32F;
-			break;
-
-		case FIT_COMPLEX:
-			format = EF_GR32F;
-			break;
-
-		case FIT_RGB16:
-			format = EF_ABGR16;
-			{
-				auto dib_abgr16 = FreeImage_ConvertToRGBA16(dib);
-				FreeImage_Unload(dib);
-				dib = dib_abgr16;
-			}
-			break;
-
-		case FIT_RGBA16:
-			format = EF_ABGR16;
-			break;
-
-		case FIT_RGBF:
-			format = EF_ABGR32F;
-			{
-				auto dib_abgr32f = FreeImage_ConvertToRGBAF(dib);
-				FreeImage_Unload(dib);
-				dib = dib_abgr32f;
-			}
-			break;
-
-		case FIT_RGBAF:
-			format = EF_ABGR32F;
-			break;
-
-		default:
-			KFL_UNREACHABLE("Unsupported image type.");
-		}
-
-		uint8_t* const bits = FreeImage_GetBits(dib);
-		if (bits == nullptr)
-		{
-			return false;
-		}
-
-		ElementInitData init_data;
-		init_data.data = bits;
-		init_data.row_pitch = FreeImage_GetPitch(dib);
-		init_data.slice_pitch = height * init_data.row_pitch;
-		SaveTexture(output_name, Texture::TT_2D, width, height, 1, 1, 1, format, init_data);
-	
-		FreeImage_Unload(dib);
-
-		return true;
-	}
-}
-
 int main(int argc, char* argv[])
 {
 	std::string input_name;
+	std::string metadata_name;
 	std::string output_name;
+	std::string target_folder;
+	std::string platform;
 	bool quiet = false;
 
-	boost::program_options::options_description desc("Allowed options");
-	desc.add_options()
-		("help,H", "Produce help message")
-		("input-path,I", boost::program_options::value<std::string>(), "Input image path.")
-		("output-path,O", boost::program_options::value<std::string>(), "(Optional) Output image path.")
-		("quiet,q", boost::program_options::value<bool>()->implicit_value(true), "Quiet mode.")
-		("version,v", "Version.");
+	cxxopts::Options options("ImageConv", "KlayGE Image Converter");
+	options.add_options()
+		("H,help", "Produce help message.")
+		("I,input-path", "Input image path.", cxxopts::value<std::string>())
+		("M,metadata-path", "(Optional) Input metadata path.", cxxopts::value<std::string>())
+		("O,output-path", "(Optional) Output image path.", cxxopts::value<std::string>())
+		("T,target-folder", "Target folder.", cxxopts::value<std::string>())
+		("P,platform", "Platform name.", cxxopts::value<std::string>())
+		("q,quiet", "Quiet mode.", cxxopts::value<bool>()->implicit_value("true"))
+		("V,version", "Version.");
 
-	boost::program_options::variables_map vm;
-	boost::program_options::store(boost::program_options::parse_command_line(argc, argv, desc), vm);
-	boost::program_options::notify(vm);
+	int const argc_backup = argc;
+	auto vm = options.parse(argc, argv);
 
-	if ((argc <= 1) || (vm.count("help") > 0))
+	if ((argc_backup <= 1) || (vm.count("help") > 0))
 	{
-		cout << desc << endl;
+		cout << options.help() << endl;
 		return 1;
 	}
 	if (vm.count("version") > 0)
 	{
-		cout << "KlayGE Image Converter, Version 1.0.0" << endl;
+		cout << "KlayGE Image Converter, Version 2.0.0" << endl;
 		return 1;
 	}
 	if (vm.count("input-path") > 0)
@@ -260,41 +89,128 @@ int main(int argc, char* argv[])
 	else
 	{
 		cout << "Need input image path." << endl;
+		cout << options.help() << endl;
 		return 1;
+	}
+	if (vm.count("metadata-path") > 0)
+	{
+		metadata_name = vm["metadata-path"].as<std::string>();
+	}
+	if (vm.count("target-folder") > 0)
+	{
+		target_folder = vm["target-folder"].as<std::string>();
 	}
 	if (vm.count("output-path") > 0)
 	{
 		output_name = vm["output-path"].as<std::string>();
+	}
+	if (vm.count("platform") > 0)
+	{
+		platform = vm["platform"].as<std::string>();
+	}
+	else
+	{
+		platform = "d3d_11_0";
 	}
 	if (vm.count("quiet") > 0)
 	{
 		quiet = vm["quiet"].as<bool>();
 	}
 
-	std::string file_name = ResLoader::Instance().Locate(input_name);
-	if (file_name.empty())
+	std::string const full_input_name = ResLoader::Instance().Locate(input_name);
+	if (full_input_name.empty())
 	{
-		cout << "Could NOT find " << input_name << endl;
+		int ret;
+		cout << "Could NOT find " << input_name << '.';
+
+		std::string const possible_output_name = ResLoader::Instance().Locate(input_name + ".dds");
+		if (std::filesystem::exists(possible_output_name))
+		{
+			cout << " But " << possible_output_name << " does exist.";
+			ret = 0;
+		}
+		else
+		{
+			ret = 1;
+		}
+
+		cout << endl;
+
 		Context::Destroy();
-		return 1;
+		return ret;
 	}
 
+	if (metadata_name.empty())
+	{
+		metadata_name = full_input_name + ".kmeta";
+	}
 	if (output_name.empty())
 	{
-		filesystem::path input_path(file_name);
-		output_name = (input_path.parent_path() / input_path.stem()).string();
-		if (input_path.extension() == "dds")
+		if (target_folder.empty())
 		{
-			output_name += "_converted";
+			output_name = full_input_name + ".dds";
 		}
-		output_name += ".dds";
+		else
+		{
+			output_name = (target_folder / filesystem::path(full_input_name).filename()).string() + ".dds";
+		}
 	}
 
-	bool succ = ConvertImage(file_name, output_name);
-
-	if (succ && !quiet)
+	bool conversion = false;
+	filesystem::path const output_path(output_name);
+	if (output_path.extension() == ".dds")
 	{
-		cout << "Image has been saved to " << output_name << "." << endl;
+		if (ResLoader::Instance().Locate(output_name).empty())
+		{
+			conversion = true;
+		}
+		else
+		{
+			uint64_t const output_file_timestamp = ResLoader::Instance().Timestamp(output_name);
+			uint64_t const input_file_timestamp = ResLoader::Instance().Timestamp(full_input_name);
+			uint64_t const metadata_timestamp = ResLoader::Instance().Timestamp(metadata_name);
+			if (((input_file_timestamp > 0) && (output_file_timestamp < input_file_timestamp))
+				|| (((metadata_timestamp > 0) && (output_file_timestamp < metadata_timestamp))))
+			{
+				conversion = true;
+			}
+		}
+	}
+	else
+	{
+		conversion = true;
+	}
+
+	if (conversion)
+	{
+		PlatformDefinition platform_def(platform + ".plat");
+
+		TexMetadata metadata;
+		if (!ResLoader::Instance().Locate(metadata_name).empty())
+		{
+			metadata.Load(metadata_name);
+		}
+		metadata.DeviceDependentAdjustment(platform_def.device_caps);
+
+		TexConverter tc;
+		TexturePtr output_tex = tc.Load(full_input_name, metadata);
+		if (output_tex)
+		{
+			SaveTexture(output_tex, output_name);
+
+			if (!quiet)
+			{
+				cout << "Texture has been saved to " << output_name << "." << endl;
+			}
+		}
+		else
+		{
+			LogError() << "FAIL to convert file " << full_input_name << " with metadata " << metadata_name << std::endl;
+		}
+	}
+	else
+	{
+		cout << "Target file " << output_name << " is up-to-date. No need to do the conversion." << std::endl;
 	}
 
 	Context::Destroy();

@@ -6,7 +6,7 @@
 #include <KlayGE/PreDeclare.hpp>
 
 #include <KlayGE/RenderableHelper.hpp>
-#include <KlayGE/SceneObjectHelper.hpp>
+#include <KlayGE/SceneNodeHelper.hpp>
 #include <KlayGE/InfTerrain.hpp>
 
 #include <vector>
@@ -51,7 +51,7 @@ namespace KlayGE
 		PostProcessPtr gradient_pp_;
 		PostProcessPtr mask_pp_;
 
-		std::vector<RenderablePtr> plant_meshes_;
+		std::vector<RenderModelPtr> plant_meshes_;
 		std::vector<RenderablePtr> plant_impostor_meshes_;
 		std::vector<ImposterPtr> plant_imposters_;
 

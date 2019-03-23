@@ -4,7 +4,6 @@
 #include <KFL/Math.hpp>
 #include <KlayGE/Font.hpp>
 #include <KlayGE/Renderable.hpp>
-#include <KlayGE/RenderableHelper.hpp>
 #include <KlayGE/RenderEngine.hpp>
 #include <KlayGE/RenderEffect.hpp>
 #include <KlayGE/FrameBuffer.hpp>
@@ -13,9 +12,8 @@
 #include <KlayGE/ResLoader.hpp>
 #include <KlayGE/RenderSettings.hpp>
 #include <KlayGE/Mesh.hpp>
-#include <KlayGE/RenderableHelper.hpp>
 #include <KlayGE/Light.hpp>
-#include <KlayGE/SceneObjectHelper.hpp>
+#include <KlayGE/SceneNodeHelper.hpp>
 #include <KlayGE/Show.hpp>
 #include <KlayGE/UI.hpp>
 #include <KlayGE/Camera.hpp>
@@ -38,15 +36,17 @@ namespace
 	class RenderTeapot : public StaticMesh
 	{
 	public:
-		RenderTeapot(RenderModelPtr model, std::wstring const & /*name*/)
-			: StaticMesh(model, L"Teapot")
+		explicit RenderTeapot(std::wstring_view name)
+			: StaticMesh(name)
 		{
 			effect_ = SyncLoadRenderEffect("VideoTexture.fxml");
 			technique_ = effect_->TechniqueByName("Object");
 		}
 
-		virtual void DoBuildMeshInfo() override
+		void DoBuildMeshInfo(RenderModel const & model) override
 		{
+			KFL_UNUSED(model);
+
 			AABBox const & pos_bb = this->PosBound();
 			*(effect_->ParameterByName("pos_center")) = pos_bb.Center();
 			*(effect_->ParameterByName("pos_extent")) = pos_bb.HalfSize();
@@ -84,36 +84,6 @@ namespace
 		void LightFalloff(float3 const & light_falloff)
 		{
 			*(effect_->ParameterByName("light_falloff")) = light_falloff;
-		}
-	};
-
-	class TeapotObject : public SceneObjectHelper
-	{
-	public:
-		TeapotObject()
-			: SceneObjectHelper(SOA_Cullable)
-		{
-			renderable_ = SyncLoadModel("teapot.meshml", EAH_GPU_Read | EAH_Immutable, CreateModelFactory<RenderModel>(), CreateMeshFactory<RenderTeapot>())->Subrenderable(0);
-		}
-
-		void VideoTexture(TexturePtr const & video_tex)
-		{
-			checked_pointer_cast<RenderTeapot>(renderable_)->VideoTexture(video_tex);
-		}
-
-		void LightPos(float3 const & light_pos)
-		{
-			checked_pointer_cast<RenderTeapot>(renderable_)->LightPos(light_pos);
-		}
-
-		void LightColor(float3 const & light_color)
-		{
-			checked_pointer_cast<RenderTeapot>(renderable_)->LightColor(light_color);
-		}
-
-		void LightFalloff(float3 const & light_falloff)
-		{
-			checked_pointer_cast<RenderTeapot>(renderable_)->LightFalloff(light_falloff);
 		}
 	};
 
@@ -162,23 +132,26 @@ void VideoTextureApp::OnCreate()
 	light_->AddToSceneManager();
 
 	light_proxy_ = MakeSharedPtr<SceneObjectLightSourceProxy>(light_);
-	checked_pointer_cast<SceneObjectLightSourceProxy>(light_proxy_)->Scaling(0.01f, 0.01f, 0.01f);
-	light_proxy_->AddToSceneManager();
+	light_proxy_->Scaling(0.01f, 0.01f, 0.01f);
+	Context::Instance().SceneManagerInstance().SceneRootNode().AddChild(light_proxy_->RootNode());
 
 	InputEngine& inputEngine(Context::Instance().InputFactoryInstance().InputEngineInstance());
 	InputActionMap actionMap;
 	actionMap.AddActions(actions, actions + std::size(actions));
 
 	action_handler_t input_handler = MakeSharedPtr<input_signal>();
-	input_handler->connect(
+	input_handler->Connect(
 		[this](InputEngine const & sender, InputAction const & action)
 		{
 			this->InputHandler(sender, action);
 		});
 	inputEngine.ActionMap(actionMap, input_handler);
 
-	ground_ = MakeSharedPtr<TeapotObject>();
-	ground_->AddToSceneManager();
+	model_ = SyncLoadModel("teapot.glb", EAH_GPU_Read | EAH_Immutable,
+		SceneNode::SOA_Cullable, nullptr,
+		CreateModelFactory<RenderModel>, CreateMeshFactory<RenderTeapot>);
+	object_ = MakeSharedPtr<SceneNode>(model_->Mesh(0), SceneNode::SOA_Cullable);
+	Context::Instance().SceneManagerInstance().SceneRootNode().AddChild(object_);
 
 	ShowEngine& se = Context::Instance().ShowFactoryInstance().ShowEngineInstance();
 	se.Load(ResLoader::Instance().Locate("big_buck_bunny.avi"));
@@ -230,10 +203,10 @@ uint32_t VideoTextureApp::DoUpdate(uint32_t /*pass*/)
 	}		
 	re.CurFrameBuffer()->Clear(FrameBuffer::CBM_Color | FrameBuffer::CBM_Depth, clear_clr, 1.0f, 0);
 
-	checked_pointer_cast<TeapotObject>(ground_)->VideoTexture(se.PresentTexture());
-	checked_pointer_cast<TeapotObject>(ground_)->LightPos(light_->Position());
-	checked_pointer_cast<TeapotObject>(ground_)->LightColor(light_->Color());
-	checked_pointer_cast<TeapotObject>(ground_)->LightFalloff(light_->Falloff());
+	checked_pointer_cast<RenderTeapot>(object_->GetRenderable())->VideoTexture(se.PresentTexture());
+	checked_pointer_cast<RenderTeapot>(object_->GetRenderable())->LightPos(light_->Position());
+	checked_pointer_cast<RenderTeapot>(object_->GetRenderable())->LightColor(light_->Color());
+	checked_pointer_cast<RenderTeapot>(object_->GetRenderable())->LightFalloff(light_->Falloff());
 
 	return App3DFramework::URV_NeedFlush | App3DFramework::URV_Finished;
 }

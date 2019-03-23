@@ -31,7 +31,7 @@
 #include <KFL/KFL.hpp>
 #include <KFL/Util.hpp>
 
-#ifdef KLAYGE_PLATFORM_WINDOWS
+#if defined(KLAYGE_PLATFORM_WINDOWS)
 #include <windows.h>
 #ifdef KLAYGE_PLATFORM_WINDOWS_DESKTOP
 #if (_WIN32_WINNT >= _WIN32_WINNT_WINBLUE)
@@ -41,6 +41,8 @@
 #ifdef KLAYGE_COMPILER_MSVC
 #include <intrin.h>
 #endif
+#elif defined(KLAYGE_PLATFORM_LINUX)
+#include <sched.h>
 #endif
 #include <cstring>
 #include <vector>
@@ -372,11 +374,7 @@ namespace KlayGE
 #if defined KLAYGE_PLATFORM_WINDOWS
 		{
 			SYSTEM_INFO si;
-#if defined KLAYGE_PLATFORM_WINDOWS_DESKTOP
-			::GetSystemInfo(&si);
-#else
 			::GetNativeSystemInfo(&si);
-#endif
 			num_hw_threads_ = si.dwNumberOfProcessors;
 		}
 #elif defined KLAYGE_PLATFORM_LINUX
@@ -386,7 +384,7 @@ namespace KlayGE
 		num_hw_threads_ = sysconf(_SC_NPROCESSORS_CONF);	// This will tell us how many CPUs are currently enabled.
 #endif
 
-#if defined KLAYGE_PLATFORM_WINDOWS_DESKTOP
+#if defined KLAYGE_PLATFORM_WINDOWS
 		std::vector<SYSTEM_LOGICAL_PROCESSOR_INFORMATION> slpi_;
 
 		DWORD cbBuffer = 0;
@@ -403,8 +401,6 @@ namespace KlayGE
 				++ num_cores_;
 			}
 		}
-#elif defined KLAYGE_PLATFORM_WINDOWS_STORE
-		num_cores_ = num_hw_threads_;
 #elif defined KLAYGE_PLATFORM_LINUX
 		if (is_intel || is_amd)
 		{

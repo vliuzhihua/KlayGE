@@ -28,7 +28,8 @@
 #include <KlayGE/InputFactory.hpp>
 #include <KlayGE/Context.hpp>
 #include <KlayGE/ResLoader.hpp>
-#include <KlayGE/SceneObjectHelper.hpp>
+#include <KlayGE/SceneManager.hpp>
+#include <KlayGE/SceneNodeHelper.hpp>
 #include <KFL/XMLDom.hpp>
 #include <KlayGE/Font.hpp>
 #include <KlayGE/TransientBuffer.hpp>
@@ -86,25 +87,25 @@ namespace KlayGE
 	std::unique_ptr<UIManager> UIManager::ui_mgr_instance_;
 
 
-	class UIRectRenderable : public RenderableHelper
+	class UIRectRenderable : public Renderable
 	{
 	public:
 		UIRectRenderable(TexturePtr const & texture, RenderEffectPtr const & effect)
-			: RenderableHelper(L"UIRect"),
+			: Renderable(L"UIRect"),
 				texture_(texture)
 		{
 			RenderFactory& rf = Context::Instance().RenderFactoryInstance();
 
 			restart_ = rf.RenderEngineInstance().DeviceCaps().primitive_restart_support;
 
-			rl_ = rf.MakeRenderLayout();
+			rls_[0] = rf.MakeRenderLayout();
 			if (restart_)
 			{
-				rl_->TopologyType(RenderLayout::TT_TriangleStrip);
+				rls_[0]->TopologyType(RenderLayout::TT_TriangleStrip);
 			}
 			else
 			{
-				rl_->TopologyType(RenderLayout::TT_TriangleList);
+				rls_[0]->TopologyType(RenderLayout::TT_TriangleList);
 			}
 
 			uint32_t const INDEX_PER_QUAD = restart_ ? 5 : 6;
@@ -112,9 +113,9 @@ namespace KlayGE
 			tb_vb_ = MakeUniquePtr<TransientBuffer>(static_cast<uint32_t>(INIT_NUM_QUAD * 4 * sizeof(UIManager::VertexFormat)), TransientBuffer::BF_Vertex);
 			tb_ib_ = MakeUniquePtr<TransientBuffer>(static_cast<uint32_t>(INIT_NUM_QUAD * INDEX_PER_QUAD * sizeof(uint16_t)), TransientBuffer::BF_Index);
 
-			rl_->BindVertexStream(tb_vb_->GetBuffer(), { VertexElement(VEU_Position, 0, EF_BGR32F),
+			rls_[0]->BindVertexStream(tb_vb_->GetBuffer(), { VertexElement(VEU_Position, 0, EF_BGR32F),
 				VertexElement(VEU_Diffuse, 0, EF_ABGR32F), VertexElement(VEU_TextureCoord, 0, EF_GR32F) });
-			rl_->BindIndexStream(tb_ib_->GetBuffer(), EF_R16UI);
+			rls_[0]->BindIndexStream(tb_ib_->GetBuffer(), EF_R16UI);
 
 			effect_ = effect;
 			if (texture)
@@ -152,8 +153,8 @@ namespace KlayGE
 			tb_vb_->EnsureDataReady();
 			tb_ib_->EnsureDataReady();
 
-			rl_->SetVertexStream(0, tb_vb_->GetBuffer());
-			rl_->BindIndexStream(tb_ib_->GetBuffer(), EF_R16UI);
+			rls_[0]->SetVertexStream(0, tb_vb_->GetBuffer());
+			rls_[0]->BindIndexStream(tb_ib_->GetBuffer(), EF_R16UI);
 		}
 		
 		void OnRenderEnd()
@@ -188,11 +189,11 @@ namespace KlayGE
 					++ i;
 				}
 
-				rl_->NumVertices(vert_length / sizeof(UIManager::VertexFormat));
-				rl_->StartIndexLocation(ind_offset / sizeof(uint16_t));
-				rl_->NumIndices(ind_length / sizeof(uint16_t));
+				rls_[0]->NumVertices(vert_length / sizeof(UIManager::VertexFormat));
+				rls_[0]->StartIndexLocation(ind_offset / sizeof(uint16_t));
+				rls_[0]->NumIndices(ind_length / sizeof(uint16_t));
 
-				re.Render(*this->GetRenderEffect(), *this->GetRenderTechnique(), *rl_);
+				re.Render(*this->GetRenderEffect(), *this->GetRenderTechnique(), *rls_[0]);
 			}
 
 			for (size_t i = 0; i < tb_vb_sub_allocs_.size(); ++ i)
@@ -401,7 +402,7 @@ namespace KlayGE
 		actionMap.AddActions(actions, actions + std::size(actions));
 
 		action_handler_t input_handler = MakeSharedPtr<input_signal>();
-		input_handler->connect(
+		input_handler->Connect(
 			[this](InputEngine const & sender, InputAction const & action)
 			{
 				this->InputHandler(sender, action);
@@ -933,9 +934,8 @@ namespace KlayGE
 		{
 			if (!checked_pointer_cast<UIRectRenderable>(rect.second)->Empty())
 			{
-				SceneObjectHelperPtr ui_rect_obj
-					= MakeSharedPtr<SceneObjectHelper>(rect.second, SceneObject::SOA_Overlay);
-				ui_rect_obj->AddToSceneManager();
+				auto ui_rect_obj = MakeSharedPtr<SceneNode>(rect.second, SceneNode::SOA_Overlay);
+				Context::Instance().SceneManagerInstance().OverlayRootNode().AddChild(ui_rect_obj);
 			}
 		}
 		for (auto const & str : strings_)
@@ -1531,15 +1531,8 @@ namespace KlayGE
 		if (!inside)
 		{
 			int2 const local_pt = this->ToLocal(pt);
-
-			for (auto const & control : controls_)
-			{
-				if (control->ContainsPoint(local_pt))
-				{
-					inside = true;
-					break;
-				}
-			}
+			inside = std::any_of(
+				controls_.begin(), controls_.end(), [local_pt](UIControlPtr const& control) { return control->ContainsPoint(local_pt); });
 		}
 		return inside;
 	}

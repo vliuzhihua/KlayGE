@@ -1,3 +1,33 @@
+/**
+ * @file VectorTexGen.cpp
+ * @author Minmin Gong
+ *
+ * @section DESCRIPTION
+ *
+ * This source file is part of KlayGE
+ * For the latest info, see http://www.klayge.org
+ *
+ * @section LICENSE
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published
+ * by the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *
+ * You may alternatively use this source under the terms of
+ * the KlayGE Proprietary License (KPL). You can obtained such a license
+ * from http://www.klayge.org/licensing/.
+ */
+
 #include <KlayGE/KlayGE.hpp>
 #include <KFL/Util.hpp>
 #include <KFL/Math.hpp>
@@ -13,17 +43,14 @@
 #include <cstring>
 #include <atomic>
 
-#if defined(KLAYGE_COMPILER_CLANGC2)
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wunused-variable" // Ignore unused variable (mpl_assertion_in_line_xxx) in boost
+#ifndef KLAYGE_DEBUG
+#define CXXOPTS_NO_RTTI
 #endif
-#include <boost/program_options.hpp>
-#if defined(KLAYGE_COMPILER_CLANGC2)
-#pragma clang diagnostic pop
-#endif
+#include <cxxopts.hpp>
 
 #if defined(KLAYGE_COMPILER_MSVC)
 #pragma warning(push)
+#pragma warning(disable: 4244) // Conversion from doubel to int64
 #pragma warning(disable: 4456) // Declaration of 'name' hides previous local declaration
 #pragma warning(disable: 4702) // Unreachable code
 #endif
@@ -53,22 +80,20 @@ int main(int argc, char* argv[])
 	uint32_t num_channels;
 	bool svg_input;
 
-	boost::program_options::options_description desc("Allowed options");
-	desc.add_options()
-		("help,H", "Produce help message")
-		("input-name,I", boost::program_options::value<std::string>(), "Input name (svg or dds).")
-		("output-name,O", boost::program_options::value<std::string>(),
-			"Output name. Default is input-name.dds or svg, input-name.df.dds for dds.")
-		("channels,C", boost::program_options::value<uint32_t>(&num_channels)->default_value(4), "Number of channels. Default is 4.")
-		("version,v", "Version.");
+	cxxopts::Options options("ImageConv", "KlayGE Vector Texture Converter");
+	options.add_options()
+		("H,help", "Produce help message.")
+		("I,input-name", "Input name (svg or dds).", cxxopts::value<std::string>())
+		("O,output-name", "Output name. Default is input-name.dds or svg, input-name.df.dds for dds.", cxxopts::value<std::string>())
+		("C,channels", "Number of channels.", cxxopts::value<uint32_t>(num_channels)->default_value("4"))
+		("v,version", "Version.");
 
-	boost::program_options::variables_map vm;
-	boost::program_options::store(boost::program_options::parse_command_line(argc, argv, desc), vm);
-	boost::program_options::notify(vm);
+	int const argc_backup = argc;
+	auto vm = options.parse(argc, argv);
 
-	if ((argc <= 1) || (vm.count("help") > 0))
+	if ((argc_backup <= 1) || (vm.count("help") > 0))
 	{
-		cout << desc << endl;
+		cout << options.help() << endl;
 		return 1;
 	}
 	if (vm.count("version") > 0)
@@ -83,6 +108,7 @@ int main(int argc, char* argv[])
 	else
 	{
 		cout << "Input name was not set." << endl;
+		cout << options.help() << endl;
 		return 1;
 	}
 
@@ -182,11 +208,12 @@ int main(int argc, char* argv[])
 	}
 	else
 	{
-		Texture::TextureType type;
-		uint32_t depth, num_mipmaps, array_size;
-		std::vector<ElementInitData> init_data;
-		std::vector<uint8_t> data_block;
-		LoadTexture(in_name, type, ras_width, ras_height, depth, num_mipmaps, array_size, format, init_data, data_block);
+		TexturePtr in_tex = LoadSoftwareTexture(in_name);
+		ras_width = in_tex->Width(0);
+		ras_height = in_tex->Height(0);
+		auto const depth = in_tex->Depth(0);
+		format = in_tex->Format();
+		auto const & init_data = checked_cast<SoftwareTexture*>(in_tex.get())->SubresourceData();
 
 		if (NumComponents(format) != num_channels)
 		{
@@ -250,7 +277,9 @@ int main(int argc, char* argv[])
 	init_data.data = &quan_dist[0];
 	init_data.row_pitch = width * num_channels;
 	init_data.slice_pitch = width * height * num_channels;
-	SaveTexture(out_name, Texture::TT_2D, width, height, 1, 1, 1, format, init_data);
+	TexturePtr out_tex = MakeSharedPtr<SoftwareTexture>(Texture::TT_2D, width, height, 1, 1, 1, format, true);
+	out_tex->CreateHWResource(init_data, nullptr);
+	SaveTexture(out_tex, out_name);
 
 	Context::Destroy();
 }

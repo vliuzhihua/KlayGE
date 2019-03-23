@@ -44,15 +44,10 @@
 #if defined(KLAYGE_COMPILER_GCC)
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wstrict-aliasing" // Ignore aliasing in flat_tree.hpp
-#elif defined(KLAYGE_COMPILER_CLANGC2)
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wunused-parameter" // Ignore unused parameter in boost
 #endif
 #include <boost/container/flat_map.hpp>
 #if defined(KLAYGE_COMPILER_GCC)
 #pragma GCC diagnostic pop
-#elif defined(KLAYGE_COMPILER_CLANGC2)
-#pragma clang diagnostic pop
 #endif
 
 namespace KlayGE
@@ -95,8 +90,6 @@ namespace KlayGE
 
 	struct KLAYGE_CORE_API RenderDeviceCaps
 	{
-		friend class RenderEngine;
-
 		ShaderModel max_shader_model;
 
 		uint32_t max_texture_width;
@@ -136,6 +129,7 @@ namespace KlayGE
 		bool load_from_buffer_support : 1;
 		bool uavs_at_every_stage_support : 1;
 		bool rovs_support : 1;
+		bool flexible_srvs_support : 1;
 
 		bool gs_support : 1;
 		bool cs_support : 1;
@@ -171,11 +165,12 @@ namespace KlayGE
 			return encoded >> 16;
 		}
 
-	private:
 		void AssignVertexFormats(std::vector<ElementFormat>&& vertex_formats);
 		void AssignTextureFormats(std::vector<ElementFormat>&& texture_formats);
 		void AssignRenderTargetFormats(std::map<ElementFormat, std::vector<uint32_t>>&& render_target_formats);
 		void AssignUavFormats(std::vector<ElementFormat>&& uav_formats);
+
+	private:
 		void UpdateSupportBits();
 
 	private:

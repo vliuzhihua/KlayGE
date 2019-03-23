@@ -36,7 +36,7 @@ private:
 	
 	KlayGE::RenderModelPtr scene_model_;
 	KlayGE::RenderModelPtr teapot_model_;
-	std::vector<KlayGE::SceneObjectPtr> scene_objs_;
+	std::vector<KlayGE::RenderablePtr> scene_meshes_;
 
 	KlayGE::FirstPersonCameraController fpcController_;
 
@@ -50,12 +50,12 @@ private:
 
 	KlayGE::FrameBufferPtr shadow_dual_buffers_[2];
 	KlayGE::TexturePtr shadow_dual_texs_[2];
-	KlayGE::RenderViewPtr shadow_dual_view_[2];
+	KlayGE::RenderTargetViewPtr shadow_dual_view_[2];
 	KlayGE::TexturePtr shadow_dual_tex_;
 
 	KlayGE::TexturePtr lamp_tex_;
 
-	KlayGE::SceneObjectPtr light_proxy_;
+	KlayGE::SceneObjectLightSourceProxyPtr light_proxy_;
 	KlayGE::LightSourcePtr light_;
 
 	KlayGE::uint32_t loading_percentage_;

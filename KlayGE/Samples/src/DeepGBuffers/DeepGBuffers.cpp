@@ -13,7 +13,8 @@
 #include <KlayGE/ResLoader.hpp>
 #include <KlayGE/RenderSettings.hpp>
 #include <KlayGE/Mesh.hpp>
-#include <KlayGE/SceneObjectHelper.hpp>
+#include <KlayGE/SceneNodeHelper.hpp>
+#include <KlayGE/SkyBox.hpp>
 #include <KlayGE/Camera.hpp>
 #include <KlayGE/DeferredRenderingLayer.hpp>
 #include <KlayGE/ParticleSystem.hpp>
@@ -32,8 +33,8 @@ namespace
 	class SwitchableMesh : public StaticMesh
 	{
 	public:
-		SwitchableMesh(RenderModelPtr const & model, std::wstring const & name)
-			: StaticMesh(model, name),
+		explicit SwitchableMesh(std::wstring_view name)
+			: StaticMesh(name),
 				lighting_(true)
 		{
 			gbuffers_effect_ = SyncLoadRenderEffect("GBuffer.fxml");
@@ -160,8 +161,14 @@ void DeepGBuffersApp::OnCreate()
 
 	TexturePtr c_cube = ASyncLoadTexture("Lake_CraterLake03_filtered_c.dds", EAH_GPU_Read | EAH_Immutable);
 	TexturePtr y_cube = ASyncLoadTexture("Lake_CraterLake03_filtered_y.dds", EAH_GPU_Read | EAH_Immutable);
-	RenderablePtr scene_model = ASyncLoadModel("chipmunk-CE-01.meshml", EAH_GPU_Read | EAH_Immutable,
-		CreateModelFactory<RenderModel>(), CreateMeshFactory<SwitchableMesh>());
+	scene_model_ = ASyncLoadModel("chipmunk-CE-01.glb", EAH_GPU_Read | EAH_Immutable,
+		SceneNode::SOA_Cullable,
+		[](RenderModel& model)
+		{
+			model.RootNode()->TransformToParent(MathLib::scaling(3.0f, 3.0f, 3.0f));
+			AddToSceneRootHelper(model);
+		},
+		CreateModelFactory<RenderModel>, CreateMeshFactory<SwitchableMesh>);
 
 	font_ = SyncLoadFont("gkai00mp.kfont");
 
@@ -196,15 +203,11 @@ void DeepGBuffersApp::OnCreate()
 	spot_light_[1]->AddToSceneManager();
 
 	spot_light_src_[0] = MakeSharedPtr<SceneObjectLightSourceProxy>(spot_light_[0]);
-	checked_pointer_cast<SceneObjectLightSourceProxy>(spot_light_src_[0])->Scaling(0.1f, 0.1f, 0.1f);
-	spot_light_src_[0]->AddToSceneManager();
+	spot_light_src_[0]->Scaling(0.1f, 0.1f, 0.1f);
+	Context::Instance().SceneManagerInstance().SceneRootNode().AddChild(spot_light_src_[0]->RootNode());
 	spot_light_src_[1] = MakeSharedPtr<SceneObjectLightSourceProxy>(spot_light_[1]);
-	checked_pointer_cast<SceneObjectLightSourceProxy>(spot_light_src_[1])->Scaling(0.1f, 0.1f, 0.1f);
-	spot_light_src_[1]->AddToSceneManager();
-
-	scene_obj_ = MakeSharedPtr<SceneObjectHelper>(scene_model, SceneObject::SOA_Cullable);
-	scene_obj_->ModelMatrix(MathLib::scaling(3.0f, 3.0f, 3.0f));
-	scene_obj_->AddToSceneManager();
+	spot_light_src_[1]->Scaling(0.1f, 0.1f, 0.1f);
+	Context::Instance().SceneManagerInstance().SceneRootNode().AddChild(spot_light_src_[1]->RootNode());
 
 	fpcController_.Scalers(0.05f, 0.5f);
 
@@ -213,7 +216,7 @@ void DeepGBuffersApp::OnCreate()
 	actionMap.AddActions(actions, actions + std::size(actions));
 
 	action_handler_t input_handler = MakeSharedPtr<input_signal>();
-	input_handler->connect(
+	input_handler->Connect(
 		[this](InputEngine const & sender, InputAction const & action)
 		{
 			this->InputHandler(sender, action);
@@ -228,7 +231,7 @@ void DeepGBuffersApp::OnCreate()
 	id_simple_forward_ = dialog_->IDFromName("SimpleForward");
 	id_ctrl_camera_ = dialog_->IDFromName("CtrlCamera");
 
-	dialog_->Control<UICheckBox>(id_receives_lighting_)->OnChangedEvent().connect(
+	dialog_->Control<UICheckBox>(id_receives_lighting_)->OnChangedEvent().Connect(
 		[this](UICheckBox const & sender)
 		{
 			this->ReceivesLightingHandler(sender);
@@ -236,30 +239,30 @@ void DeepGBuffersApp::OnCreate()
 	this->ReceivesLightingHandler(*dialog_->Control<UICheckBox>(id_receives_lighting_));
 
 	dialog_->Control<UISlider>(id_transparency_slider_)->SetValue(static_cast<int>(transparency_ * 20));
-	dialog_->Control<UISlider>(id_transparency_slider_)->OnValueChangedEvent().connect(
+	dialog_->Control<UISlider>(id_transparency_slider_)->OnValueChangedEvent().Connect(
 		[this](UISlider const & sender)
 		{
 			this->TransparencyChangedHandler(sender);
 		});
 	this->TransparencyChangedHandler(*dialog_->Control<UISlider>(id_transparency_slider_));
 
-	dialog_->Control<UICheckBox>(id_simple_forward_)->OnChangedEvent().connect(
+	dialog_->Control<UICheckBox>(id_simple_forward_)->OnChangedEvent().Connect(
 		[this](UICheckBox const & sender)
 		{
 			this->SimpleForwardHandler(sender);
 		});
 	this->SimpleForwardHandler(*dialog_->Control<UICheckBox>(id_simple_forward_));
 
-	dialog_->Control<UICheckBox>(id_ctrl_camera_)->OnChangedEvent().connect(
+	dialog_->Control<UICheckBox>(id_ctrl_camera_)->OnChangedEvent().Connect(
 		[this](UICheckBox const & sender)
 		{
 			this->CtrlCameraHandler(sender);
 		});
 	this->CtrlCameraHandler(*dialog_->Control<UICheckBox>(id_ctrl_camera_));
 
-	sky_box_ = MakeSharedPtr<SceneObjectSkyBox>();
-	checked_pointer_cast<SceneObjectSkyBox>(sky_box_)->CompressedCubeMap(y_cube, c_cube);
-	sky_box_->AddToSceneManager();
+	sky_box_ = MakeSharedPtr<SceneNode>(MakeSharedPtr<RenderableSkyBox>(), SceneNode::SOA_NotCastShadow);
+	checked_pointer_cast<RenderableSkyBox>(sky_box_->GetRenderable())->CompressedCubeMap(y_cube, c_cube);
+	Context::Instance().SceneManagerInstance().SceneRootNode().AddChild(sky_box_);
 }
 
 void DeepGBuffersApp::OnResize(uint32_t width, uint32_t height)
@@ -286,10 +289,9 @@ void DeepGBuffersApp::ReceivesLightingHandler(UICheckBox const & sender)
 {
 	bool lighting = sender.GetChecked();
 
-	RenderablePtr const & model = scene_obj_->GetRenderable();
-	for (uint32_t i = 0; i < model->NumSubrenderables(); ++ i)
+	for (uint32_t i = 0; i < scene_model_->NumMeshes(); ++ i)
 	{
-		checked_pointer_cast<SwitchableMesh>(model->Subrenderable(i))->ReceivesLighting(lighting);
+		checked_pointer_cast<SwitchableMesh>(scene_model_->Mesh(i))->ReceivesLighting(lighting);
 	}
 }
 
@@ -297,10 +299,9 @@ void DeepGBuffersApp::TransparencyChangedHandler(UISlider const & sender)
 {
 	transparency_ = sender.GetValue() / 20.0f;
 
-	RenderablePtr const & model = scene_obj_->GetRenderable();
-	for (uint32_t i = 0; i < model->NumSubrenderables(); ++ i)
+	for (uint32_t i = 0; i < scene_model_->NumMeshes(); ++ i)
 	{
-		checked_pointer_cast<SwitchableMesh>(model->Subrenderable(i))->Transparency(transparency_);
+		checked_pointer_cast<SwitchableMesh>(scene_model_->Mesh(i))->Transparency(transparency_);
 	}
 
 	std::wostringstream stream;
@@ -312,17 +313,12 @@ void DeepGBuffersApp::SimpleForwardHandler(UICheckBox const & sender)
 {
 	bool const simple_forward = sender.GetChecked();
 
-	if (simple_forward)
-	{
-		auto control = dialog_->Control<UICheckBox>(id_receives_lighting_);
-		control->SetEnabled(false);
-		control->SetChecked(false);
-	}
+	auto control = dialog_->Control<UICheckBox>(id_receives_lighting_);
+	control->SetEnabled(!simple_forward);
 
-	RenderablePtr const & model = scene_obj_->GetRenderable();
-	for (uint32_t i = 0; i < model->NumSubrenderables(); ++ i)
+	for (uint32_t i = 0; i < scene_model_->NumMeshes(); ++ i)
 	{
-		checked_pointer_cast<SwitchableMesh>(model->Subrenderable(i))->SimpleForwardMode(simple_forward);
+		checked_pointer_cast<SwitchableMesh>(scene_model_->Mesh(i))->SimpleForwardMode(simple_forward);
 	}
 }
 

@@ -152,16 +152,16 @@ namespace KlayGE
 		}
 	}
 
-	D3D12_SHADER_RESOURCE_VIEW_DESC D3D12Texture3D::FillSRVDesc(uint32_t first_array_index, uint32_t num_items, uint32_t first_level,
-		uint32_t num_levels) const
+	D3D12_SHADER_RESOURCE_VIEW_DESC D3D12Texture3D::FillSRVDesc(ElementFormat pf, uint32_t first_array_index, uint32_t array_size,
+		uint32_t first_level, uint32_t num_levels) const
 	{
 		BOOST_ASSERT(0 == first_array_index);
-		BOOST_ASSERT(1 == num_items);
+		BOOST_ASSERT(1 == array_size);
 		KFL_UNUSED(first_array_index);
-		KFL_UNUSED(num_items);
+		KFL_UNUSED(array_size);
 
 		D3D12_SHADER_RESOURCE_VIEW_DESC desc;
-		switch (format_)
+		switch (pf)
 		{
 		case EF_D16:
 			desc.Format = DXGI_FORMAT_R16_UNORM;
@@ -176,7 +176,7 @@ namespace KlayGE
 			break;
 
 		default:
-			desc.Format = dxgi_fmt_;
+			desc.Format = D3D12Mapping::MappingFormat(pf);
 			break;
 		}
 		desc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
@@ -189,39 +189,14 @@ namespace KlayGE
 		return desc;
 	}
 
-	D3D12_UNORDERED_ACCESS_VIEW_DESC D3D12Texture3D::FillUAVDesc(uint32_t first_array_index, uint32_t num_items, uint32_t level) const
-	{
-		BOOST_ASSERT(0 == first_array_index);
-		BOOST_ASSERT(1 == num_items);
-		KFL_UNUSED(num_items);
-
-		return this->FillUAVDesc(first_array_index, 0, depth_, level);
-	}
-
-	D3D12_UNORDERED_ACCESS_VIEW_DESC D3D12Texture3D::FillUAVDesc(uint32_t array_index, uint32_t first_slice, uint32_t num_slices,
-		uint32_t level) const
-	{
-		BOOST_ASSERT(0 == array_index);
-		KFL_UNUSED(array_index);
-
-		D3D12_UNORDERED_ACCESS_VIEW_DESC desc;
-		desc.Format = dxgi_fmt_;
-		desc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE3D;
-		desc.Texture3D.MipSlice = level;
-		desc.Texture3D.FirstWSlice = first_slice;
-		desc.Texture3D.WSize = num_slices;
-
-		return desc;
-	}
-
-	D3D12_RENDER_TARGET_VIEW_DESC D3D12Texture3D::FillRTVDesc(uint32_t array_index, uint32_t first_slice, uint32_t num_slices,
-		uint32_t level) const
+	D3D12_RENDER_TARGET_VIEW_DESC D3D12Texture3D::FillRTVDesc(ElementFormat pf, uint32_t array_index, uint32_t first_slice,
+		uint32_t num_slices, uint32_t level) const
 	{
 		BOOST_ASSERT(0 == array_index);
 		KFL_UNUSED(array_index);
 
 		D3D12_RENDER_TARGET_VIEW_DESC desc;
-		desc.Format = D3D12Mapping::MappingFormat(this->Format());
+		desc.Format = D3D12Mapping::MappingFormat(pf);
 		desc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE3D;
 		desc.Texture3D.MipSlice = level;
 		desc.Texture3D.FirstWSlice = first_slice;
@@ -230,15 +205,15 @@ namespace KlayGE
 		return desc;
 	}
 
-	D3D12_DEPTH_STENCIL_VIEW_DESC D3D12Texture3D::FillDSVDesc(uint32_t array_index, uint32_t first_slice, uint32_t num_slices,
-		uint32_t level) const
+	D3D12_DEPTH_STENCIL_VIEW_DESC D3D12Texture3D::FillDSVDesc(ElementFormat pf, uint32_t array_index, uint32_t first_slice,
+		uint32_t num_slices, uint32_t level) const
 	{
 		BOOST_ASSERT(this->AccessHint() & EAH_GPU_Write);
 		BOOST_ASSERT(0 == array_index);
 		KFL_UNUSED(array_index);
 
 		D3D12_DEPTH_STENCIL_VIEW_DESC desc;
-		desc.Format = D3D12Mapping::MappingFormat(this->Format());
+		desc.Format = D3D12Mapping::MappingFormat(pf);
 		desc.Flags = D3D12_DSV_FLAG_NONE;
 		if (this->SampleCount() > 1)
 		{
@@ -251,6 +226,32 @@ namespace KlayGE
 		desc.Texture2DArray.MipSlice = level;
 		desc.Texture2DArray.ArraySize = num_slices;
 		desc.Texture2DArray.FirstArraySlice = first_slice;
+
+		return desc;
+	}
+
+	D3D12_UNORDERED_ACCESS_VIEW_DESC D3D12Texture3D::FillUAVDesc(ElementFormat pf, uint32_t first_array_index, uint32_t array_size,
+		uint32_t level) const
+	{
+		BOOST_ASSERT(0 == first_array_index);
+		BOOST_ASSERT(1 == array_size);
+		KFL_UNUSED(array_size);
+
+		return this->FillUAVDesc(pf, first_array_index, 0, depth_, level);
+	}
+
+	D3D12_UNORDERED_ACCESS_VIEW_DESC D3D12Texture3D::FillUAVDesc(ElementFormat pf, uint32_t array_index, uint32_t first_slice,
+		uint32_t num_slices, uint32_t level) const
+	{
+		BOOST_ASSERT(0 == array_index);
+		KFL_UNUSED(array_index);
+
+		D3D12_UNORDERED_ACCESS_VIEW_DESC desc;
+		desc.Format = D3D12Mapping::MappingFormat(pf);
+		desc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE3D;
+		desc.Texture3D.MipSlice = level;
+		desc.Texture3D.FirstWSlice = first_slice;
+		desc.Texture3D.WSize = num_slices;
 
 		return desc;
 	}
